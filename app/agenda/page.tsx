@@ -441,7 +441,7 @@ export default function AgendaPage() {
         colaborador_id: dragPreview.novoColaboradorId,
       })
       .eq('id', draggedAgendamento.id)
-      .select('*, cliente:clientes(*), colaborador:colaboradores(*)');
+      .select('*, clientes!fk_agendamentos_cliente(*), colaboradores!fk_agendamentos_colaborador(*)');
 
     if (error) {
       console.error('Erro ao atualizar agendamento:', error);
