@@ -148,14 +148,17 @@ export default function AgendaPage() {
       .from('agendamentos')
       .select(`
         *,
-        cliente:clientes(*),
-        colaborador:colaboradores(*)
+        clientes!fk_agendamentos_cliente(*),
+        colaboradores!fk_agendamentos_colaborador(*)
       `)
       .gte('data_hora', startDate)
       .lte('data_hora', endDate)
       .order('data_hora');
 
-    if (error) console.error('Erro ao buscar agendamentos:', error);
+    if (error) {
+      console.error('Erro ao buscar agendamentos:', error);
+      console.error('Detalhes do erro:', JSON.stringify(error, null, 2));
+    }
 
     if (colabData) setColaboradores(colabData);
     if (clienteData) setClientes(clienteData);
