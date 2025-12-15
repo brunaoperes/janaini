@@ -6,6 +6,7 @@ import { supabase, Colaborador, Agendamento, Cliente, Servico } from '@/lib/supa
 import { format, startOfDay, endOfDay, parseISO, differenceInMinutes, parse } from 'date-fns';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 
 // Paleta de cores para colaboradores
 const COLABORADOR_COLORS = [
@@ -77,6 +78,11 @@ export default function AgendaPage() {
 
   // Estados para Drawer de Edição
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isFinalizando, setIsFinalizando] = useState(false);
+  const [finalizarData, setFinalizarData] = useState({
+    forma_pagamento: 'pix',
+    valor_pago: '',
+  });
   const [editData, setEditData] = useState({
     colaborador_id: '',
     cliente_id: '',
@@ -98,6 +104,9 @@ export default function AgendaPage() {
 
   // Estado para seleção múltipla de serviços (novo agendamento)
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
+
+  // Estado para cliente selecionado no formulário (novo agendamento)
+  const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
 
   // Estado para seleção múltipla de serviços (edição)
   const [servicosSelecionadosEdit, setServicosSelecionadosEdit] = useState<string[]>([]);
@@ -243,30 +252,6 @@ export default function AgendaPage() {
   // Formatar horário
   const formatarHorario = (dataHora: string) => {
     return format(parseAsLocalTime(dataHora), 'HH:mm');
-  };
-
-  // ⚡ FÓRMULA ÚNICA - Calcula posição da linha "Agora" baseado em MINUTOS
-  const calcularPosicaoHoraAtual = () => {
-    // Constantes da timeline (em minutos) - MESMA BASE DOS CARDS
-    const INICIO_TIMELINE = 6 * 60; // 06:00 = 360 minutos
-    const FIM_TIMELINE = 22 * 60;   // 22:00 = 1320 minutos
-    const TOTAL_MINUTOS = FIM_TIMELINE - INICIO_TIMELINE; // 960 minutos
-
-    // Converter hora atual para minutos desde meia-noite
-    const minutosDesdeMeiaNoite = currentTime.getHours() * 60 + currentTime.getMinutes();
-
-    // Verificar se está dentro do horário de funcionamento
-    if (minutosDesdeMeiaNoite < INICIO_TIMELINE || minutosDesdeMeiaNoite > FIM_TIMELINE) {
-      return null;
-    }
-
-    // Calcular minutos desde o início da timeline
-    const minutosDesdeInicio = minutosDesdeMeiaNoite - INICIO_TIMELINE;
-
-    // Calcular posição percentual - MESMA FÓRMULA DOS CARDS
-    const posicao = (minutosDesdeInicio / TOTAL_MINUTOS) * 100;
-
-    return posicao;
   };
 
   // Obter ícone do serviço
@@ -461,33 +446,39 @@ export default function AgendaPage() {
 
   // ============== FUNÇÕES DE RESIZE ==============
 
-  // Calcular nova duração baseada na largura do card
+  // Calcular nova duração baseada na posição do mouse na timeline
   const calcularNovaDuracao = (clientX: number, agendamento: Agendamento, cardElement: HTMLElement) => {
     const timelineContainer = document.querySelector('[data-timeline-container]');
-    if (!timelineContainer) return null;
+    if (!timelineContainer) {
+      console.log('❌ Timeline container não encontrado');
+      return null;
+    }
 
     const timelineRect = timelineContainer.getBoundingClientRect();
     const cardRect = cardElement.getBoundingClientRect();
 
-    // Calcular largura em pixels desde o início do card até a posição do mouse
-    const larguraPx = clientX - cardRect.left;
+    // Timeline tem 16 horas (06:00 às 22:00) = 960 minutos
+    const totalMinutosTimeline = 16 * 60;
 
-    // Converter para porcentagem da timeline
-    const larguraPercent = (larguraPx / timelineRect.width) * 100;
+    // Calcular posição do início do card em relação à timeline (em porcentagem)
+    const cardStartPercent = ((cardRect.left - timelineRect.left) / timelineRect.width) * 100;
 
-    // Converter porcentagem para minutos (timeline tem 16 horas = 960 minutos)
-    const totalMinutosTimeline = 16 * 60; // 06:00 às 22:00
+    // Calcular posição do mouse em relação à timeline (em porcentagem)
+    const mousePercent = ((clientX - timelineRect.left) / timelineRect.width) * 100;
+
+    // A largura do card é a diferença entre a posição do mouse e o início do card
+    const larguraPercent = Math.max(mousePercent - cardStartPercent, 1.56); // Mínimo ~15min
+
+    // Converter porcentagem para minutos
     const novaDuracaoMinutos = (larguraPercent / 100) * totalMinutosTimeline;
 
-    // Snap para intervalos de 15 minutos
+    // Snap para intervalos de 15 minutos (só para o valor final, não para o preview)
     const duracaoSnap = Math.max(15, Math.round(novaDuracaoMinutos / 15) * 15);
 
-    // Garantir duração mínima de 15min e máxima de 8h
-    const duracaoFinal = Math.min(Math.max(duracaoSnap, 15), 480);
-
     return {
-      novaDuracao: duracaoFinal,
-      larguraPercent: (duracaoFinal / totalMinutosTimeline) * 100,
+      novaDuracao: duracaoSnap,
+      // IMPORTANTE: usar larguraPercent do mouse para preview seguir o cursor!
+      larguraPercent: larguraPercent,
     };
   };
 
@@ -496,23 +487,124 @@ export default function AgendaPage() {
     e.preventDefault();
     e.stopPropagation();
 
+    console.log('========== RESIZE START ==========');
+    console.log('Agendamento:', agendamento.id, agendamento.descricao_servico);
+    console.log('Duração atual do agendamento:', agendamento.duracao_minutos, 'minutos');
+
     setResizingAgendamento(agendamento);
     setIsResizing(true);
 
-    // ⚡ SOLUÇÃO DO BUG: Usar variável local para armazenar o último resultado
+    const timelineContainer = document.querySelector('[data-timeline-container]');
+    const cardElement = document.querySelector(`[data-agendamento-id="${agendamento.id}"]`) as HTMLElement;
+
+    if (!timelineContainer || !cardElement) {
+      console.log('❌ Elementos não encontrados');
+      setIsResizing(false);
+      setResizingAgendamento(null);
+      return;
+    }
+
+    const timelineRect = timelineContainer.getBoundingClientRect();
+    const cardRect = cardElement.getBoundingClientRect();
+
+    console.log('Timeline rect:', {
+      left: timelineRect.left,
+      right: timelineRect.right,
+      width: timelineRect.width
+    });
+
+    console.log('Card rect:', {
+      left: cardRect.left,
+      right: cardRect.right,
+      width: cardRect.width
+    });
+
+    // Timeline tem 16 horas (06:00 às 22:00) = 960 minutos
+    const totalMinutosTimeline = 16 * 60;
+    const INICIO_TIMELINE = 6 * 60; // 06:00 = 360 minutos
+
+    // Duração atual do agendamento
+    const duracaoMinutos = agendamento.duracao_minutos || 60;
+
+    // Extrair hora de início do agendamento
+    const dataHoraStr = agendamento.data_hora;
+    let horaInicio = 9;
+    let minutoInicio = 0;
+    if (dataHoraStr.includes('T')) {
+      const [h, m] = dataHoraStr.split('T')[1].substring(0, 5).split(':');
+      horaInicio = parseInt(h);
+      minutoInicio = parseInt(m);
+    } else if (dataHoraStr.includes(' ')) {
+      const [h, m] = dataHoraStr.split(' ')[1].substring(0, 5).split(':');
+      horaInicio = parseInt(h);
+      minutoInicio = parseInt(m);
+    }
+
+    // Minutos desde 06:00 onde o card COMEÇA
+    const minutosInicioAgendamento = (horaInicio * 60 + minutoInicio) - INICIO_TIMELINE;
+
+    // Posição LEFT do card em porcentagem (calculada pela mesma fórmula que renderiza)
+    const cardLeftPercent = (minutosInicioAgendamento / totalMinutosTimeline) * 100;
+    const cardStartX = (cardLeftPercent / 100) * timelineRect.width;
+
+    // Posição inicial do mouse (para calcular delta)
+    const initialMouseX = e.clientX;
+
+    console.log('Cálculos iniciais:', {
+      duracaoMinutos,
+      horaInicio: `${horaInicio}:${minutoInicio.toString().padStart(2, '0')}`,
+      minutosInicioAgendamento,
+      cardLeftPercent: cardLeftPercent.toFixed(2) + '%',
+      cardStartX: cardStartX.toFixed(2),
+      initialMouseX,
+      timelineWidth: timelineRect.width.toFixed(2)
+    });
+
+    // Variável para armazenar o último resultado
     let ultimoResultado: { novaDuracao: number; larguraPercent: number } | null = null;
+    let moveCount = 0;
 
-    // Adicionar event listeners globais para mousemove e mouseup
+    // Largura inicial do card em pixels (baseado na duração atual)
+    const duracaoPercentInicial = (duracaoMinutos / totalMinutosTimeline) * 100;
+    const larguraInicialPx = (duracaoPercentInicial / 100) * timelineRect.width;
+
+    // Event listener para mousemove
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      const cardElement = document.querySelector(`[data-agendamento-id="${agendamento.id}"]`) as HTMLElement;
-      if (!cardElement) return;
+      moveCount++;
 
-      const resultado = calcularNovaDuracao(moveEvent.clientX, agendamento, cardElement);
+      // ABORDAGEM DELTA: quanto o mouse se moveu desde o início
+      const deltaX = moveEvent.clientX - initialMouseX;
 
-      if (resultado) {
-        ultimoResultado = resultado; // Armazenar na variável local
-        setResizePreview(resultado);
+      // Nova largura = largura inicial (baseada na duração) + delta
+      const newCardWidthPx = Math.max(larguraInicialPx + deltaX, 15);
+
+      // Converter largura para porcentagem da timeline
+      const larguraPercent = (newCardWidthPx / timelineRect.width) * 100;
+
+      // Converter porcentagem para minutos
+      const novaDuracaoMinutos = (larguraPercent / 100) * totalMinutosTimeline;
+
+      // Snap para intervalos de 15 minutos (só para salvar)
+      const duracaoSnap = Math.max(15, Math.round(novaDuracaoMinutos / 15) * 15);
+
+      if (moveCount <= 5 || moveCount % 20 === 0) {
+        console.log(`Move #${moveCount}:`, {
+          deltaX: deltaX.toFixed(2),
+          larguraInicialPx: larguraInicialPx.toFixed(2),
+          newCardWidthPx: newCardWidthPx.toFixed(2),
+          larguraPercent: larguraPercent.toFixed(2) + '%',
+          novaDuracaoMinutos: novaDuracaoMinutos.toFixed(0),
+          duracaoSnap
+        });
       }
+
+      const resultado = {
+        novaDuracao: duracaoSnap,
+        larguraPercent: larguraPercent,
+      };
+
+      ultimoResultado = resultado;
+      setResizePreview(resultado);
     };
 
     const handleMouseUp = async (upEvent: MouseEvent) => {
@@ -529,7 +621,7 @@ export default function AgendaPage() {
       // ⚡ Snap para múltiplos de 15 minutos
       const duracaoSnap = Math.max(15, Math.round(ultimoResultado.novaDuracao / 15) * 15);
 
-      // Salvar no banco de dados
+      // Salvar no banco de dados - agendamento
       const { error } = await supabase
         .from('agendamentos')
         .update({ duracao_minutos: duracaoSnap })
@@ -539,7 +631,47 @@ export default function AgendaPage() {
         console.error('Erro ao atualizar duração:', error);
         alert('Erro ao ajustar duração: ' + error.message);
       } else {
-        alert(`✅ Duração ajustada para ${duracaoSnap} minutos`);
+        // Calcular hora_fim baseado na duração
+        // Extrair hora diretamente da string (evitar problemas de timezone)
+        const dataHoraStr = agendamento.data_hora;
+        let horaInicio = '09:00';
+
+        // Tentar extrair hora da string (pode ser "2025-12-01 09:00:00" ou "2025-12-01T09:00:00")
+        if (dataHoraStr.includes('T')) {
+          horaInicio = dataHoraStr.split('T')[1].substring(0, 5);
+        } else if (dataHoraStr.includes(' ')) {
+          horaInicio = dataHoraStr.split(' ')[1].substring(0, 5);
+        }
+
+        const [hInicio, mInicio] = horaInicio.split(':').map(Number);
+        const minutosFim = hInicio * 60 + mInicio + duracaoSnap;
+        const horaFim = `${Math.floor(minutosFim / 60).toString().padStart(2, '0')}:${(minutosFim % 60).toString().padStart(2, '0')}`;
+
+        console.log('=== RESIZE DEBUG ===');
+        console.log('Agendamento ID:', agendamento.id);
+        console.log('Lancamento ID:', agendamento.lancamento_id);
+        console.log('data_hora original:', dataHoraStr);
+        console.log('Hora início extraída:', horaInicio);
+        console.log('Duração:', duracaoSnap, 'minutos');
+        console.log('Hora fim calculada:', horaFim);
+
+        // Atualizar lançamento vinculado (se existir)
+        if (agendamento.lancamento_id) {
+          const { error: lancError } = await supabase
+            .from('lancamentos')
+            .update({ hora_fim: horaFim })
+            .eq('id', agendamento.lancamento_id);
+
+          if (lancError) {
+            console.error('Erro ao atualizar lançamento:', lancError);
+          } else {
+            console.log('Lançamento atualizado com hora_fim:', horaFim);
+          }
+        } else {
+          console.log('Agendamento não tem lancamento_id vinculado');
+        }
+
+        alert(`✅ Duração ajustada para ${duracaoSnap} minutos (${horaInicio} - ${horaFim})`);
         // Recarregar dados para atualizar o card
         await loadData();
       }
@@ -665,6 +797,66 @@ export default function AgendaPage() {
     }
   };
 
+  // Finalizar agendamento (marcar como concluído)
+  const finalizarAgendamento = async () => {
+    if (!selectedAgendamento || !selectedAgendamento.lancamento_id) {
+      alert('❌ Este agendamento não possui lançamento vinculado');
+      return;
+    }
+
+    if (!finalizarData.forma_pagamento || !finalizarData.valor_pago) {
+      alert('⚠️ Preencha a forma de pagamento e o valor');
+      return;
+    }
+
+    try {
+      // Buscar o lançamento para pegar a porcentagem de comissão
+      const { data: lancamento } = await supabase
+        .from('lancamentos')
+        .select('*, colaboradores(porcentagem_comissao)')
+        .eq('id', selectedAgendamento.lancamento_id)
+        .single();
+
+      const valorPago = parseFloat(finalizarData.valor_pago);
+      const porcentagem = lancamento?.colaboradores?.porcentagem_comissao || 50;
+      const comissaoColaborador = (valorPago * porcentagem) / 100;
+      const comissaoSalao = valorPago - comissaoColaborador;
+
+      // Atualizar lançamento
+      const { error: lancError } = await supabase
+        .from('lancamentos')
+        .update({
+          status: 'concluido',
+          forma_pagamento: finalizarData.forma_pagamento,
+          valor_total: valorPago,
+          comissao_colaborador: comissaoColaborador,
+          comissao_salao: comissaoSalao,
+          data_pagamento: new Date().toISOString(),
+        })
+        .eq('id', selectedAgendamento.lancamento_id);
+
+      if (lancError) throw lancError;
+
+      // Atualizar agendamento
+      const { error: agendError } = await supabase
+        .from('agendamentos')
+        .update({ status: 'concluido' })
+        .eq('id', selectedAgendamento.id);
+
+      if (agendError) throw agendError;
+
+      alert('✅ Serviço concluído com sucesso!');
+      setSelectedAgendamento(null);
+      setIsFinalizando(false);
+      setFinalizarData({ forma_pagamento: 'pix', valor_pago: '' });
+      await loadData();
+
+    } catch (error: any) {
+      console.error('Erro ao finalizar:', error);
+      alert('❌ Erro ao finalizar: ' + error.message);
+    }
+  };
+
   // ============== INDICADORES AVANÇADOS ==============
 
   // Calcular duração média dos serviços
@@ -779,7 +971,13 @@ export default function AgendaPage() {
       return;
     }
 
-    if (!formData.colaborador_id || !formData.cliente_id || !formData.data || !formData.hora_inicio) {
+    // Validar cliente selecionado
+    if (!clienteSelecionado) {
+      alert('⚠️ Selecione um cliente!');
+      return;
+    }
+
+    if (!formData.colaborador_id || !formData.data || !formData.hora_inicio) {
       alert('⚠️ Preencha todos os campos obrigatórios!');
       return;
     }
@@ -798,7 +996,7 @@ export default function AgendaPage() {
 
     const { error } = await supabase.from('agendamentos').insert([{
       colaborador_id: Number(formData.colaborador_id),
-      cliente_id: Number(formData.cliente_id),
+      cliente_id: clienteSelecionado.id,
       data_hora: dataHoraInicio,
       descricao_servico: descricaoServicos,
       duracao_minutos: duracaoTotal,
@@ -819,6 +1017,7 @@ export default function AgendaPage() {
         descricao_servico: '',
       });
       setServicosSelecionados([]); // Limpar serviços selecionados
+      setClienteSelecionado(null); // Limpar cliente selecionado
       // Atualizar a data selecionada para a data do agendamento
       setSelectedDate(formData.data);
       // Esperar um pouco antes de recarregar para garantir que o banco salvou
@@ -903,72 +1102,19 @@ export default function AgendaPage() {
       </div>
 
       <div className="container mx-auto px-4 md:px-6 py-8">
-        {/* Timeline Container */}
-        <div className="bg-white/60 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-soft-xl border border-purple-100/50 overflow-hidden relative">
-          {/* Linhas verticais GLOBAIS que cobrem header + colaboradores */}
-          {/* Mobile (8rem) */}
-          <div className="md:hidden absolute inset-0 pointer-events-none z-[5]">
-            {horariosGrid.map((horario) => {
-              const [hora, minuto] = horario.split(':').map(Number);
-              const minutosDesdeMeiaNoite = hora * 60 + minuto;
-              const INICIO_TIMELINE = 6 * 60;
-              const TOTAL_MINUTOS = 16 * 60;
-              const minutosDesdeInicio = minutosDesdeMeiaNoite - INICIO_TIMELINE;
-              const posicao = (minutosDesdeInicio / TOTAL_MINUTOS) * 100;
-              const isHoraCheia = minuto === 0;
+        {/* Timeline Container - com scroll horizontal */}
+        <div className="bg-white/60 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-soft-xl border border-purple-100/50 overflow-x-auto relative">
+          {/* Linhas verticais GLOBAIS removidas - agora usamos grid dentro de cada seção */}
 
-              return (
-                <div
-                  key={`global-grid-mobile-${horario}`}
-                  className="absolute top-0 bottom-0"
-                  style={{ left: `calc(8rem * ${1 - posicao/100} + ${posicao}%)` }}
-                >
-                  <div className={`h-full ${
-                    isHoraCheia
-                      ? 'border-l-2 border-purple-300/40'
-                      : 'border-l border-purple-200/15'
-                  }`} />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Desktop (12rem) */}
-          <div className="hidden md:block absolute inset-0 pointer-events-none z-[5]">
-            {horariosGrid.map((horario) => {
-              const [hora, minuto] = horario.split(':').map(Number);
-              const minutosDesdeMeiaNoite = hora * 60 + minuto;
-              const INICIO_TIMELINE = 6 * 60;
-              const TOTAL_MINUTOS = 16 * 60;
-              const minutosDesdeInicio = minutosDesdeMeiaNoite - INICIO_TIMELINE;
-              const posicao = (minutosDesdeInicio / TOTAL_MINUTOS) * 100;
-              const isHoraCheia = minuto === 0;
-
-              return (
-                <div
-                  key={`global-grid-desktop-${horario}`}
-                  className="absolute top-0 bottom-0"
-                  style={{ left: `calc(12rem * ${1 - posicao/100} + ${posicao}%)` }}
-                >
-                  <div className={`h-full ${
-                    isHoraCheia
-                      ? 'border-l-2 border-purple-300/40'
-                      : 'border-l border-purple-200/15'
-                  }`} />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Header da Timeline (Horários) */}
+          {/* Header da Timeline (Horários) - largura fixa por hora */}
           <div className="flex border-b border-purple-100 relative z-10">
-            {/* Espaço para os nomes dos colaboradores */}
-            <div className="w-32 md:w-48 flex-shrink-0 bg-gradient-to-br from-purple-50 to-pink-50 border-r border-purple-100 px-3 md:px-6 py-4">
-              <div className="text-xs md:text-sm font-semibold text-purple-700">Colaboradores</div>
+            {/* Espaço para os nomes dos colaboradores - sticky para scroll horizontal */}
+            <div className="w-[120px] md:w-[160px] flex-shrink-0 flex-grow-0 bg-gradient-to-br from-purple-50 to-pink-50 border-r border-purple-100 px-2 md:px-4 py-4 sticky left-0 z-20 overflow-hidden">
+              <div className="text-xs md:text-sm font-semibold text-purple-700 truncate">Colaboradores</div>
             </div>
 
-            {/* Horários - Timeline superior reformulada */}
-            <div className="flex-1 relative h-16 md:h-20 bg-gradient-to-b from-purple-50/40 to-transparent">
+            {/* Horários - largura fixa: 16 horas * 80px mobile / 120px desktop */}
+            <div className="relative h-16 md:h-20 bg-gradient-to-b from-purple-50/40 to-transparent" style={{ width: '1920px', minWidth: '1280px' }}>
               <div className="absolute inset-0">
                 {horarios.map((horario) => {
                   // Calcular posição usando a MESMA FÓRMULA dos cards
@@ -1012,62 +1158,6 @@ export default function AgendaPage() {
 
           {/* Linhas dos Colaboradores */}
           <div className="relative" data-timeline-container>
-            {/* Linha do Horário Atual - Desktop */}
-            {(() => {
-              const posicaoAtual = calcularPosicaoHoraAtual();
-              if (posicaoAtual !== null && format(currentTime, 'yyyy-MM-dd') === selectedDate) {
-                return (
-                  <>
-                    {/* Desktop */}
-                    <div
-                      className="hidden md:block absolute top-0 bottom-0 z-10 pointer-events-none"
-                      style={{ left: `calc(12rem * ${1 - posicaoAtual/100} + ${posicaoAtual}%)` }}
-                    >
-                      {/* Linha vertical vermelha */}
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-gradient-to-b from-red-500 via-pink-500 to-red-500 shadow-lg shadow-red-500/50 animate-pulse-soft" />
-
-                      {/* Label do horário atual - posicionado acima do header para não sobrepor */}
-                      <div className="absolute -top-12 left-1/2 -translate-x-1/2 pointer-events-auto">
-                        <div className="bg-gradient-to-r from-red-500 to-pink-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-xl shadow-red-500/30 whitespace-nowrap animate-fade-in-up">
-                          Agora - {format(currentTime, 'HH:mm')}
-                        </div>
-                      </div>
-
-                      {/* Indicador circular no topo */}
-                      <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                        <div className="w-3 h-3 bg-red-500 rounded-full shadow-lg shadow-red-500/50 animate-ping absolute" />
-                        <div className="w-3 h-3 bg-red-500 rounded-full shadow-lg shadow-red-500/50" />
-                      </div>
-                    </div>
-
-                    {/* Mobile */}
-                    <div
-                      className="md:hidden absolute top-0 bottom-0 z-10 pointer-events-none"
-                      style={{ left: `calc(8rem * ${1 - posicaoAtual/100} + ${posicaoAtual}%)` }}
-                    >
-                      {/* Linha vertical vermelha */}
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-gradient-to-b from-red-500 via-pink-500 to-red-500 shadow-lg shadow-red-500/50 animate-pulse-soft" />
-
-                      {/* Label do horário atual - posicionado acima do header para não sobrepor */}
-                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 pointer-events-auto">
-                        <div className="bg-gradient-to-r from-red-500 to-pink-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xl shadow-red-500/30 whitespace-nowrap animate-fade-in-up">
-                          {format(currentTime, 'HH:mm')}
-                        </div>
-                      </div>
-
-                      {/* Indicador circular no topo */}
-                      <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                        <div className="w-2 h-2 bg-red-500 rounded-full shadow-lg shadow-red-500/50 animate-ping absolute" />
-                        <div className="w-2 h-2 bg-red-500 rounded-full shadow-lg shadow-red-500/50" />
-                      </div>
-                    </div>
-                  </>
-                );
-              }
-              return null;
-            })()}
-
-            {/* Linhas verticais globais agora estão no topo do container principal */}
 
             {colaboradores.map((colaborador, colabIndex) => {
               const color = getColaboradorColor(colabIndex);
@@ -1081,27 +1171,27 @@ export default function AgendaPage() {
                   className="flex border-b border-purple-50 last:border-b-0 hover:bg-purple-50/30 transition-colors group"
                   data-colaborador-id={colaborador.id}
                 >
-                  {/* Card do Colaborador */}
-                  <div className="w-32 md:w-48 flex-shrink-0 border-r border-purple-100 p-3 md:p-4">
-                    <div className="flex items-center gap-2 md:gap-3">
+                  {/* Card do Colaborador - sticky para scroll horizontal, centralizado verticalmente */}
+                  <div className="w-[120px] md:w-[160px] flex-shrink-0 flex-grow-0 border-r border-purple-100 p-2 md:p-3 sticky left-0 z-10 bg-white/95 backdrop-blur-sm flex items-center overflow-hidden">
+                    <div className="flex items-center gap-2 w-full min-w-0">
                       {/* Avatar */}
-                      <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br ${color.gradient} flex items-center justify-center text-white font-bold text-xs md:text-sm shadow-lg ${color.shadow}`}>
+                      <div className={`w-8 h-8 md:w-9 md:h-9 flex-shrink-0 rounded-lg bg-gradient-to-br ${color.gradient} flex items-center justify-center text-white font-bold text-xs shadow-lg ${color.shadow}`}>
                         {colaborador.nome.charAt(0).toUpperCase()}
                       </div>
                       {/* Nome */}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs md:text-sm font-semibold text-gray-800 truncate">
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <div className="text-[10px] md:text-xs font-semibold text-gray-800 truncate" title={colaborador.nome}>
                           {colaborador.nome}
                         </div>
-                        <div className="text-[10px] md:text-xs text-gray-500">
+                        <div className="text-[9px] md:text-[10px] text-gray-500">
                           {agendamentosColaborador.length} agend.
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Timeline do Colaborador */}
-                  <div className="flex-1 relative h-20 md:h-24 py-2">
+                  {/* Timeline do Colaborador - largura fixa igual ao header */}
+                  <div className="relative h-20 md:h-24 py-2" style={{ width: '1920px', minWidth: '1280px' }}>
                     {/* Grid de horários */}
                     <div className="absolute inset-0 flex">
                       {horarios.map((horario) => {
@@ -1320,6 +1410,56 @@ export default function AgendaPage() {
                 </div>
               </>
             )}
+
+            {/* Linha do Horário Atual "Agora" - USA EXATAMENTE A MESMA ESTRUTURA DA RÉGUA DO TOPO */}
+            {(() => {
+              const isHoje = selectedDate === format(new Date(), 'yyyy-MM-dd');
+              if (!isHoje) return null;
+
+              // MESMA FÓRMULA EXATA da régua do topo (linhas 1144-1150)
+              const INICIO_TIMELINE = 6 * 60;  // 06:00 = 360 minutos
+              const TOTAL_MINUTOS = 16 * 60;   // 16 horas = 960 minutos
+              const minutosDesdeMeiaNoite = currentTime.getHours() * 60 + currentTime.getMinutes();
+
+              // Verificar se está dentro do horário de funcionamento
+              if (minutosDesdeMeiaNoite < INICIO_TIMELINE || minutosDesdeMeiaNoite > INICIO_TIMELINE + TOTAL_MINUTOS) {
+                return null;
+              }
+
+              const minutosDesdeInicio = minutosDesdeMeiaNoite - INICIO_TIMELINE;
+              const posicao = (minutosDesdeInicio / TOTAL_MINUTOS) * 100; // MESMA FÓRMULA
+
+              return (
+                <div className="absolute top-0 bottom-0 left-0 right-0 z-30 pointer-events-none flex">
+                  {/* Coluna de colaboradores - MESMA LARGURA do header */}
+                  <div className="w-[120px] md:w-[160px] flex-shrink-0" />
+
+                  {/* Container da timeline - MESMA LARGURA do header (1920px) */}
+                  <div className="relative" style={{ width: '1920px', minWidth: '1280px' }}>
+                    {/* Linha posicionada com left em % - IGUAL à régua do topo */}
+                    <div
+                      className="absolute top-0 bottom-0"
+                      style={{ left: `${posicao}%` }}
+                    >
+                      {/* Linha vertical vermelha */}
+                      <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-lg shadow-red-500/50" />
+
+                      {/* Label do horário atual - no topo */}
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full">
+                        <div className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-t-md shadow-md whitespace-nowrap">
+                          {format(currentTime, 'HH:mm')}
+                        </div>
+                      </div>
+
+                      {/* Indicador circular */}
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full shadow-md shadow-red-500/50" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Mensagem se não houver colaboradores */}
@@ -1498,18 +1638,26 @@ export default function AgendaPage() {
       {showNovoAgendamento && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setShowNovoAgendamento(false)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowNovoAgendamento(false);
+              setClienteSelecionado(null);
+            }
+          }}
         >
           <div
             className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full animate-modal-in max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Header do Modal */}
             <div className="sticky top-0 bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-5 rounded-t-3xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">✨ Novo Agendamento</h3>
                 <button
-                  onClick={() => setShowNovoAgendamento(false)}
+                  onClick={() => {
+                    setShowNovoAgendamento(false);
+                    setClienteSelecionado(null);
+                  }}
                   className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
                 >
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1546,19 +1694,13 @@ export default function AgendaPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   👤 Cliente *
                 </label>
-                <select
-                  value={formData.cliente_id}
-                  onChange={(e) => setFormData({ ...formData, cliente_id: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors"
-                  required
-                >
-                  <option value="">Selecione um cliente</option>
-                  {clientes.map((cliente) => (
-                    <option key={cliente.id} value={cliente.id}>
-                      {cliente.nome} - {cliente.telefone}
-                    </option>
-                  ))}
-                </select>
+                <ClienteAutocomplete
+                  onSelect={(cliente) => setClienteSelecionado(cliente)}
+                  selectedCliente={clienteSelecionado}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Digite para buscar ou cadastrar novo cliente
+                </p>
               </div>
 
               {/* Data */}
@@ -1790,14 +1932,24 @@ export default function AgendaPage() {
                     </div>
 
                     {/* Status */}
-                    <div className="bg-white rounded-xl p-4 border-2 border-green-100 hover:border-green-300 transition-colors col-span-2">
-                      <label className="text-xs font-bold text-green-600 uppercase tracking-wide flex items-center gap-1">
+                    <div className={`bg-white rounded-xl p-4 border-2 transition-colors col-span-2 ${
+                      selectedAgendamento.status === 'concluido'
+                        ? 'border-green-300 bg-green-50'
+                        : 'border-yellow-200 bg-yellow-50'
+                    }`}>
+                      <label className={`text-xs font-bold uppercase tracking-wide flex items-center gap-1 ${
+                        selectedAgendamento.status === 'concluido' ? 'text-green-600' : 'text-yellow-600'
+                      }`}>
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         Status
                       </label>
-                      <div className="mt-2 text-sm font-semibold text-green-600">Confirmado</div>
+                      <div className={`mt-2 text-sm font-semibold ${
+                        selectedAgendamento.status === 'concluido' ? 'text-green-600' : 'text-yellow-600'
+                      }`}>
+                        {selectedAgendamento.status === 'concluido' ? '✅ Concluído' : '⏳ Pendente'}
+                      </div>
                     </div>
                   </div>
 
@@ -1813,6 +1965,84 @@ export default function AgendaPage() {
                       {getServicoIcon(selectedAgendamento.descricao_servico || '')} {selectedAgendamento.descricao_servico}
                     </div>
                   </div>
+
+                  {/* Bloco Finalizar Serviço */}
+                  {selectedAgendamento.lancamento_id && selectedAgendamento.status !== 'concluido' && (
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border-2 border-green-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <label className="text-sm font-bold text-green-700 flex items-center gap-2">
+                          ✅ Finalizar Serviço
+                        </label>
+                        <button
+                          onClick={() => setIsFinalizando(!isFinalizando)}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                            isFinalizando
+                              ? 'bg-gray-200 text-gray-600'
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                          }`}
+                        >
+                          {isFinalizando ? 'Cancelar' : 'Concluir'}
+                        </button>
+                      </div>
+
+                      {isFinalizando && (
+                        <div className="space-y-4 mt-4 pt-4 border-t border-green-200">
+                          {/* Forma de Pagamento */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Forma de Pagamento
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { value: 'pix', label: 'PIX', icon: '📱' },
+                                { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                                { value: 'cartao_debito', label: 'Débito', icon: '💳' },
+                                { value: 'cartao_credito', label: 'Crédito', icon: '💳' },
+                              ].map(forma => (
+                                <button
+                                  key={forma.value}
+                                  onClick={() => setFinalizarData(prev => ({ ...prev, forma_pagamento: forma.value }))}
+                                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                    finalizarData.forma_pagamento === forma.value
+                                      ? 'bg-green-500 text-white'
+                                      : 'bg-white border border-gray-200 hover:border-green-300'
+                                  }`}
+                                >
+                                  {forma.icon} {forma.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Valor Pago */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Valor Pago
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={finalizarData.valor_pago}
+                                onChange={(e) => setFinalizarData(prev => ({ ...prev, valor_pago: e.target.value }))}
+                                placeholder="0.00"
+                                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Botão Confirmar */}
+                          <button
+                            onClick={finalizarAgendamento}
+                            className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                          >
+                            ✅ Confirmar Conclusão
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Botões de Ação */}
                   <div className="pt-4 space-y-3">

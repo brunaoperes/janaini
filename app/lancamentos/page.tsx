@@ -1,61 +1,41 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase, Servico } from '@/lib/supabase';
+import { supabase, Servico, Colaborador, Cliente } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link';
 import { lancamentoSchema, formatZodErrors } from '@/lib/validations';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import { TableSkeleton } from '@/components/SkeletonLoader';
-import FiltrosAvancados, { FiltrosLancamentos } from '@/components/FiltrosAvancados';
-import { exportarLancamentosParaExcel, exportarLancamentosParaPDF, LancamentoExport } from '@/lib/export-utils';
+import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 
 interface LancamentoComRelacoes {
   id: number;
   colaborador_id: number;
-  cliente_id: number | null;
+  cliente_id: number;
   valor_total: number;
-  forma_pagamento: string;
+  forma_pagamento: string | null;
   comissao_colaborador: number;
   comissao_salao: number;
   data: string;
+  hora_inicio: string | null;
+  hora_fim: string | null;
+  servicos_ids: number[] | null;
+  servicos_nomes: string | null;
+  status: string;
+  observacoes: string | null;
   colaboradores?: { nome: string; porcentagem_comissao: number } | null;
   clientes?: { nome: string } | null;
 }
 
-interface Lancamento {
-  id: number;
-  colaborador_id: number;
-  cliente_id: number | null;
-  valor_total: number;
-  forma_pagamento: string;
-  comissao_colaborador: number;
-  comissao_salao: number;
-  data: string;
-}
-
-interface Colaborador {
-  id: number;
-  nome: string;
-  porcentagem_comissao: number;
-}
-
-interface Cliente {
-  id: number;
-  nome: string;
-  telefone: string;
-}
-
-// Serviços carregados dinamicamente do banco de dados
-
 const FORMAS_PAGAMENTO = [
   { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-  { value: 'credito', label: 'Crédito', icon: '💳' },
-  { value: 'debito', label: 'Débito', icon: '💳' },
   { value: 'pix', label: 'PIX', icon: '📱' },
+  { value: 'cartao_debito', label: 'Débito', icon: '💳' },
+  { value: 'cartao_credito', label: 'Crédito', icon: '💳' },
 ];
+
 
 export default function LancamentosPage() {
   const [lancamentos, setLancamentos] = useState<LancamentoComRelacoes[]>([]);
@@ -64,46 +44,35 @@ export default function LancamentosPage() {
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<'todos' | 'hoje' | 'semana'>('hoje');
-  const [editingLancamento, setEditingLancamento] = useState<Lancamento | null>(null);
   const [formErrors, setFormErrors] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const itemsPerPage = 20;
+  const [selectedFilter, setSelectedFilter] = useState<'todos' | 'hoje' | 'pendentes'>('hoje');
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
     isOpen: false,
     id: null,
   });
 
-  // Filtros avançados
-  const [filtrosAvancados, setFiltrosAvancados] = useState<FiltrosLancamentos>({
-    dataInicio: '',
-    dataFim: '',
-    colaboradorId: '',
-    clienteId: '',
-    formaPagamento: '',
-    buscaCliente: '',
-  });
-
-  // Estado do formulário
+  // Estado do formulário unificado
   const [formData, setFormData] = useState({
     colaborador_id: '',
     cliente_id: '',
+    data: format(new Date(), 'yyyy-MM-dd'),
+    hora_inicio: '09:00',
+    hora_fim: '10:00',
+    servicos_ids: [] as number[],
     valor_total: '',
-    forma_pagamento: 'dinheiro',
-    servico_preset: '',
+    observacoes: '',
+    forma_pagamento: '',
   });
 
   const [selectedColaborador, setSelectedColaborador] = useState<Colaborador | null>(null);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedFilter, filtrosAvancados]);
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [jaRealizado, setJaRealizado] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
-  }, [selectedFilter, currentPage, filtrosAvancados]);
+  }, [selectedFilter]);
 
   async function loadData() {
     setLoading(true);
@@ -113,7 +82,6 @@ export default function LancamentosPage() {
       .from('colaboradores')
       .select('*')
       .order('nome');
-
     if (colabData) setColaboradores(colabData);
 
     // Carregar clientes
@@ -121,7 +89,6 @@ export default function LancamentosPage() {
       .from('clientes')
       .select('*')
       .order('nome');
-
     if (clienteData) setClientes(clienteData);
 
     // Carregar serviços ativos
@@ -130,779 +97,756 @@ export default function LancamentosPage() {
       .select('*')
       .eq('ativo', true)
       .order('nome');
-
     if (servicoData) setServicos(servicoData);
 
-    // Carregar lançamentos com filtro e paginação (incluindo relações)
-    const hoje = new Date();
-    let baseQuery = supabase
+    // Carregar lançamentos
+    console.log('=== CARREGANDO LANÇAMENTOS ===');
+    console.log('Filtro selecionado:', selectedFilter);
+
+    // Query simples primeiro para testar
+    const { data: testData, error: testError } = await supabase
       .from('lancamentos')
-      .select(`
-        *,
-        colaboradores(nome, porcentagem_comissao),
-        clientes(nome)
-      `, { count: 'exact' });
+      .select('*')
+      .limit(10);
 
-    // Aplicar filtro rápido (hoje/semana/todos)
+    console.log('Teste simples:', { testData, testError });
+
+    // Query sem joins por enquanto
+    let query = supabase
+      .from('lancamentos')
+      .select('*')
+      .order('data', { ascending: false });
+
     if (selectedFilter === 'hoje') {
-      const inicioDia = new Date(hoje.setHours(0, 0, 0, 0));
-      baseQuery = baseQuery.gte('data', inicioDia.toISOString());
-    } else if (selectedFilter === 'semana') {
-      const inicioSemana = new Date(hoje);
-      inicioSemana.setDate(hoje.getDate() - 7);
-      baseQuery = baseQuery.gte('data', inicioSemana.toISOString());
+      const hoje = format(new Date(), 'yyyy-MM-dd');
+      console.log('Filtrando por hoje:', hoje);
+      query = query.gte('data', `${hoje}T00:00:00`).lte('data', `${hoje}T23:59:59`);
+    } else if (selectedFilter === 'pendentes') {
+      console.log('Filtrando por pendentes');
+      query = query.eq('status', 'pendente');
+    } else {
+      console.log('Sem filtro (todos)');
     }
 
-    // Aplicar filtros avançados
-    if (filtrosAvancados.dataInicio) {
-      baseQuery = baseQuery.gte('data', new Date(filtrosAvancados.dataInicio).toISOString());
-    }
-    if (filtrosAvancados.dataFim) {
-      const dataFim = new Date(filtrosAvancados.dataFim);
-      dataFim.setHours(23, 59, 59, 999);
-      baseQuery = baseQuery.lte('data', dataFim.toISOString());
-    }
-    if (filtrosAvancados.colaboradorId) {
-      baseQuery = baseQuery.eq('colaborador_id', Number(filtrosAvancados.colaboradorId));
-    }
-    if (filtrosAvancados.clienteId) {
-      baseQuery = baseQuery.eq('cliente_id', Number(filtrosAvancados.clienteId));
-    }
-    if (filtrosAvancados.formaPagamento) {
-      baseQuery = baseQuery.eq('forma_pagamento', filtrosAvancados.formaPagamento);
+    const { data: lancData, error: lancError } = await query.limit(100);
+
+    console.log('Resultado da query com joins:');
+    console.log('- Erro:', lancError);
+    console.log('- Dados:', lancData);
+    console.log('- Quantidade:', lancData?.length || 0);
+
+    if (lancError) {
+      console.error('Erro ao carregar lançamentos:', JSON.stringify(lancError));
     }
 
-    // Buscar total de registros e dados paginados
-    const from = (currentPage - 1) * itemsPerPage;
-    const to = from + itemsPerPage - 1;
-
-    const { data: lancData, count } = await baseQuery
-      .order('data', { ascending: false })
-      .range(from, to);
-
-    // Aplicar filtro de busca por nome de cliente (client-side para evitar complexidade de full-text search)
-    let lancamentosFiltrados = lancData || [];
-    if (filtrosAvancados.buscaCliente && lancData) {
-      const buscaLower = filtrosAvancados.buscaCliente.toLowerCase();
-      lancamentosFiltrados = lancData.filter((lanc: any) =>
-        lanc.clientes?.nome?.toLowerCase().includes(buscaLower)
-      );
-    }
-
-    setLancamentos(lancamentosFiltrados);
-    if (count !== null) setTotalCount(count);
+    if (lancData) setLancamentos(lancData);
 
     setLoading(false);
   }
 
-  function handleServicoPresetChange(servicoNome: string) {
-    const servico = servicos.find((s) => s.nome === servicoNome);
-    if (servico) {
-      setFormData((prev) => ({
-        ...prev,
-        servico_preset: servicoNome,
-        valor_total: servico.valor.toString(),
-      }));
-    }
+  // Calcular valor total baseado nos serviços selecionados
+  function calcularValorTotal(servicosIds: number[]): number {
+    return servicosIds.reduce((total, id) => {
+      const servico = servicos.find(s => s.id === id);
+      return total + (servico?.valor || 0);
+    }, 0);
   }
 
-  function handleColaboradorChange(colaboradorId: string) {
-    const colab = colaboradores.find((c) => c.id === Number(colaboradorId));
-    setSelectedColaborador(colab || null);
-    setFormData((prev) => ({
+  // Calcular hora fim baseada na duração dos serviços
+  function calcularHoraFim(horaInicio: string, servicosIds: number[]): string {
+    const duracaoTotal = servicosIds.reduce((total, id) => {
+      const servico = servicos.find(s => s.id === id);
+      return total + (servico?.duracao_minutos || 60);
+    }, 0);
+
+    const [h, m] = horaInicio.split(':').map(Number);
+    const minutosInicio = h * 60 + m;
+    const minutosFim = minutosInicio + duracaoTotal;
+
+    const horaFim = Math.floor(minutosFim / 60);
+    const minFim = minutosFim % 60;
+
+    return `${horaFim.toString().padStart(2, '0')}:${minFim.toString().padStart(2, '0')}`;
+  }
+
+  // Atualizar serviços selecionados (apenas valor, não altera horário)
+  function handleServicoToggle(servicoId: number) {
+    const novosServicos = formData.servicos_ids.includes(servicoId)
+      ? formData.servicos_ids.filter(id => id !== servicoId)
+      : [...formData.servicos_ids, servicoId];
+
+    const valorTotal = calcularValorTotal(novosServicos);
+
+    setFormData(prev => ({
       ...prev,
-      colaborador_id: colaboradorId,
+      servicos_ids: novosServicos,
+      valor_total: valorTotal.toFixed(2),
     }));
   }
 
-  function calcularComissoes() {
-    if (!selectedColaborador || !formData.valor_total) {
-      return { comissaoColaborador: 0, comissaoSalao: 0 };
-    }
-
-    const valorTotal = parseFloat(formData.valor_total);
-    const comissaoColaborador = (valorTotal * selectedColaborador.porcentagem_comissao) / 100;
-    const comissaoSalao = valorTotal - comissaoColaborador;
-
-    return { comissaoColaborador, comissaoSalao };
+  // Selecionar colaboradora
+  function handleColaboradorChange(colaboradorId: string) {
+    const colab = colaboradores.find(c => c.id === Number(colaboradorId));
+    setSelectedColaborador(colab || null);
+    setFormData(prev => ({ ...prev, colaborador_id: colaboradorId }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // Salvar lançamento (e criar agendamento automaticamente)
+  async function handleSubmit() {
     setFormErrors('');
     setIsSubmitting(true);
 
     try {
-      // Validação com Zod
+      // Preparar dados para validação
+      const servicosNomes = formData.servicos_ids
+        .map(id => servicos.find(s => s.id === id)?.nome)
+        .filter(Boolean)
+        .join(' + ');
+
+      // Validar forma de pagamento se já realizado
+      if (jaRealizado && !formData.forma_pagamento) {
+        setFormErrors('Selecione uma forma de pagamento');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const statusFinal = jaRealizado ? 'concluido' : 'pendente';
+
       const validationData = {
-        colaborador_id: formData.colaborador_id ? Number(formData.colaborador_id) : undefined,
-        cliente_id: formData.cliente_id ? Number(formData.cliente_id) : undefined,
-        valor_total: formData.valor_total ? parseFloat(formData.valor_total) : undefined,
-        forma_pagamento: formData.forma_pagamento,
+        colaborador_id: Number(formData.colaborador_id),
+        cliente_id: Number(formData.cliente_id),
+        data: formData.data,
+        hora_inicio: formData.hora_inicio,
+        hora_fim: formData.hora_fim,
+        servicos_ids: formData.servicos_ids,
+        servicos_nomes: servicosNomes,
+        valor_total: parseFloat(formData.valor_total),
+        observacoes: formData.observacoes || undefined,
+        status: statusFinal as 'pendente' | 'concluido',
+        forma_pagamento: jaRealizado ? formData.forma_pagamento as 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' : undefined,
       };
 
+      // Validar com Zod
+      console.log('Dados para validação:', validationData);
       const validation = lancamentoSchema.safeParse(validationData);
-
+      console.log('Resultado validação:', validation);
       if (!validation.success) {
+        console.error('Erro de validação:', validation.error);
         setFormErrors(formatZodErrors(validation.error));
         setIsSubmitting(false);
         return;
       }
 
-      const { comissaoColaborador, comissaoSalao } = calcularComissoes();
+      // Calcular comissões
+      const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
+      const comissaoColaborador = (validationData.valor_total * porcentagem) / 100;
+      const comissaoSalao = validationData.valor_total - comissaoColaborador;
+
+      // Montar data/hora completa (garantir formato HH:MM:SS)
+      const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
+      const dataCompleta = `${formData.data}T${horaInicioFormatada}`;
 
       const lancamentoData = {
-        colaborador_id: validation.data.colaborador_id,
-        cliente_id: validation.data.cliente_id || null,
-        valor_total: validation.data.valor_total,
-        forma_pagamento: validation.data.forma_pagamento,
+        colaborador_id: validationData.colaborador_id,
+        cliente_id: validationData.cliente_id,
+        valor_total: validationData.valor_total,
         comissao_colaborador: comissaoColaborador,
         comissao_salao: comissaoSalao,
+        data: dataCompleta,
+        hora_inicio: formData.hora_inicio,
+        hora_fim: formData.hora_fim,
+        servicos_ids: formData.servicos_ids,
+        servicos_nomes: servicosNomes,
+        status: statusFinal,
+        observacoes: formData.observacoes || null,
+        forma_pagamento: jaRealizado ? formData.forma_pagamento : null,
+        data_pagamento: jaRealizado ? new Date().toISOString() : null,
       };
 
-      let error;
+      let lancamento;
+      let lancError;
 
-      if (editingLancamento) {
-        // Atualizar lançamento existente
+      if (editingId) {
+        // ATUALIZAR lançamento existente
         const result = await supabase
           .from('lancamentos')
           .update(lancamentoData)
-          .eq('id', editingLancamento.id);
-        error = result.error;
+          .eq('id', editingId)
+          .select()
+          .single();
+        lancamento = result.data;
+        lancError = result.error;
       } else {
-        // Criar novo lançamento
+        // INSERIR novo lançamento
         const result = await supabase
           .from('lancamentos')
-          .insert([{ ...lancamentoData, data: new Date().toISOString() }]);
-        error = result.error;
+          .insert(lancamentoData)
+          .select()
+          .single();
+        lancamento = result.data;
+        lancError = result.error;
       }
 
-      if (error) {
-        console.error('Erro ao salvar lançamento:', error);
-        toast.error('Erro ao salvar lançamento!');
-      } else {
-        toast.success(editingLancamento ? 'Lançamento atualizado com sucesso!' : 'Lançamento criado com sucesso!');
-        setShowModal(false);
-        setEditingLancamento(null);
-        setFormData({
-          colaborador_id: '',
-          cliente_id: '',
-          valor_total: '',
-          forma_pagamento: 'dinheiro',
-          servico_preset: '',
-        });
-        setSelectedColaborador(null);
-        loadData();
+      if (lancError) {
+        console.error('Erro ao salvar lançamento:', JSON.stringify(lancError, null, 2));
+        console.error('Detalhes:', lancError.message, lancError.details, lancError.hint);
+        toast.error(`Erro: ${lancError.message || 'Erro ao salvar lançamento'}`);
+        setIsSubmitting(false);
+        return;
       }
+
+      // Calcular duração real baseada nos horários definidos pelo usuário
+      const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
+      const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
+      const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
+
+      if (editingId) {
+        // Atualizar agendamento vinculado
+        const { error: agendError } = await supabase
+          .from('agendamentos')
+          .update({
+            cliente_id: validationData.cliente_id,
+            colaborador_id: validationData.colaborador_id,
+            data_hora: dataCompleta,
+            descricao_servico: servicosNomes,
+            duracao_minutos: duracaoTotal,
+            status: statusFinal,
+          })
+          .eq('lancamento_id', editingId);
+
+        if (agendError) {
+          console.error('Erro ao atualizar agendamento:', agendError);
+        }
+      } else {
+        // Criar novo agendamento vinculado
+        const { error: agendError } = await supabase
+          .from('agendamentos')
+          .insert({
+            cliente_id: validationData.cliente_id,
+            colaborador_id: validationData.colaborador_id,
+            data_hora: dataCompleta,
+            descricao_servico: servicosNomes,
+            duracao_minutos: duracaoTotal,
+            lancamento_id: lancamento.id,
+            status: statusFinal,
+          });
+
+        if (agendError) {
+          console.error('Erro ao criar agendamento:', agendError);
+        }
+      }
+
+      toast.success(editingId ? 'Lançamento atualizado!' : 'Lançamento criado com sucesso!');
+      setShowModal(false);
+      resetForm();
+      loadData();
+
+    } catch (error) {
+      console.error('Erro:', error);
+      toast.error('Erro ao salvar');
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  function handleEdit(lancamento: Lancamento) {
-    setEditingLancamento(lancamento);
+  function resetForm() {
     setFormData({
-      colaborador_id: lancamento.colaborador_id.toString(),
-      cliente_id: lancamento.cliente_id?.toString() || '',
-      valor_total: lancamento.valor_total.toString(),
-      forma_pagamento: lancamento.forma_pagamento,
-      servico_preset: '',
+      colaborador_id: '',
+      cliente_id: '',
+      data: format(new Date(), 'yyyy-MM-dd'),
+      hora_inicio: '09:00',
+      hora_fim: '10:00',
+      servicos_ids: [],
+      valor_total: '',
+      observacoes: '',
+      forma_pagamento: '',
     });
-    const colab = colaboradores.find(c => c.id === lancamento.colaborador_id);
-    setSelectedColaborador(colab || null);
+    setSelectedColaborador(null);
+    setSelectedCliente(null);
+    setJaRealizado(false);
+    setEditingId(null);
     setFormErrors('');
+  }
+
+  // Função para editar um lançamento - BUSCA DADOS FRESCOS DO BANCO
+  async function handleEdit(lanc: LancamentoComRelacoes) {
+    // Buscar dados atualizados do banco
+    const { data: lancFresh, error } = await supabase
+      .from('lancamentos')
+      .select('*')
+      .eq('id', lanc.id)
+      .single();
+
+    if (error || !lancFresh) {
+      toast.error('Erro ao carregar dados do lançamento');
+      console.error('Erro ao buscar lançamento:', error);
+      return;
+    }
+
+    const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
+    const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
+
+    // Extrair a data do campo data (que pode ter horário)
+    const dataStr = lancFresh.data.split('T')[0];
+
+    // Extrair apenas HH:MM do horário (pode vir como HH:MM:SS do banco)
+    const horaInicio = lancFresh.hora_inicio ? lancFresh.hora_inicio.substring(0, 5) : '09:00';
+    const horaFim = lancFresh.hora_fim ? lancFresh.hora_fim.substring(0, 5) : '10:00';
+
+    setFormData({
+      colaborador_id: lancFresh.colaborador_id.toString(),
+      cliente_id: lancFresh.cliente_id.toString(),
+      data: dataStr,
+      hora_inicio: horaInicio,
+      hora_fim: horaFim,
+      servicos_ids: lancFresh.servicos_ids || [],
+      valor_total: lancFresh.valor_total.toFixed(2),
+      observacoes: lancFresh.observacoes || '',
+      forma_pagamento: lancFresh.forma_pagamento || '',
+    });
+
+    setSelectedCliente(cliente || null);
+    setSelectedColaborador(colaborador || null);
+    setJaRealizado(lancFresh.status === 'concluido');
+    setEditingId(lancFresh.id);
     setShowModal(true);
   }
 
-  function openDeleteConfirm(id: number) {
-    setDeleteConfirm({ isOpen: true, id });
-  }
+  async function handleDelete(id: number) {
+    try {
+      // Deletar agendamento vinculado primeiro
+      await supabase.from('agendamentos').delete().eq('lancamento_id', id);
 
-  async function confirmDelete() {
-    if (!deleteConfirm.id) return;
+      // Deletar lançamento
+      const { error } = await supabase.from('lancamentos').delete().eq('id', id);
 
-    const { error } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('id', deleteConfirm.id);
+      if (error) {
+        toast.error('Erro ao excluir');
+        return;
+      }
 
-    if (error) {
-      console.error('Erro ao excluir lançamento:', error);
-      toast.error('Erro ao excluir lançamento!');
-    } else {
-      toast.success('Lançamento excluído com sucesso!');
+      toast.success('Excluído com sucesso!');
       loadData();
+    } catch (error) {
+      toast.error('Erro ao excluir');
     }
-
     setDeleteConfirm({ isOpen: false, id: null });
   }
 
-  // Funções de exportação
-  function prepararDadosParaExportacao(): LancamentoExport[] {
-    return lancamentos.map((lanc) => ({
-      data: format(new Date(lanc.data), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
-      colaboradora: lanc.colaboradores?.nome || 'Desconhecida',
-      cliente: lanc.clientes?.nome || 'Sem cliente',
-      valor_total: lanc.valor_total,
-      forma_pagamento: lanc.forma_pagamento,
-      comissao_colaborador: lanc.comissao_colaborador,
-      comissao_salao: lanc.comissao_salao,
-    }));
+  function getStatusBadge(status: string) {
+    switch (status) {
+      case 'pendente':
+        return <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">Pendente</span>;
+      case 'concluido':
+        return <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">Concluído</span>;
+      case 'cancelado':
+        return <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">Cancelado</span>;
+      default:
+        return null;
+    }
   }
-
-  function handleExportarExcel() {
-    const dados = prepararDadosParaExportacao();
-    const nomeArquivo = `lancamentos_${format(new Date(), 'yyyy-MM-dd_HH-mm')}`;
-    exportarLancamentosParaExcel(dados, nomeArquivo);
-    toast.success('Arquivo Excel baixado com sucesso!');
-  }
-
-  function handleExportarPDF() {
-    const dados = prepararDadosParaExportacao();
-    const nomeArquivo = `lancamentos_${format(new Date(), 'yyyy-MM-dd_HH-mm')}`;
-    exportarLancamentosParaPDF(dados, nomeArquivo);
-    toast.success('Arquivo PDF baixado com sucesso!');
-  }
-
-  const { comissaoColaborador, comissaoSalao } = calcularComissoes();
-
-  const totalDia = lancamentos.reduce((acc, l) => acc + l.valor_total, 0);
-  const totalComissoes = lancamentos.reduce((acc, l) => acc + l.comissao_colaborador, 0);
-  const totalSalao = lancamentos.reduce((acc, l) => acc + l.comissao_salao, 0);
-
-  const getColaboradorNome = (lanc: LancamentoComRelacoes) => {
-    return lanc.colaboradores?.nome || 'Desconhecido';
-  };
-
-  const getClienteNome = (lanc: LancamentoComRelacoes) => {
-    if (!lanc.cliente_id) return 'Cliente avulso';
-    return lanc.clientes?.nome || 'Desconhecido';
-  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
-      {/* Header com navegação */}
-      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-purple-100 shadow-soft">
-        <div className="container mx-auto px-4 md:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/admin"
-                className="flex items-center gap-2 text-purple-600 hover:text-purple-800 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                <span className="font-medium">Voltar</span>
-              </Link>
-              <div className="h-6 w-px bg-purple-200" />
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  💰 Naví Belle - Lançamentos
-                </h1>
-                <p className="text-sm text-gray-600">Registre atendimentos e gerencie pagamentos</p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-white">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+          <div>
+            <Link href="/" className="text-purple-600 hover:text-purple-800 text-sm mb-2 inline-block">
+              ← Voltar ao Dashboard
+            </Link>
+            <h1 className="text-3xl font-bold text-gray-800">Lançamentos</h1>
+            <p className="text-gray-600">Gerencie os atendimentos do salão</p>
           </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto p-4 md:p-8">
-        {/* Ações rápidas */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-6">
-            {/* Botões de exportação */}
-            <div className="flex gap-3">
-              <button
-                onClick={handleExportarExcel}
-                disabled={lancamentos.length === 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg hover:bg-green-700 transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
-              >
-                <span className="text-xl">📊</span>
-                Exportar Excel
-              </button>
-              <button
-                onClick={handleExportarPDF}
-                disabled={lancamentos.length === 0}
-                className="px-4 py-2 bg-red-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg hover:bg-red-700 transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
-              >
-                <span className="text-xl">📄</span>
-                Exportar PDF
-              </button>
-            </div>
-
-            {/* Botão novo lançamento */}
-            <div>
-              <button
-                onClick={() => {
-                  setShowModal(true);
-                  setFormErrors('');
-                }}
-                className="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-              >
-                ✨ Novo Lançamento
-              </button>
-            </div>
-          </div>
-
-          {/* Estatísticas rápidas */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-pink-200 shadow-lg">
-              <p className="text-sm text-gray-600 mb-1">Total {selectedFilter === 'hoje' ? 'Hoje' : selectedFilter === 'semana' ? 'na Semana' : ''}</p>
-              <p className="text-3xl font-bold text-pink-600">R$ {totalDia.toFixed(2)}</p>
-            </div>
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-purple-200 shadow-lg">
-              <p className="text-sm text-gray-600 mb-1">Comissões</p>
-              <p className="text-3xl font-bold text-purple-600">R$ {totalComissoes.toFixed(2)}</p>
-            </div>
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-blue-200 shadow-lg">
-              <p className="text-sm text-gray-600 mb-1">Salão</p>
-              <p className="text-3xl font-bold text-blue-600">R$ {totalSalao.toFixed(2)}</p>
-            </div>
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-green-200 shadow-lg">
-              <p className="text-sm text-gray-600 mb-1">Atendimentos</p>
-              <p className="text-3xl font-bold text-green-600">{lancamentos.length}</p>
-            </div>
-          </div>
-
-          {/* Filtros rápidos */}
-          <div className="flex gap-3 mb-6">
-            {[
-              { value: 'hoje', label: 'Hoje' },
-              { value: 'semana', label: 'Última Semana' },
-              { value: 'todos', label: 'Todos' },
-            ].map((filtro) => (
-              <button
-                key={filtro.value}
-                onClick={() => setSelectedFilter(filtro.value as any)}
-                className={`px-6 py-2 rounded-xl font-medium transition-all duration-200 ${
-                  selectedFilter === filtro.value
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg'
-                    : 'bg-white/70 text-gray-700 hover:bg-white'
-                }`}
-              >
-                {filtro.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Filtros Avançados */}
-          <FiltrosAvancados
-            filtros={filtrosAvancados}
-            onFiltrosChange={setFiltrosAvancados}
-            colaboradores={colaboradores}
-            clientes={clientes}
-            formasPagamento={FORMAS_PAGAMENTO}
-          />
+          <button
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="mt-4 md:mt-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg flex items-center gap-2"
+          >
+            <span className="text-xl">+</span>
+            Novo Lançamento
+          </button>
         </div>
 
-        {/* Lista de lançamentos */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
-          {/* Versão Desktop - Tabela */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gradient-to-r from-pink-100 via-purple-100 to-blue-100">
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Data/Hora</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Colaboradora</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Cliente</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Valor</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Pagamento</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Comissão</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Salão</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                      Carregando...
-                    </td>
-                  </tr>
-                ) : lancamentos.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
-                      Nenhum lançamento encontrado
-                    </td>
-                  </tr>
-                ) : (
-                  lancamentos.map((lanc) => (
-                    <tr key={lanc.id} className="border-b border-gray-100 hover:bg-pink-50/50 transition-colors">
-                      <td className="px-6 py-4 text-sm">
-                        {format(new Date(lanc.data), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-pink-100 to-purple-100 text-sm font-medium text-purple-700">
-                          {getColaboradorNome(lanc)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{getClienteNome(lanc)}</td>
-                      <td className="px-6 py-4 text-sm font-bold text-green-600">R$ {lanc.valor_total.toFixed(2)}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-xs font-medium text-blue-700">
-                          {FORMAS_PAGAMENTO.find((f) => f.value === lanc.forma_pagamento)?.icon}{' '}
-                          {lanc.forma_pagamento.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-purple-600 font-medium">
-                        R$ {lanc.comissao_colaborador.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-blue-600 font-medium">R$ {lanc.comissao_salao.toFixed(2)}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleEdit(lanc)}
-                            className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors text-xs"
-                          >
-                            ✏️ Editar
-                          </button>
-                          <button
-                            onClick={() => openDeleteConfirm(lanc.id)}
-                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition-colors text-xs"
-                          >
-                            🗑️ Excluir
-                          </button>
-                        </div>
-                      </td>
+        {/* Filtros */}
+        <div className="flex gap-2 mb-6">
+          {(['hoje', 'pendentes', 'todos'] as const).map(filter => (
+            <button
+              key={filter}
+              onClick={() => setSelectedFilter(filter)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                selectedFilter === filter
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-white text-gray-600 hover:bg-purple-100'
+              }`}
+            >
+              {filter === 'hoje' ? 'Hoje' : filter === 'pendentes' ? 'Pendentes' : 'Todos'}
+            </button>
+          ))}
+        </div>
+
+        {/* Lista de Lançamentos */}
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Carregando...</div>
+          ) : lancamentos.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              Nenhum lançamento encontrado
+            </div>
+          ) : (
+            <>
+              {/* Tabela para Desktop */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gradient-to-r from-purple-50 to-pink-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Data/Hora</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Cliente</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Colaboradora</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Serviços</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Valor</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Pagamento</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Ações</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {lancamentos.map(lanc => (
+                      <tr key={lanc.id} className="hover:bg-purple-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-gray-800">
+                            {format(new Date(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {lanc.hora_inicio} - {lanc.hora_fim}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {clientes.find(c => c.id === lanc.cliente_id)?.nome || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {colaboradores.find(c => c.id === lanc.colaborador_id)?.nome || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
+                          {lanc.servicos_nomes || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-green-600">
+                          R$ {lanc.valor_total.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {getStatusBadge(lanc.status)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {lanc.forma_pagamento ? (
+                            FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label || lanc.forma_pagamento
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEdit(lanc)}
+                              className="text-blue-500 hover:text-blue-700 transition-colors"
+                              title="Editar"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm({ isOpen: true, id: lanc.id })}
+                              className="text-red-500 hover:text-red-700 transition-colors"
+                              title="Excluir"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Versão Mobile - Cards */}
-          <div className="md:hidden">
-            {loading ? (
-              <div className="px-6 py-12 text-center text-gray-500">
-                Carregando...
-              </div>
-            ) : lancamentos.length === 0 ? (
-              <div className="px-6 py-12 text-center text-gray-500">
-                Nenhum lançamento encontrado
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {lancamentos.map((lanc) => (
-                  <div key={lanc.id} className="p-4 hover:bg-pink-50/30 transition-colors">
-                    {/* Header do Card */}
+              {/* Cards para Mobile */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {lancamentos.map(lanc => (
+                  <div key={lanc.id} className="p-4 hover:bg-purple-50 transition-colors">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="text-xs text-gray-500 mb-1">
-                          {format(new Date(lanc.data), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      <div>
+                        <div className="font-semibold text-gray-800">
+                          {clientes.find(c => c.id === lanc.cliente_id)?.nome || 'Cliente não identificado'}
                         </div>
-                        <div className="inline-flex items-center px-2 py-1 rounded-full bg-gradient-to-r from-pink-100 to-purple-100 text-xs font-medium text-purple-700">
-                          {getColaboradorNome(lanc)}
+                        <div className="text-sm text-gray-500">
+                          {colaboradores.find(c => c.id === lanc.colaborador_id)?.nome || '-'}
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-bold text-green-600">
                           R$ {lanc.valor_total.toFixed(2)}
                         </div>
+                        {getStatusBadge(lanc.status)}
                       </div>
                     </div>
 
-                    {/* Informações */}
-                    <div className="space-y-2 text-sm mb-3">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Cliente:</span>
-                        <span className="font-medium text-gray-800">{getClienteNome(lanc)}</span>
+                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <div className="flex items-center gap-1">
+                        <span>📅</span>
+                        <span>{format(new Date(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Pagamento:</span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-xs font-medium text-blue-700">
-                          {FORMAS_PAGAMENTO.find((f) => f.value === lanc.forma_pagamento)?.icon}{' '}
-                          {lanc.forma_pagamento.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Comissão:</span>
-                        <span className="text-purple-600 font-medium">
-                          R$ {lanc.comissao_colaborador.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Salão:</span>
-                        <span className="text-blue-600 font-medium">
-                          R$ {lanc.comissao_salao.toFixed(2)}
-                        </span>
+                      <div className="flex items-center gap-1">
+                        <span>🕐</span>
+                        <span>{lanc.hora_inicio} - {lanc.hora_fim}</span>
                       </div>
                     </div>
 
-                    {/* Ações */}
+                    {lanc.servicos_nomes && (
+                      <div className="text-sm text-gray-600 mb-3 line-clamp-2">
+                        <span className="font-medium">Serviços:</span> {lanc.servicos_nomes}
+                      </div>
+                    )}
+
+                    {lanc.forma_pagamento && (
+                      <div className="text-sm text-gray-600 mb-3">
+                        <span className="font-medium">Pagamento:</span> {FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label || lanc.forma_pagamento}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 pt-2 border-t border-gray-100">
                       <button
                         onClick={() => handleEdit(lanc)}
-                        className="flex-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors text-xs"
+                        className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors"
                       >
                         ✏️ Editar
                       </button>
                       <button
-                        onClick={() => openDeleteConfirm(lanc.id)}
-                        className="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition-colors text-xs"
+                        onClick={() => setDeleteConfirm({ isOpen: true, id: lanc.id })}
+                        className="px-3 py-2 text-sm bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
                       >
-                        🗑️ Excluir
+                        🗑️
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Paginação */}
-          {totalCount > itemsPerPage && (
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  Mostrando <span className="font-semibold">{((currentPage - 1) * itemsPerPage) + 1}</span> a{' '}
-                  <span className="font-semibold">{Math.min(currentPage * itemsPerPage, totalCount)}</span> de{' '}
-                  <span className="font-semibold">{totalCount}</span> lançamentos
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    ← Anterior
-                  </button>
-                  <div className="flex gap-1">
-                    {Array.from({ length: Math.ceil(totalCount / itemsPerPage) }, (_, i) => i + 1)
-                      .filter(page => {
-                        const totalPages = Math.ceil(totalCount / itemsPerPage);
-                        if (totalPages <= 7) return true;
-                        if (page === 1 || page === totalPages) return true;
-                        if (Math.abs(page - currentPage) <= 1) return true;
-                        return false;
-                      })
-                      .map((page, index, array) => (
-                        <div key={page} className="flex gap-1">
-                          {index > 0 && array[index - 1] !== page - 1 && (
-                            <span className="px-3 py-2 text-gray-500">...</span>
-                          )}
-                          <button
-                            onClick={() => setCurrentPage(page)}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              currentPage === page
-                                ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        </div>
-                      ))}
-                  </div>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(totalCount / itemsPerPage), p + 1))}
-                    disabled={currentPage >= Math.ceil(totalCount / itemsPerPage)}
-                    className="px-4 py-2 rounded-lg bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Próximo →
-                  </button>
-                </div>
-              </div>
-            </div>
+            </>
           )}
         </div>
 
-        {/* Modal de novo lançamento */}
+        {/* Modal Novo Lançamento */}
         {showModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-modal-in">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-gradient-to-r from-pink-500 via-purple-600 to-blue-600 p-6 rounded-t-3xl">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-bold text-white">
-                    {editingLancamento ? '✏️ Editar Lançamento' : '✨ Novo Lançamento'}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setShowModal(false);
-                      setEditingLancamento(null);
-                    }}
-                    className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
-                  >
-                    ✕
-                  </button>
-                </div>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-100">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {editingId ? 'Editar Lançamento' : 'Novo Lançamento'}
+                </h2>
+                <p className="text-gray-500 text-sm">
+                  {editingId ? 'Modifique os dados do atendimento' : 'Preencha os dados do atendimento'}
+                </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                {/* Erros de validação */}
+              <div className="p-6 space-y-6">
                 {formErrors && (
-                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">⚠️</span>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-red-800 mb-1">Erro de validação</h4>
-                        <p className="text-sm text-red-700 whitespace-pre-line">{formErrors}</p>
-                      </div>
-                    </div>
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm whitespace-pre-line">
+                    {formErrors}
                   </div>
                 )}
 
-                {/* Serviço Preset */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">🎨 Serviço Rápido</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {servicos.map((servico) => (
-                      <button
-                        key={servico.id}
-                        type="button"
-                        onClick={() => handleServicoPresetChange(servico.nome)}
-                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                          formData.servico_preset === servico.nome
-                            ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {servico.nome}
-                        <span className="block text-xs mt-1">R$ {servico.valor.toFixed(2)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Colaboradora */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    👩‍💼 Colaboradora *
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Colaboradora *
                   </label>
                   <select
                     value={formData.colaborador_id}
                     onChange={(e) => handleColaboradorChange(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-500 focus:outline-none transition-colors"
-                    required
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
-                    <option value="">Selecione uma colaboradora</option>
-                    {colaboradores.map((colab) => (
-                      <option key={colab.id} value={colab.id}>
-                        {colab.nome} ({colab.porcentagem_comissao}% comissão)
-                      </option>
+                    <option value="">Selecione...</option>
+                    {colaboradores.map(c => (
+                      <option key={c.id} value={c.id}>{c.nome} ({c.porcentagem_comissao}%)</option>
                     ))}
                   </select>
                 </div>
 
                 {/* Cliente */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">👤 Cliente (opcional)</label>
-                  <select
-                    value={formData.cliente_id}
-                    onChange={(e) => setFormData({ ...formData, cliente_id: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-500 focus:outline-none transition-colors"
-                  >
-                    <option value="">Cliente avulso</option>
-                    {clientes.map((cliente) => (
-                      <option key={cliente.id} value={cliente.id}>
-                        {cliente.nome} - {cliente.telefone}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Valor */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">💰 Valor Total *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.valor_total}
-                    onChange={(e) => setFormData({ ...formData, valor_total: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-500 focus:outline-none transition-colors text-lg font-bold"
-                    placeholder="0.00"
-                    required
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cliente *
+                  </label>
+                  <ClienteAutocomplete
+                    selectedCliente={selectedCliente}
+                    onSelect={(cliente) => {
+                      setSelectedCliente(cliente);
+                      setFormData(prev => ({ ...prev, cliente_id: cliente?.id?.toString() || '' }));
+                    }}
                   />
                 </div>
 
-                {/* Forma de pagamento */}
+                {/* Data e Horários */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Data *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.data}
+                      onChange={(e) => setFormData(prev => ({ ...prev, data: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 sm:contents gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Início *
+                      </label>
+                      <input
+                        type="time"
+                        value={formData.hora_inicio}
+                        onChange={(e) => setFormData(prev => ({ ...prev, hora_inicio: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Fim *
+                      </label>
+                      <input
+                        type="time"
+                        value={formData.hora_fim}
+                        onChange={(e) => setFormData(prev => ({ ...prev, hora_fim: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Serviços */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">💳 Forma de Pagamento</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {FORMAS_PAGAMENTO.map((forma) => (
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Serviços * (selecione um ou mais)
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl">
+                    {servicos.map(s => (
                       <button
-                        key={forma.value}
+                        key={s.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, forma_pagamento: forma.value })}
-                        className={`px-4 py-3 rounded-xl font-medium transition-all ${
-                          formData.forma_pagamento === forma.value
-                            ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        onClick={() => handleServicoToggle(s.id)}
+                        className={`text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                          formData.servicos_ids.includes(s.id)
+                            ? 'bg-purple-500 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-purple-100'
                         }`}
                       >
-                        <span className="text-2xl block mb-1">{forma.icon}</span>
-                        <span className="text-xs">{forma.label}</span>
+                        <div className="font-medium truncate">{s.nome}</div>
+                        <div className="text-xs opacity-75">R$ {s.valor.toFixed(2)}</div>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Preview de comissões */}
-                {selectedColaborador && formData.valor_total && (
-                  <div className="bg-gradient-to-r from-pink-50 via-purple-50 to-blue-50 rounded-2xl p-6 border-2 border-purple-200">
-                    <h3 className="font-semibold text-gray-800 mb-4">📊 Divisão de Valores</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700">Valor Total:</span>
-                        <span className="text-xl font-bold text-green-600">R$ {parseFloat(formData.valor_total).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700">
-                          Comissão {selectedColaborador.nome} ({selectedColaborador.porcentagem_comissao}%):
-                        </span>
-                        <span className="text-xl font-bold text-purple-600">R$ {comissaoColaborador.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700">Comissão Salão:</span>
-                        <span className="text-xl font-bold text-blue-600">R$ {comissaoSalao.toFixed(2)}</span>
+                {/* Valor Total */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Valor Total * (editável para descontos)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.valor_total}
+                      onChange={(e) => setFormData(prev => ({ ...prev, valor_total: e.target.value }))}
+                      className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  {selectedColaborador && formData.valor_total && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Comissão: R$ {((parseFloat(formData.valor_total) * selectedColaborador.porcentagem_comissao) / 100).toFixed(2)}
+                      ({selectedColaborador.porcentagem_comissao}%)
+                    </p>
+                  )}
+                </div>
+
+                {/* Serviço já realizado */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={jaRealizado}
+                      onChange={(e) => setJaRealizado(e.target.checked)}
+                      className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="font-medium text-gray-700">Serviço já foi realizado</span>
+                  </label>
+
+                  {jaRealizado && (
+                    <div className="mt-4 space-y-3">
+                      <p className="text-sm text-gray-600">Como foi recebido o pagamento?</p>
+                      <div className="flex flex-wrap gap-2">
+                        {FORMAS_PAGAMENTO.map(forma => (
+                          <button
+                            key={forma.value}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.value }))}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                              formData.forma_pagamento === forma.value
+                                ? 'bg-green-500 text-white'
+                                : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
+                            }`}
+                          >
+                            <span>{forma.icon}</span>
+                            <span>{forma.label}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Botões */}
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-pink-500 to-purple-600 hover:shadow-xl transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Salvando...
-                      </span>
-                    ) : (
-                      <>{editingLancamento ? 'Atualizar' : '✨ Criar Lançamento'}</>
-                    )}
-                  </button>
+                  )}
                 </div>
-              </form>
+
+                {/* Observações */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Observações
+                  </label>
+                  <textarea
+                    value={formData.observacoes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
+                    rows={2}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                    placeholder="Observações opcionais..."
+                  />
+                </div>
+              </div>
+
+              {/* Footer do Modal */}
+              <div className="p-6 border-t border-gray-100 flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-6 py-3 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Salvando...' : (editingId ? 'Atualizar Lançamento' : 'Salvar Lançamento')}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Dialog de Confirmação de Exclusão */}
+        {/* Confirm Dialog */}
         <ConfirmDialog
           isOpen={deleteConfirm.isOpen}
-          onClose={() => setDeleteConfirm({ isOpen: false, id: null })}
-          onConfirm={confirmDelete}
           title="Excluir Lançamento"
-          message="Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita."
-          confirmText="Excluir"
-          cancelText="Cancelar"
-          type="danger"
+          message="Tem certeza que deseja excluir este lançamento? O agendamento vinculado também será removido."
+          onConfirm={() => deleteConfirm.id && handleDelete(deleteConfirm.id)}
+          onClose={() => setDeleteConfirm({ isOpen: false, id: null })}
         />
       </div>
     </div>

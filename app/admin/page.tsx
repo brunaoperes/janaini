@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AdminCardProps {
   href: string;
@@ -64,6 +65,7 @@ function AdminCard({ href, title, description, icon, gradient, stats, delay = 0 
 }
 
 export default function AdminPage() {
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>({});
   const [greeting, setGreeting] = useState('');
@@ -327,6 +329,21 @@ export default function AdminPage() {
             ]}
             delay={500}
           />
+
+          {isAdmin && (
+            <AdminCard
+              href="/admin/usuarios"
+              title="Usuários do Sistema"
+              description="Gerenciar usuários e permissões"
+              icon={
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              }
+              gradient="from-red-400 to-red-600"
+              delay={550}
+            />
+          )}
 
           <AdminCard
             href="/"

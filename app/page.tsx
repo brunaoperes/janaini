@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import FaturamentoChart from '@/components/FaturamentoChart';
+import Header from '@/components/Header';
 
 // Função para buscar métricas do dashboard
 async function getDashboardData() {
@@ -155,8 +156,10 @@ export default async function Dashboard() {
   const data = await getDashboardData();
 
   return (
-    <div className="min-h-screen">
-      <div className="container-main">
+    <>
+      <Header />
+      <div className="min-h-screen">
+        <div className="container-main">
         {/* Header */}
         <div className="page-header">
           <div className="flex items-center justify-between mb-6">
@@ -374,17 +377,18 @@ export default async function Dashboard() {
           </Link>
 
           <Link
-            href="/agendamentos"
+            href="/agenda"
             className="card-elevated card-highlight text-center group hover:scale-105 transition-transform"
           >
             <div className="text-4xl mb-3">📅</div>
             <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-gradient">
-              Agendamentos
+              Agenda
             </h3>
             <p className="text-gray-600 text-sm">Ver agenda completa</p>
           </Link>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

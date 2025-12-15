@@ -179,41 +179,41 @@ export default function ColaboradoresAdminPage() {
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-purple-100 shadow-soft">
         <div className="container mx-auto px-4 md:px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4">
               <Link href="/admin" className="flex items-center gap-2 text-purple-600 hover:text-purple-800 transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                <span className="font-medium">Voltar</span>
+                <span className="font-medium hidden sm:inline">Voltar</span>
               </Link>
-              <div className="h-6 w-px bg-purple-200" />
+              <div className="h-6 w-px bg-purple-200 hidden sm:block" />
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Naví Belle - Colaboradoras
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  Colaboradoras
                 </h1>
-                <p className="text-sm text-gray-600">Gerencie sua equipe</p>
+                <p className="text-xs sm:text-sm text-gray-600">Gerencie sua equipe</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Link
                 href="/admin/servicos"
-                className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-purple-300 text-purple-600 rounded-xl font-medium hover:bg-purple-50 hover:border-purple-400 transition-all shadow-md"
+                className="flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 bg-white border-2 border-purple-300 text-purple-600 rounded-xl font-medium hover:bg-purple-50 hover:border-purple-400 transition-all shadow-md text-sm sm:text-base"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Gerenciar Serviços
+                <span className="hidden sm:inline">Serviços</span>
               </Link>
               <button
                 onClick={() => openModal()}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl"
+                className="flex items-center justify-center gap-1 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl text-sm sm:text-base"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Nova Colaboradora
+                <span className="hidden sm:inline">Nova</span> Colaboradora
               </button>
             </div>
           </div>
@@ -355,11 +355,16 @@ export default function ColaboradoresAdminPage() {
       {showModal && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={closeModal}
+          onMouseDown={(e) => {
+            // Só fecha se o clique foi diretamente no overlay (não em elementos filhos)
+            if (e.target === e.currentTarget) {
+              closeModal();
+            }
+          }}
         >
           <div
             className="bg-white rounded-3xl shadow-2xl max-w-md w-full animate-modal-in"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Header do Modal */}
             <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-5 rounded-t-3xl">

@@ -46,18 +46,44 @@ export default function ClientesAdminPage() {
       .from('lancamentos')
       .select('*');
 
+    // Carregar agendamentos para cada cliente
+    const { data: agendamentos } = await supabase
+      .from('agendamentos')
+      .select('*');
+
     const statsMap: any = {};
 
     clientes.forEach((cliente) => {
       const lancamentosCliente = lancamentos?.filter((l) => l.cliente_id === cliente.id) || [];
-      const ultimoAtendimento = lancamentosCliente.length > 0
+      const agendamentosCliente = agendamentos?.filter((a) => a.cliente_id === cliente.id) || [];
+
+      // Último lançamento (atendimento concluído)
+      const ultimoLancamento = lancamentosCliente.length > 0
         ? lancamentosCliente.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())[0]
         : null;
 
+      // Último agendamento (pode ser pendente ou concluído)
+      const ultimoAgendamento = agendamentosCliente.length > 0
+        ? agendamentosCliente.sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime())[0]
+        : null;
+
+      // Usar a data mais recente entre lançamento e agendamento
+      let ultimaVisita = null;
+      if (ultimoLancamento && ultimoAgendamento) {
+        const dataLanc = new Date(ultimoLancamento.data).getTime();
+        const dataAgend = new Date(ultimoAgendamento.data_hora).getTime();
+        ultimaVisita = dataLanc > dataAgend ? ultimoLancamento.data : ultimoAgendamento.data_hora.split('T')[0];
+      } else if (ultimoLancamento) {
+        ultimaVisita = ultimoLancamento.data;
+      } else if (ultimoAgendamento) {
+        ultimaVisita = ultimoAgendamento.data_hora.split('T')[0];
+      }
+
       statsMap[cliente.id] = {
         totalAtendimentos: lancamentosCliente.length,
+        totalAgendamentos: agendamentosCliente.length,
         totalGasto: lancamentosCliente.reduce((sum, l) => sum + l.valor_total, 0),
-        ultimoAtendimento: ultimoAtendimento?.data || null,
+        ultimoAtendimento: ultimaVisita,
       };
     });
 
@@ -346,14 +372,22 @@ export default function ClientesAdminPage() {
                     <span className="text-gray-600">Total Gasto</span>
                     <span className="font-bold text-green-600">R$ {stats.totalGasto.toFixed(2)}</span>
                   </div>
-                  {stats.ultimoAtendimento && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Último atendimento</span>
-                      <span className={`font-medium ${diasSemAtendimento && diasSemAtendimento > 60 ? 'text-red-600' : 'text-gray-800'}`}>
-                        há {diasSemAtendimento} dias
-                      </span>
-                    </div>
-                  )}
+                  {/* Última Visita */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Última visita</span>
+                    {stats.ultimoAtendimento ? (
+                      <div className="text-right">
+                        <span className="font-medium text-gray-800 block">
+                          {format(parseISO(stats.ultimoAtendimento), 'dd/MM/yyyy')}
+                        </span>
+                        <span className={`text-xs ${diasSemAtendimento && diasSemAtendimento > 60 ? 'text-red-600 font-semibold' : diasSemAtendimento && diasSemAtendimento > 30 ? 'text-orange-600' : 'text-gray-500'}`}>
+                          há {diasSemAtendimento} dias
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic">Nunca visitou</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Ações */}
@@ -409,11 +443,15 @@ export default function ClientesAdminPage() {
       {showModal && (
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={closeModal}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              closeModal();
+            }
+          }}
         >
           <div
             className="bg-white rounded-3xl shadow-2xl max-w-md w-full animate-modal-in"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Header do Modal */}
             <div className="bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-5 rounded-t-3xl">

@@ -156,7 +156,8 @@ export default function RelatoriosPage() {
     const formas: Record<string, number> = {};
 
     lancamentos.forEach((l) => {
-      formas[l.forma_pagamento] = (formas[l.forma_pagamento] || 0) + l.valor_total;
+      const key = l.forma_pagamento || 'Não informado';
+      formas[key] = (formas[key] || 0) + l.valor_total;
     });
 
     return Object.entries(formas).map(([name, value]) => ({
@@ -432,7 +433,7 @@ export default function RelatoriosPage() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                       outerRadius={100}
                       fill="#8884d8"
                       dataKey="value"

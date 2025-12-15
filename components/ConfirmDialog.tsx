@@ -51,11 +51,15 @@ export default function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-      onClick={onClose}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         className="bg-white rounded-3xl shadow-2xl max-w-md w-full animate-modal-in"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className={`bg-gradient-to-r ${config.bgGradient} px-6 py-5 rounded-t-3xl`}>

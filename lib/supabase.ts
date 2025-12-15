@@ -1,9 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
 export type Cliente = {
   id: number;
@@ -34,9 +34,12 @@ export type Agendamento = {
   colaborador_id: number;
   data_hora: string;
   descricao_servico: string;
-  duracao_minutos?: number; // Duração em minutos (padrão: 60)
+  duracao_minutos?: number;
+  lancamento_id?: number; // Vínculo com lançamento
+  status?: 'pendente' | 'concluido' | 'cancelado';
   cliente?: Cliente;
   colaborador?: Colaborador;
+  lancamento?: Lancamento;
 };
 
 export type Lancamento = {
@@ -44,10 +47,18 @@ export type Lancamento = {
   colaborador_id: number;
   cliente_id: number;
   valor_total: number;
-  forma_pagamento: string;
+  forma_pagamento?: string; // Opcional até concluir
   comissao_colaborador: number;
   comissao_salao: number;
   data: string;
+  hora_inicio?: string;
+  hora_fim?: string;
+  servicos_ids?: number[];
+  servicos_nomes?: string;
+  status?: 'pendente' | 'concluido' | 'cancelado';
+  observacoes?: string;
+  data_pagamento?: string;
   colaborador?: Colaborador;
   cliente?: Cliente;
+  servicos?: Servico[];
 };

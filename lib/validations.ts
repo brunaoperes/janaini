@@ -54,37 +54,47 @@ export const servicoSchema = z.object({
 
 export type ServicoFormData = z.infer<typeof servicoSchema>;
 
-// Schema para Lançamento
+// Schema para Lançamento (Unificado com Agendamento)
 export const lancamentoSchema = z.object({
-  colaborador_id: z.number({
-    required_error: 'Selecione uma colaboradora',
-    invalid_type_error: 'Colaboradora inválida',
-  }).positive('Selecione uma colaboradora válida'),
-  cliente_id: z.number({
-    invalid_type_error: 'Cliente inválido',
-  }).positive('Selecione um cliente válido').optional(),
-  valor_total: z.number({
-    required_error: 'Valor total é obrigatório',
-    invalid_type_error: 'Valor total deve ser um número',
-  }).positive('Valor total deve ser maior que 0'),
-  forma_pagamento: z.enum(['dinheiro', 'pix', 'cartao_debito', 'cartao_credito'], {
-    required_error: 'Selecione uma forma de pagamento',
-    invalid_type_error: 'Forma de pagamento inválida',
-  }),
+  colaborador_id: z.number({ message: 'Selecione uma colaboradora' })
+    .positive('Selecione uma colaboradora válida'),
+  cliente_id: z.number({ message: 'Selecione um cliente' })
+    .positive('Selecione um cliente válido'),
+  data: z.string({ message: 'Selecione uma data' })
+    .min(1, 'Selecione uma data'),
+  hora_inicio: z.string({ message: 'Selecione o horário de início' })
+    .min(1, 'Selecione o horário de início'),
+  hora_fim: z.string({ message: 'Selecione o horário de fim' })
+    .min(1, 'Selecione o horário de fim'),
+  servicos_ids: z.array(z.number()).min(1, 'Selecione pelo menos um serviço'),
+  servicos_nomes: z.string().optional(),
+  valor_total: z.number({ message: 'Valor total é obrigatório' })
+    .positive('Valor total deve ser maior que 0'),
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'cartao_debito', 'cartao_credito']).optional(),
+  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
+  status: z.enum(['pendente', 'concluido', 'cancelado']).default('pendente'),
 });
 
 export type LancamentoFormData = z.infer<typeof lancamentoSchema>;
 
+// Schema para finalizar lançamento (marcar como concluído)
+export const finalizarLancamentoSchema = z.object({
+  forma_pagamento: z.enum(['dinheiro', 'pix', 'cartao_debito', 'cartao_credito'], {
+    message: 'Selecione uma forma de pagamento',
+  }),
+  valor_pago: z.number({ message: 'Valor pago é obrigatório' })
+    .positive('Valor deve ser maior que 0'),
+  data_pagamento: z.string().optional(),
+});
+
+export type FinalizarLancamentoFormData = z.infer<typeof finalizarLancamentoSchema>;
+
 // Schema para Agendamento
 export const agendamentoSchema = z.object({
-  cliente_id: z.number({
-    required_error: 'Selecione um cliente',
-    invalid_type_error: 'Cliente inválido',
-  }).positive('Selecione um cliente válido'),
-  colaborador_id: z.number({
-    required_error: 'Selecione uma colaboradora',
-    invalid_type_error: 'Colaboradora inválida',
-  }).positive('Selecione uma colaboradora válida'),
+  cliente_id: z.number({ message: 'Selecione um cliente' })
+    .positive('Selecione um cliente válido'),
+  colaborador_id: z.number({ message: 'Selecione uma colaboradora' })
+    .positive('Selecione uma colaboradora válida'),
   data_hora: z.string()
     .refine((date) => {
       const parsedDate = new Date(date);
@@ -107,6 +117,9 @@ export const agendamentoSchema = z.object({
 export type AgendamentoFormData = z.infer<typeof agendamentoSchema>;
 
 // Função auxiliar para formatar erros do Zod
-export function formatZodErrors(errors: z.ZodError): string {
-  return errors.errors.map(err => err.message).join('\n');
+export function formatZodErrors(errors: z.ZodError | undefined | null): string {
+  if (!errors || !errors.issues) {
+    return 'Erro de validação';
+  }
+  return errors.issues.map(err => err.message).join('\n');
 }
