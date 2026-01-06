@@ -89,6 +89,29 @@ export async function GET(request: Request) {
       .select('*')
       .order('data', { ascending: false });
 
+    // FILTRO POR PERMISSÃO: usuário não-admin só vê seus próprios lançamentos
+    if (!isAdmin && userColaboradorId) {
+      query = query.eq('colaborador_id', userColaboradorId);
+    } else if (!isAdmin && !userColaboradorId) {
+      // Usuário sem colaborador_id vinculado não vê nenhum lançamento
+      return NextResponse.json({
+        lancamentos: [],
+        colaboradores,
+        clientes,
+        servicos,
+        formasPagamento,
+        _userProfile: {
+          isAdmin: false,
+          colaboradorId: null,
+        },
+        _warning: 'Seu usuário não está vinculado a nenhum colaborador. Contate o administrador.',
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        }
+      });
+    }
+
     if (filtro === 'hoje') {
       // Usar timezone de Brasília corretamente
       const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
