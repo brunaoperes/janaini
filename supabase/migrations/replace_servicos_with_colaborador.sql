@@ -3,6 +3,9 @@
 -- Execute este SQL no Supabase Dashboard > SQL Editor
 -- =====================================================
 
+-- 0. Remover constraint que impede duração 0
+ALTER TABLE servicos DROP CONSTRAINT IF EXISTS check_duracao_positiva;
+
 -- 1. Adicionar coluna colaboradores_ids (array de inteiros) se não existir
 ALTER TABLE servicos
 ADD COLUMN IF NOT EXISTS colaboradores_ids INTEGER[] DEFAULT '{}';
