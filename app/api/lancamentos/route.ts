@@ -94,8 +94,9 @@ export async function GET(request: Request) {
       const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       // hojeStr = "2026-01-06" (formato YYYY-MM-DD)
 
-      // Buscar lançamentos que começam com a data de hoje
-      query = query.gte('data', `${hojeStr}T00:00:00`).lte('data', `${hojeStr}T23:59:59`);
+      // Buscar lançamentos cuja data começa com a data de hoje
+      // Usando filter para cast para date
+      query = query.filter('data::date', 'eq', hojeStr);
     } else if (filtro === 'pendentes') {
       query = query.eq('status', 'pendente');
     }
