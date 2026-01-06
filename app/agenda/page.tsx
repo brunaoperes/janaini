@@ -658,7 +658,7 @@ export default function AgendaPage() {
     setIsEditMode(true);
   };
 
-  // Salvar alterações do drawer
+  // Salvar alterações do drawer (agendamento + lançamento)
   const salvarEdicao = async () => {
     if (!selectedAgendamento) return;
 
@@ -687,6 +687,7 @@ export default function AgendaPage() {
       return;
     }
 
+    // 1. Atualizar agendamento
     const { error } = await supabase
       .from('agendamentos')
       .update({
@@ -702,26 +703,55 @@ export default function AgendaPage() {
     if (error) {
       console.error('Erro ao atualizar agendamento:', error);
       alert('Erro ao atualizar: ' + error.message);
-    } else {
-      alert('✅ Agendamento atualizado com sucesso!');
-      setIsEditMode(false);
-      setSelectedAgendamento(null);
-      // Se mudou a data, atualizar selectedDate
-      if (editData.data !== selectedDate) {
-        setSelectedDate(editData.data);
-      }
-      await loadData();
-    }
-  };
-
-  // Excluir agendamento
-  const excluirAgendamento = async () => {
-    if (!selectedAgendamento) return;
-
-    if (!confirm('⚠️ Tem certeza que deseja excluir este agendamento?')) {
       return;
     }
 
+    // 2. Atualizar lançamento vinculado (se existir)
+    if (selectedAgendamento.lancamento_id) {
+      const { error: lancError } = await supabase
+        .from('lancamentos')
+        .update({
+          colaborador_id: Number(editData.colaborador_id),
+          cliente_id: Number(editData.cliente_id),
+          data: novoDataHora,
+          hora_inicio: editData.hora_inicio,
+          hora_fim: editData.hora_fim,
+          servicos_nomes: descricaoServicos,
+        })
+        .eq('id', selectedAgendamento.lancamento_id);
+
+      if (lancError) {
+        console.error('Erro ao atualizar lançamento:', lancError);
+      }
+    }
+
+    alert('✅ Agendamento atualizado com sucesso!');
+    setIsEditMode(false);
+    setSelectedAgendamento(null);
+    // Se mudou a data, atualizar selectedDate
+    if (editData.data !== selectedDate) {
+      setSelectedDate(editData.data);
+    }
+    await loadData();
+  };
+
+  // Excluir agendamento (e lançamento vinculado)
+  const excluirAgendamento = async () => {
+    if (!selectedAgendamento) return;
+
+    if (!confirm('⚠️ Tem certeza que deseja excluir este agendamento e o lançamento vinculado?')) {
+      return;
+    }
+
+    // 1. Deletar lançamento vinculado (se existir)
+    if (selectedAgendamento.lancamento_id) {
+      await supabase
+        .from('lancamentos')
+        .delete()
+        .eq('id', selectedAgendamento.lancamento_id);
+    }
+
+    // 2. Deletar agendamento
     const { error } = await supabase
       .from('agendamentos')
       .delete()
@@ -731,7 +761,7 @@ export default function AgendaPage() {
       console.error('Erro ao excluir agendamento:', error);
       alert('❌ Erro ao excluir: ' + error.message);
     } else {
-      alert('✅ Agendamento excluído com sucesso!');
+      alert('✅ Agendamento e lançamento excluídos com sucesso!');
       setSelectedAgendamento(null);
       await loadData();
     }

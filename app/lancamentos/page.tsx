@@ -10,6 +10,39 @@ import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 
+// Função para parsear data/hora sem conversão de timezone
+// PostgreSQL retorna: "2025-01-06T17:30:00+00:00"
+// Queremos interpretar: 17:30 como horário local (não UTC)
+const parseAsLocalTime = (dataHora: string): Date => {
+  // Remover timezone (+00:00, Z, etc) da string
+  const semTimezone = dataHora.replace(/([+-]\d{2}:\d{2}|Z)$/, '');
+
+  // Parsear como local (formato: YYYY-MM-DDTHH:MM:SS ou YYYY-MM-DD HH:MM:SS)
+  const partes = semTimezone.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
+
+  if (partes) {
+    const [_, ano, mes, dia, hora, minuto, segundo = '0'] = partes;
+    return new Date(
+      parseInt(ano),
+      parseInt(mes) - 1, // Mês é 0-indexed
+      parseInt(dia),
+      parseInt(hora),
+      parseInt(minuto),
+      parseInt(segundo)
+    );
+  }
+
+  // Fallback para formato só data (YYYY-MM-DD)
+  const partesData = semTimezone.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (partesData) {
+    const [_, ano, mes, dia] = partesData;
+    return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 12, 0, 0);
+  }
+
+  // Último fallback
+  return new Date(dataHora);
+};
+
 interface LancamentoComRelacoes {
   id: number;
   colaborador_id: number;
@@ -415,20 +448,21 @@ export default function LancamentosPage() {
 
   async function handleDelete(id: number) {
     try {
-      // Deletar agendamento vinculado primeiro
-      await supabase.from('agendamentos').delete().eq('lancamento_id', id);
+      // Usar API para deletar (bypass RLS)
+      const response = await fetch(`/api/lancamentos/${id}`, {
+        method: 'DELETE',
+      });
 
-      // Deletar lançamento
-      const { error } = await supabase.from('lancamentos').delete().eq('id', id);
-
-      if (error) {
-        toast.error('Erro ao excluir');
+      if (!response.ok) {
+        const data = await response.json();
+        toast.error(data.error || 'Erro ao excluir');
         return;
       }
 
       toast.success('Excluído com sucesso!');
       loadData();
     } catch (error) {
+      console.error('Erro ao excluir:', error);
       toast.error('Erro ao excluir');
     }
     setDeleteConfirm({ isOpen: false, id: null });
@@ -517,7 +551,7 @@ export default function LancamentosPage() {
                       <tr key={lanc.id} className="hover:bg-purple-50 transition-colors">
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium text-gray-800">
-                            {format(new Date(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}
+                            {format(parseAsLocalTime(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}
                           </div>
                           <div className="text-xs text-gray-500">
                             {lanc.hora_inicio} - {lanc.hora_fim}
@@ -602,7 +636,7 @@ export default function LancamentosPage() {
                     <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                       <div className="flex items-center gap-1">
                         <span>📅</span>
-                        <span>{format(new Date(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                        <span>{format(parseAsLocalTime(lanc.data), 'dd/MM/yyyy', { locale: ptBR })}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span>🕐</span>
