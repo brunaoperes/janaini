@@ -998,16 +998,12 @@ export default function AgendaPage() {
     // Combinar data e hora sem timezone (formato: 2025-11-19 17:00:00)
     const dataHoraInicio = `${formData.data} ${formData.hora_inicio}:00`;
 
-    // Pegar valor do serviço (editável pelo usuário)
-    const valorEstimado = formData.valor_servico ? parseFloat(formData.valor_servico) : 0;
-
     const { error } = await supabase.from('agendamentos').insert([{
       colaborador_id: Number(formData.colaborador_id),
       cliente_id: clienteSelecionado.id,
       data_hora: dataHoraInicio,
       descricao_servico: descricaoServicos,
       duracao_minutos: duracaoTotal,
-      valor_estimado: valorEstimado,
     }]).select();
 
     if (error) {

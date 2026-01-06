@@ -90,16 +90,12 @@ export async function GET(request: Request) {
       .order('data', { ascending: false });
 
     if (filtro === 'hoje') {
-      // Usar timezone de Brasília (UTC-3)
-      const now = new Date();
-      const brasiliaOffset = -3 * 60;
-      const brasiliaTime = new Date(now.getTime() + (now.getTimezoneOffset() + brasiliaOffset) * 60000);
+      // Usar timezone de Brasília corretamente
+      const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      // hojeStr = "2026-01-06" (formato YYYY-MM-DD)
 
-      const hojeStr = `${brasiliaTime.getFullYear()}-${String(brasiliaTime.getMonth() + 1).padStart(2, '0')}-${String(brasiliaTime.getDate()).padStart(2, '0')}`;
-      const inicioHoje = `${hojeStr}T00:00:00`;
-      const fimHoje = `${hojeStr}T23:59:59`;
-
-      query = query.gte('data', inicioHoje).lte('data', fimHoje);
+      // Buscar lançamentos que começam com a data de hoje
+      query = query.gte('data', `${hojeStr}T00:00:00`).lte('data', `${hojeStr}T23:59:59`);
     } else if (filtro === 'pendentes') {
       query = query.eq('status', 'pendente');
     }
