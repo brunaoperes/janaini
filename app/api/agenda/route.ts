@@ -70,11 +70,15 @@ export async function GET(request: Request) {
       .order('nome');
 
     // FILTRO DE SERVIÇOS: usuário não-admin só vê serviços do seu colaborador
+    // Admin ou usuário sem perfil (fallback) vê todos os serviços
     let servicos = servicosData || [];
+    console.log('[API/agenda] Filtro serviços - isAdmin:', isAdmin, 'colaboradorId:', userColaboradorId, 'total serviços:', servicos.length);
+
     if (!isAdmin && userColaboradorId) {
       servicos = servicos.filter((s: any) =>
-        s.colaboradores_ids && s.colaboradores_ids.includes(userColaboradorId)
+        s.colaboradores_ids && Array.isArray(s.colaboradores_ids) && s.colaboradores_ids.includes(userColaboradorId)
       );
+      console.log('[API/agenda] Serviços filtrados:', servicos.length);
     }
 
     // Carregar formas de pagamento

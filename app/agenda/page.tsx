@@ -180,10 +180,21 @@ export default function AgendaPage() {
       }
       const data = await response.json();
 
-      setColaboradores(data.colaboradores || []);
+      const colaboradoresData = data.colaboradores || [];
+
+      setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
       setServicos(data.servicos || []);
       setAgendamentos(data.agendamentos || []);
+
+      // Pré-selecionar colaborador do usuário logado (se não for admin)
+      if (data._userProfile?.colaboradorId && !data._userProfile?.isAdmin) {
+        const colaboradorId = data._userProfile.colaboradorId;
+        setFormData(prev => ({
+          ...prev,
+          colaborador_id: colaboradorId.toString(),
+        }));
+      }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {

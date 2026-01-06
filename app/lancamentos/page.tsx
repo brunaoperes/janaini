@@ -149,14 +149,31 @@ export default function LancamentosPage() {
 
       const data = await response.json();
 
-      setColaboradores(data.colaboradores || []);
+      const colaboradoresData = data.colaboradores || [];
+      const servicosData = data.servicos || [];
+
+      setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
-      setServicos(data.servicos || []);
+      setServicos(servicosData);
       setFormasPagamentoDB(data.formasPagamento || []);
       setLancamentos(data.lancamentos || []);
 
       if (data._userProfile) {
         setUserProfile(data._userProfile);
+
+        // Pré-selecionar colaborador do usuário logado (se não for admin ou se não estiver editando)
+        if (data._userProfile.colaboradorId && !editingId) {
+          const colaboradorDoUsuario = colaboradoresData.find(
+            (c: Colaborador) => c.id === data._userProfile.colaboradorId
+          );
+          if (colaboradorDoUsuario) {
+            setSelectedColaborador(colaboradorDoUsuario);
+            setFormData(prev => ({
+              ...prev,
+              colaborador_id: colaboradorDoUsuario.id.toString(),
+            }));
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);

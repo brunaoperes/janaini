@@ -84,10 +84,14 @@ export async function GET(request: Request) {
     const formasPagamento = formasRes.data || [];
 
     // FILTRO DE SERVIÇOS: usuário não-admin só vê serviços do seu colaborador
+    // Admin ou usuário sem perfil (fallback) vê todos os serviços
+    console.log('[API/lancamentos] Filtro serviços - isAdmin:', isAdmin, 'colaboradorId:', userColaboradorId, 'total serviços:', servicos.length);
+
     if (!isAdmin && userColaboradorId) {
       servicos = servicos.filter((s: any) =>
-        s.colaboradores_ids && s.colaboradores_ids.includes(userColaboradorId)
+        s.colaboradores_ids && Array.isArray(s.colaboradores_ids) && s.colaboradores_ids.includes(userColaboradorId)
       );
+      console.log('[API/lancamentos] Serviços filtrados:', servicos.length);
     }
 
     // Carregar lançamentos
