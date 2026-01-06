@@ -1169,9 +1169,10 @@ export default function AgendaPage() {
               </Link>
               <button
                 onClick={() => setShowNovoAgendamento(true)}
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 text-sm"
+                disabled={loading}
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
-                ✨ Novo
+                {loading ? '⏳ Carregando...' : '✨ Novo'}
               </button>
             </div>
           </div>

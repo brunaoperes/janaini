@@ -227,12 +227,13 @@ export default function ColaboradoresAdminPage() {
               </Link>
               <button
                 onClick={() => openModal()}
-                className="flex items-center justify-center gap-1 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl text-sm sm:text-base"
+                disabled={loading}
+                className="flex items-center justify-center gap-1 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                <span className="hidden sm:inline">Nova</span> Colaboradora
+                {loading ? 'Carregando...' : <><span className="hidden sm:inline">Nova</span> Colaboradora</>}
               </button>
             </div>
           </div>

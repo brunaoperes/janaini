@@ -453,10 +453,11 @@ export default function LancamentosPage() {
           </div>
           <button
             onClick={() => { resetForm(); setShowModal(true); }}
-            className="mt-4 md:mt-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg flex items-center gap-2"
+            disabled={loading}
+            className="mt-4 md:mt-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="text-xl">+</span>
-            Novo Lançamento
+            {loading ? 'Carregando...' : 'Novo Lançamento'}
           </button>
         </div>
 

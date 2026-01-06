@@ -218,9 +218,10 @@ export default function ColaboradorPage({ params }: { params: Promise<{ id: stri
             <h2 className="text-2xl font-bold text-gray-800">Minha Agenda</h2>
             <button
               onClick={() => setShowNovoAgendamento(true)}
-              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+              disabled={loading}
+              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              + Novo Agendamento
+              {loading ? 'Carregando...' : '+ Novo Agendamento'}
             </button>
           </div>
 
