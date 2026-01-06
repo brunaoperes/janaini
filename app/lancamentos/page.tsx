@@ -343,6 +343,7 @@ export default function LancamentosPage() {
             data_hora: dataCompleta,
             descricao_servico: servicosNomes,
             duracao_minutos: duracaoTotal,
+            valor_estimado: validationData.valor_total,
             status: statusFinal,
           })
           .eq('lancamento_id', editingId);
@@ -360,6 +361,7 @@ export default function LancamentosPage() {
             data_hora: dataCompleta,
             descricao_servico: servicosNomes,
             duracao_minutos: duracaoTotal,
+            valor_estimado: validationData.valor_total,
             lancamento_id: lancamento.id,
             status: statusFinal,
           });
@@ -427,13 +429,26 @@ export default function LancamentosPage() {
     const horaInicio = lancFresh.hora_inicio ? lancFresh.hora_inicio.substring(0, 5) : '09:00';
     const horaFim = lancFresh.hora_fim ? lancFresh.hora_fim.substring(0, 5) : '10:00';
 
+    // Se não tem servicos_ids mas tem servicos_nomes, tentar parsear
+    let servicosIds = lancFresh.servicos_ids || [];
+    if (servicosIds.length === 0 && lancFresh.servicos_nomes) {
+      // Parsear "Corte + Escova + Manicure" para encontrar os IDs
+      const nomesServicos = lancFresh.servicos_nomes.split(' + ').map((s: string) => s.trim());
+      servicosIds = nomesServicos
+        .map((nome: string) => {
+          const servico = servicos.find(s => s.nome.toLowerCase() === nome.toLowerCase());
+          return servico?.id;
+        })
+        .filter((id: number | undefined): id is number => id !== undefined);
+    }
+
     setFormData({
       colaborador_id: lancFresh.colaborador_id.toString(),
       cliente_id: lancFresh.cliente_id.toString(),
       data: dataStr,
       hora_inicio: horaInicio,
       hora_fim: horaFim,
-      servicos_ids: lancFresh.servicos_ids || [],
+      servicos_ids: servicosIds,
       valor_total: lancFresh.valor_total.toFixed(2),
       observacoes: lancFresh.observacoes || '',
       forma_pagamento: lancFresh.forma_pagamento || '',
