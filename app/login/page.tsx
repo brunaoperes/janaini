@@ -21,6 +21,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[Login] Iniciando submit...', { isLogin });
 
     // Validação diferente para login e cadastro
     if (isLogin) {
@@ -37,54 +38,82 @@ export default function LoginPage() {
 
     setLoading(true);
 
+    // Timeout de segurança para não ficar travado
+    const timeoutId = setTimeout(() => {
+      console.log('[Login] Timeout atingido, resetando loading');
+      setLoading(false);
+      toast.error('A operação demorou muito. Tente novamente.');
+    }, 30000); // 30 segundos
+
     try {
       if (isLogin) {
+        console.log('[Login] Chamando signIn...');
         const { error } = await signIn(emailOrUsername, password);
+        console.log('[Login] signIn retornou:', { error: error?.message });
+
+        clearTimeout(timeoutId);
 
         if (error) {
           if (error.message.includes('Invalid login credentials')) {
             toast.error('Email/usuário ou senha incorretos');
           } else if (error.message.includes('Usuário não encontrado')) {
             toast.error('Usuário não encontrado');
+          } else if (error.message.includes('banned') || error.message.includes('User is banned')) {
+            toast.error('Sua conta está desativada. Entre em contato com o administrador.');
           } else {
             toast.error(error.message);
           }
           setLoading(false);
         } else {
           toast.success('Login realizado com sucesso!');
+          console.log('[Login] Redirecionando para home...');
           // Aguarda um pouco para o cookie ser setado antes de redirecionar
-          await new Promise(resolve => setTimeout(resolve, 100));
-          window.location.href = '/';
+          // Usar replace para garantir que a página de login não fique no histórico
+          await new Promise(resolve => setTimeout(resolve, 300));
+          // Forçar reload completo para garantir que os cookies são lidos
+          window.location.replace('/');
         }
       } else {
+        console.log('[Login] Iniciando cadastro...');
+
         // Validações do cadastro
         if (!nome.trim()) {
           toast.error('Por favor, informe seu nome');
+          clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
         if (!username.trim()) {
           toast.error('Por favor, informe um nome de usuário');
+          clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
         if (username.length < 3) {
           toast.error('O nome de usuário deve ter pelo menos 3 caracteres');
+          clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
         if (!/^[a-zA-Z0-9_]+$/.test(username)) {
           toast.error('O nome de usuário só pode conter letras, números e underscore');
+          clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
         if (password.length < 6) {
           toast.error('A senha deve ter pelo menos 6 caracteres');
+          clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
 
+        console.log('[Login] Chamando signUp...');
         const { error } = await signUp(email, password, nome, username);
+        console.log('[Login] signUp retornou:', { error: error?.message });
+
+        clearTimeout(timeoutId);
+
         if (error) {
           if (error.message.includes('already registered')) {
             toast.error('Este email já está cadastrado');
@@ -95,16 +124,19 @@ export default function LoginPage() {
           } else {
             toast.error(error.message || 'Erro ao criar conta');
           }
+          setLoading(false);
         } else {
           toast.success('Conta criada com sucesso! Faça login para continuar.');
           setIsLogin(true);
           setPassword('');
           setEmailOrUsername(username);
+          setLoading(false);
         }
       }
-    } catch {
+    } catch (err) {
+      console.error('[Login] Erro catch:', err);
+      clearTimeout(timeoutId);
       toast.error('Erro ao processar solicitação');
-    } finally {
       setLoading(false);
     }
   };

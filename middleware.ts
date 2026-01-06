@@ -12,7 +12,20 @@ const PUBLIC_ROUTES = [
   '/acesso-negado',
 ];
 
+// Função para adicionar headers anti-cache
+function addNoCacheHeaders(response: NextResponse) {
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  response.headers.set('Surrogate-Control', 'no-store');
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  console.log(`[Middleware] ${request.method} ${pathname}`);
+
+  // Criar response base
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -40,32 +53,47 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const pathname = request.nextUrl.pathname;
+  // IMPORTANTE: Sempre chamar getUser() para refresh do token
+  // Isso atualiza os cookies de sessão automaticamente
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  console.log(`[Middleware] Auth check - User: ${user?.email || 'null'}, Error: ${authError?.message || 'none'}`);
 
   // Verificar se é rota pública
   const isPublicRoute = PUBLIC_ROUTES.some(route => pathname.startsWith(route));
 
-  // Se é rota pública, apenas retorna
+  // Se é rota pública
   if (isPublicRoute) {
-    return supabaseResponse;
+    console.log(`[Middleware] Rota pública: ${pathname}`);
+    // Se já está logado e tenta acessar /login, redireciona para home
+    if (pathname === '/login' && user) {
+      console.log(`[Middleware] Usuário já logado, redirecionando para home`);
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      const redirectResponse = NextResponse.redirect(url);
+      return addNoCacheHeaders(redirectResponse);
+    }
+    return addNoCacheHeaders(supabaseResponse);
   }
-
-  // Tenta obter o usuário
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   // Se não está autenticado, redireciona para login
   if (!user) {
+    console.log(`[Middleware] Não autenticado, redirecionando para /login`);
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    return addNoCacheHeaders(redirectResponse);
   }
 
   // Verificar se é rota admin
   const isAdminRoute = ADMIN_ROUTES.some(route => pathname.startsWith(route));
 
   if (isAdminRoute) {
+    console.log(`[Middleware] Rota admin: ${pathname}, verificando permissão...`);
+
     // Buscar perfil do usuário para verificar role
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -73,15 +101,21 @@ export async function middleware(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
+    console.log(`[Middleware] Profile: ${JSON.stringify(profile)}, Error: ${error?.message || 'none'}`);
+
     // Se não encontrou perfil ou não é admin, redirecionar para acesso negado
     if (error || !profile || profile.role !== 'admin') {
+      console.log(`[Middleware] Acesso negado para ${user.email}`);
       const url = request.nextUrl.clone();
       url.pathname = '/acesso-negado';
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      return addNoCacheHeaders(redirectResponse);
     }
+
+    console.log(`[Middleware] Acesso admin permitido para ${user.email}`);
   }
 
-  return supabaseResponse;
+  return addNoCacheHeaders(supabaseResponse);
 }
 
 export const config = {

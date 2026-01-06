@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
@@ -13,6 +16,58 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 export const dynamic = 'force-dynamic';
 
+// Função para obter o perfil do usuário autenticado
+async function getUserProfile() {
+  try {
+    const cookieStore = await cookies();
+    const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll() {},
+      },
+    });
+
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, colaborador_id')
+      .eq('id', user.id)
+      .single();
+
+    return profile;
+  } catch {
+    return null;
+  }
+}
+
+// Função para filtrar comissões baseado nas permissões
+function filterComissoes(lancamentos: any[], isAdmin: boolean, userColaboradorId: number | null) {
+  if (isAdmin) {
+    return lancamentos.map(lanc => ({ ...lanc, _canViewComissao: true }));
+  }
+
+  if (userColaboradorId) {
+    return lancamentos.map(lanc => ({
+      ...lanc,
+      comissao_colaborador: lanc.colaborador_id === userColaboradorId ? lanc.comissao_colaborador : null,
+      comissao_salao: lanc.colaborador_id === userColaboradorId ? lanc.comissao_salao : null,
+      _canViewComissao: lanc.colaborador_id === userColaboradorId,
+    }));
+  }
+
+  // Usuário sem vínculo não vê nenhuma comissão
+  return lancamentos.map(lanc => ({
+    ...lanc,
+    comissao_colaborador: null,
+    comissao_salao: null,
+    _canViewComissao: false,
+  }));
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -22,6 +77,11 @@ export async function GET(request: Request) {
     const endDateAnterior = searchParams.get('endDateAnterior');
     const colaboradorId = searchParams.get('colaboradorId');
     const pagamento = searchParams.get('pagamento');
+
+    // Obter perfil do usuário para filtrar comissões
+    const userProfile = await getUserProfile();
+    const isAdmin = userProfile?.role === 'admin';
+    const userColaboradorId = userProfile?.colaborador_id;
 
     // Carregar colaboradores
     const { data: colaboradores } = await supabase
@@ -78,10 +138,18 @@ export async function GET(request: Request) {
 
     const { data: lancamentosAnterior } = await queryAnterior;
 
+    // Filtrar comissões baseado nas permissões do usuário
+    const lancamentosFiltrados = filterComissoes(lancamentos || [], isAdmin, userColaboradorId);
+    const lancamentosAnteriorFiltrados = filterComissoes(lancamentosAnterior || [], isAdmin, userColaboradorId);
+
     return jsonResponse({
-      lancamentos: lancamentos || [],
-      lancamentosAnterior: lancamentosAnterior || [],
+      lancamentos: lancamentosFiltrados,
+      lancamentosAnterior: lancamentosAnteriorFiltrados,
       colaboradores: colaboradores || [],
+      _userProfile: {
+        isAdmin,
+        colaboradorId: userColaboradorId,
+      },
     });
   } catch (error: any) {
     console.error('Erro na API de relatórios:', error);

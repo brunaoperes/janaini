@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { HealthProvider } from "@/contexts/HealthContext";
 import ActivityTracker from "@/components/ActivityTracker";
 
 export const metadata: Metadata = {
@@ -18,9 +19,11 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className="antialiased">
         <AuthProvider>
-          <ToastProvider />
-          <ActivityTracker />
-          {children}
+          <HealthProvider>
+            <ToastProvider />
+            <ActivityTracker />
+            {children}
+          </HealthProvider>
         </AuthProvider>
       </body>
     </html>

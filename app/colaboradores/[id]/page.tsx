@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 import { supabase, Colaborador, Agendamento, Cliente } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { format, addHours, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link';
@@ -11,7 +13,10 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 
 export default function ColaboradorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { profile, isAdmin, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [id, setId] = useState<string>('');
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     params.then((p) => setId(p.id));
@@ -23,6 +28,21 @@ export default function ColaboradorPage({ params }: { params: Promise<{ id: stri
   const [showFinalizarAtendimento, setShowFinalizarAtendimento] = useState(false);
   const [selectedAgendamento, setSelectedAgendamento] = useState<Agendamento | null>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  // Verificar permissão de acesso
+  useEffect(() => {
+    if (authLoading || !id) return;
+
+    // Admin pode ver qualquer colaborador
+    if (isAdmin) return;
+
+    // Usuário com vínculo só pode acessar sua própria página
+    if (profile?.colaborador_id) {
+      if (profile.colaborador_id.toString() !== id) {
+        setAccessDenied(true);
+      }
+    }
+  }, [authLoading, isAdmin, profile, id]);
 
   // Form states
   const [novoAgendamento, setNovoAgendamento] = useState({
@@ -145,7 +165,33 @@ export default function ColaboradorPage({ params }: { params: Promise<{ id: stri
     return horarios;
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (authLoading || loading) return <LoadingSpinner />;
+
+  // Acesso negado - usuário tentando acessar página de outro colaborador
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-4">🚫</div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">
+              Acesso Negado
+            </h1>
+            <p className="text-gray-600 mb-6">
+              Você não tem permissão para acessar a área de outro colaborador.
+            </p>
+            <Link
+              href={`/colaboradores/${profile?.colaborador_id}`}
+              className="inline-block px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all"
+            >
+              Ir para minha área
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!colaborador) return <div className="text-center py-8">Colaborador não encontrado</div>;
 
   return (
@@ -161,7 +207,10 @@ export default function ColaboradorPage({ params }: { params: Promise<{ id: stri
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             Olá, {colaborador.nome}!
           </h1>
-          <p className="text-gray-600">Sua comissão: {colaborador.porcentagem_comissao}%</p>
+          {/* Mostrar comissão apenas para admin ou o próprio colaborador */}
+          {(isAdmin || profile?.colaborador_id?.toString() === id) && (
+            <p className="text-gray-600">Sua comissão: {colaborador.porcentagem_comissao}%</p>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">

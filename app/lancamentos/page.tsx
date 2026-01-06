@@ -16,8 +16,9 @@ interface LancamentoComRelacoes {
   cliente_id: number;
   valor_total: number;
   forma_pagamento: string | null;
-  comissao_colaborador: number;
-  comissao_salao: number;
+  comissao_colaborador: number | null;
+  comissao_salao: number | null;
+  valor_comissao?: number | null; // Campo retornado pela API (filtrado por permissão)
   data: string;
   hora_inicio: string | null;
   hora_fim: string | null;
@@ -496,6 +497,7 @@ export default function LancamentosPage() {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Colaboradora</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Serviços</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Valor</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Comissão</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Pagamento</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Ações</th>
@@ -523,6 +525,15 @@ export default function LancamentosPage() {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-green-600">
                           R$ {lanc.valor_total.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {lanc._canViewComissao && lanc.comissao_colaborador ? (
+                            <span className="font-semibold text-purple-600">
+                              R$ {lanc.comissao_colaborador.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {getStatusBadge(lanc.status)}
@@ -602,6 +613,12 @@ export default function LancamentosPage() {
                       </div>
                     )}
 
+                    {lanc._canViewComissao && lanc.comissao_colaborador && (
+                      <div className="text-sm text-purple-600 mb-3">
+                        <span className="font-medium">Comissão:</span> R$ {lanc.comissao_colaborador.toFixed(2)}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 pt-2 border-t border-gray-100">
                       <button
                         onClick={() => handleEdit(lanc)}
@@ -654,13 +671,15 @@ export default function LancamentosPage() {
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
                     <option value="">Selecione...</option>
-                    {colaboradores.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome}
-                        {/* Mostrar % comissão apenas para admin ou próprio colaborador */}
-                        {(userProfile?.isAdmin || userProfile?.colaboradorId === c.id) && ` (${c.porcentagem_comissao}%)`}
-                      </option>
-                    ))}
+                    {colaboradores.map(c => {
+                      // Mostrar % comissão apenas para admin ou próprio colaborador
+                      const showComissao = userProfile?.isAdmin || userProfile?.colaboradorId === c.id;
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}{showComissao ? ` (${c.porcentagem_comissao}%)` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -757,10 +776,8 @@ export default function LancamentosPage() {
                       placeholder="0.00"
                     />
                   </div>
-                  {selectedColaborador && formData.valor_total && (
-                    // Mostrar comissão apenas se for admin ou se for o próprio colaborador
-                    userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id
-                  ) && (
+                  {selectedColaborador && formData.valor_total &&
+                    (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (
                     <p className="text-xs text-gray-500 mt-1">
                       Comissão: R$ {((parseFloat(formData.valor_total) * selectedColaborador.porcentagem_comissao) / 100).toFixed(2)}
                       ({selectedColaborador.porcentagem_comissao}%)

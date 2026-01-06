@@ -178,66 +178,166 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Login com email ou username
   const signIn = async (emailOrUsername: string, password: string) => {
+    console.log('[AuthContext] signIn iniciado para:', emailOrUsername);
     let email = emailOrUsername;
 
     // Se não for email, buscar o email pelo username
     if (!isEmail(emailOrUsername)) {
-      const { data, error } = await supabase.rpc('get_email_by_username', {
-        p_username: emailOrUsername
-      });
+      console.log('[AuthContext] Buscando email pelo username...');
+      try {
+        // Timeout de 10 segundos para a RPC
+        const rpcPromise = supabase.rpc('get_email_by_username', {
+          p_username: emailOrUsername
+        });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout ao buscar usuário')), 10000)
+        );
 
-      if (error || !data) {
+        const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+
+        console.log('[AuthContext] Resultado RPC:', { data, error: error?.message });
+
+        if (error || !data) {
+          return {
+            error: {
+              message: 'Usuário não encontrado',
+              name: 'AuthError',
+              status: 400
+            } as AuthError
+          };
+        }
+
+        email = data;
+      } catch (err: any) {
+        console.error('[AuthContext] Erro ao buscar username:', err);
         return {
           error: {
-            message: 'Usuário não encontrado',
+            message: err.message || 'Erro ao buscar usuário',
             name: 'AuthError',
-            status: 400
+            status: 500
           } as AuthError
         };
       }
-
-      email = data;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    console.log('[AuthContext] Chamando signInWithPassword...');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    // Inicializar rastreamento de atividade após login bem-sucedido
-    if (!error) {
-      initializeActivity();
+      console.log('[AuthContext] signInWithPassword retornou:', { error: error?.message });
+
+      // Inicializar rastreamento de atividade após login bem-sucedido
+      if (!error) {
+        initializeActivity();
+      }
+
+      return { error };
+    } catch (err: any) {
+      console.error('[AuthContext] Erro no signInWithPassword:', err);
+      return {
+        error: {
+          message: err.message || 'Erro ao fazer login',
+          name: 'AuthError',
+          status: 500
+        } as AuthError
+      };
     }
-
-    return { error };
   };
 
   // Cadastro com username
   const signUp = async (email: string, password: string, nome: string, username: string) => {
-    // Verificar se username já existe
-    const { data: existingUser } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('username', username.toLowerCase())
-      .single();
+    console.log('[AuthContext] signUp iniciado para:', email);
 
-    if (existingUser) {
+    try {
+      // Verificar se username já existe (com timeout de 5 segundos)
+      console.log('[AuthContext] Verificando se username existe...');
+      try {
+        const checkPromise = supabase
+          .from('profiles')
+          .select('username')
+          .eq('username', username.toLowerCase())
+          .maybeSingle();
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout')), 5000)
+        );
+
+        const result = await Promise.race([checkPromise, timeoutPromise]) as any;
+        const { data: existingUser, error: checkError } = result;
+
+        if (checkError) {
+          console.error('[AuthContext] Erro ao verificar username:', checkError);
+        }
+
+        if (existingUser) {
+          console.log('[AuthContext] Username já existe');
+          return {
+            error: new Error('Este nome de usuário já está em uso')
+          };
+        }
+      } catch (checkErr: any) {
+        console.log('[AuthContext] Timeout ou erro na verificação de username, continuando...', checkErr.message);
+        // Continuar mesmo com timeout - o Supabase vai rejeitar se duplicado
+      }
+
+      console.log('[AuthContext] Chamando auth.signUp...');
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            nome: nome,
+            username: username.toLowerCase(),
+          },
+        },
+      });
+
+      console.log('[AuthContext] signUp retornou:', { user: !!data?.user, error: error?.message });
+
+      if (error) {
+        return { error };
+      }
+
+      // Se usuário foi criado, criar o perfil manualmente (caso o trigger não funcione)
+      if (data?.user) {
+        console.log('[AuthContext] Criando perfil para novo usuário...');
+        try {
+          const profilePromise = supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              email: email,
+              nome: nome,
+              username: username.toLowerCase(),
+              role: 'user',
+            }, { onConflict: 'id' });
+
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          );
+
+          const result = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+          if (result.error) {
+            console.error('[AuthContext] Erro ao criar perfil:', result.error);
+          } else {
+            console.log('[AuthContext] Perfil criado com sucesso');
+          }
+        } catch (profileErr: any) {
+          console.log('[AuthContext] Timeout ao criar perfil, mas usuário foi criado:', profileErr.message);
+        }
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      console.error('[AuthContext] Erro no signUp:', err);
       return {
-        error: new Error('Este nome de usuário já está em uso')
+        error: new Error(err.message || 'Erro ao criar conta')
       };
     }
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nome: nome,
-          username: username.toLowerCase(),
-        },
-      },
-    });
-    return { error };
   };
 
   const signOut = async () => {

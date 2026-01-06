@@ -106,8 +106,9 @@ export async function GET(request: Request) {
     if (!isAdmin && userColaboradorId) {
       lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => ({
         ...lanc,
-        // Ocultar valor_comissao se não for o colaborador do lançamento
-        valor_comissao: lanc.colaborador_id === userColaboradorId ? lanc.valor_comissao : null,
+        // Ocultar comissao_colaborador se não for o colaborador do lançamento
+        comissao_colaborador: lanc.colaborador_id === userColaboradorId ? lanc.comissao_colaborador : null,
+        comissao_salao: lanc.colaborador_id === userColaboradorId ? lanc.comissao_salao : null,
         // Flag para indicar se pode ver a comissão
         _canViewComissao: lanc.colaborador_id === userColaboradorId,
       }));
@@ -115,7 +116,8 @@ export async function GET(request: Request) {
       // Usuário sem vínculo não vê nenhuma comissão
       lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => ({
         ...lanc,
-        valor_comissao: null,
+        comissao_colaborador: null,
+        comissao_salao: null,
         _canViewComissao: false,
       }));
     } else {
