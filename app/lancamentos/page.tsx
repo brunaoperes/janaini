@@ -93,13 +93,10 @@ export default function LancamentosPage() {
   }, [selectedFilter]);
 
   async function loadData(retryCount = 0) {
-    console.log('[Lancamentos] Iniciando loadData, filtro:', selectedFilter, 'retry:', retryCount);
     setLoading(true);
 
     try {
-      // Usar API para buscar dados (bypass RLS)
       const url = `/api/lancamentos?filtro=${selectedFilter}&_t=${Date.now()}`;
-      console.log('[Lancamentos] Fazendo fetch:', url);
 
       const response = await fetch(url, {
         cache: 'no-store',
@@ -109,12 +106,8 @@ export default function LancamentosPage() {
         },
       });
 
-      console.log('[Lancamentos] Response status:', response.status);
-
       if (!response.ok) {
-        // Se falhou e ainda tem tentativas, retry após 500ms
         if (retryCount < 2) {
-          console.log('[Lancamentos] Falha, tentando novamente em 500ms...');
           await new Promise(resolve => setTimeout(resolve, 500));
           return loadData(retryCount + 1);
         }
@@ -123,32 +116,19 @@ export default function LancamentosPage() {
 
       const data = await response.json();
 
-      console.log('[Lancamentos] Dados recebidos:', {
-        colaboradores: data.colaboradores?.length || 0,
-        clientes: data.clientes?.length || 0,
-        servicos: data.servicos?.length || 0,
-        formasPagamento: data.formasPagamento?.length || 0,
-        lancamentos: data.lancamentos?.length || 0,
-      });
-
       setColaboradores(data.colaboradores || []);
       setClientes(data.clientes || []);
       setServicos(data.servicos || []);
       setFormasPagamentoDB(data.formasPagamento || []);
       setLancamentos(data.lancamentos || []);
 
-      // Capturar perfil do usuário para controle de comissões
       if (data._userProfile) {
         setUserProfile(data._userProfile);
       }
-
-      console.log('[Lancamentos] Estados atualizados com sucesso');
     } catch (error) {
-      console.error('[Lancamentos] ERRO ao carregar dados:', error);
-      // Mesmo com erro, finaliza o loading para não travar a interface
+      console.error('Erro ao carregar dados:', error);
     } finally {
       setLoading(false);
-      console.log('[Lancamentos] loadData finalizado');
     }
   }
 
@@ -235,11 +215,8 @@ export default function LancamentosPage() {
       };
 
       // Validar com Zod
-      console.log('Dados para validação:', validationData);
       const validation = lancamentoSchema.safeParse(validationData);
-      console.log('Resultado validação:', validation);
       if (!validation.success) {
-        console.error('Erro de validação:', validation.error);
         setFormErrors(formatZodErrors(validation.error));
         setIsSubmitting(false);
         return;
@@ -312,8 +289,7 @@ export default function LancamentosPage() {
       }
 
       if (lancError) {
-        console.error('Erro ao salvar lançamento:', JSON.stringify(lancError, null, 2));
-        console.error('Detalhes:', lancError.message, lancError.details, lancError.hint);
+        console.error('Erro ao salvar lançamento:', lancError.message);
         toast.error(`Erro: ${lancError.message || 'Erro ao salvar lançamento'}`);
         setIsSubmitting(false);
         return;

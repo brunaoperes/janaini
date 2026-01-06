@@ -30,10 +30,7 @@ function fallbackResponse() {
 }
 
 export async function GET(request: Request) {
-  console.log('[API/lancamentos] === INICIO DA REQUISICAO ===');
-
   try {
-    // Criar cliente Supabase com service key
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -41,12 +38,10 @@ export async function GET(request: Request) {
       }
     });
 
-    // Obter parâmetros
     const { searchParams } = new URL(request.url);
     const filtro = searchParams.get('filtro') || 'hoje';
-    console.log('[API/lancamentos] Filtro:', filtro);
 
-    // Tentar obter perfil do usuário (não crítico - pode falhar)
+    // Tentar obter perfil do usuário (não crítico)
     let userProfile: { role?: string; colaborador_id?: number } | null = null;
     try {
       const cookieStore = await cookies();
@@ -68,9 +63,7 @@ export async function GET(request: Request) {
           .single();
         userProfile = profile;
       }
-      console.log('[API/lancamentos] UserProfile obtido:', !!userProfile);
-    } catch (profileError) {
-      console.log('[API/lancamentos] Erro ao obter perfil (não crítico):', profileError);
+    } catch {
       // Continua sem perfil
     }
 
@@ -78,8 +71,6 @@ export async function GET(request: Request) {
     const userColaboradorId = userProfile?.colaborador_id;
 
     // Carregar dados em paralelo
-    console.log('[API/lancamentos] Carregando dados...');
-
     const [colaboradoresRes, clientesRes, servicosRes, formasRes] = await Promise.all([
       supabase.from('colaboradores').select('*').order('nome'),
       supabase.from('clientes').select('*').order('nome'),
@@ -92,13 +83,6 @@ export async function GET(request: Request) {
     const servicos = servicosRes.data || [];
     const formasPagamento = formasRes.data || [];
 
-    console.log('[API/lancamentos] Dados carregados:', {
-      colaboradores: colaboradores.length,
-      clientes: clientes.length,
-      servicos: servicos.length,
-      formasPagamento: formasPagamento.length,
-    });
-
     // Carregar lançamentos
     let query = supabase
       .from('lancamentos')
@@ -108,14 +92,12 @@ export async function GET(request: Request) {
     if (filtro === 'hoje') {
       // Usar timezone de Brasília (UTC-3)
       const now = new Date();
-      const brasiliaOffset = -3 * 60; // -3 horas em minutos
+      const brasiliaOffset = -3 * 60;
       const brasiliaTime = new Date(now.getTime() + (now.getTimezoneOffset() + brasiliaOffset) * 60000);
 
       const hojeStr = `${brasiliaTime.getFullYear()}-${String(brasiliaTime.getMonth() + 1).padStart(2, '0')}-${String(brasiliaTime.getDate()).padStart(2, '0')}`;
       const inicioHoje = `${hojeStr}T00:00:00`;
       const fimHoje = `${hojeStr}T23:59:59`;
-
-      console.log('[API/lancamentos] Filtro hoje:', { inicioHoje, fimHoje });
 
       query = query.gte('data', inicioHoje).lte('data', fimHoje);
     } else if (filtro === 'pendentes') {
@@ -125,7 +107,7 @@ export async function GET(request: Request) {
     const { data: lancamentos, error: lancError } = await query.limit(100);
 
     if (lancError) {
-      console.error('[API/lancamentos] Erro lançamentos:', lancError);
+      console.error('[API/lancamentos] Erro:', lancError);
     }
 
     // Filtrar comissões baseado nas permissões
@@ -151,8 +133,6 @@ export async function GET(request: Request) {
       }));
     }
 
-    console.log('[API/lancamentos] === SUCESSO ===');
-
     return NextResponse.json({
       lancamentos: lancamentosFiltrados,
       colaboradores,
@@ -170,10 +150,7 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('[API/lancamentos] === ERRO FATAL ===', error?.message || error);
-    console.error('[API/lancamentos] Stack:', error?.stack);
-
-    // Retornar resposta de fallback em vez de 500
+    console.error('[API/lancamentos] Erro fatal:', error?.message || error);
     return fallbackResponse();
   }
 }

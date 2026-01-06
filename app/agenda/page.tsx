@@ -319,17 +319,6 @@ export default function AgendaPage() {
     const minutos = minutosDesdeMeiaNoite % 60;
 
     const resultado = `${String(hora).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:00`;
-
-    console.log('⏰ calcularNovoHorario:', {
-      clientX,
-      timelineLeft: timelineRect.left,
-      timelineWidth: timelineRect.width,
-      posicaoRelativa: posicaoRelativa.toFixed(3),
-      minutosDesdeInicio: minutosDesdeInicio.toFixed(2),
-      minutosSnap,
-      resultado,
-    });
-
     return resultado;
   };
 
@@ -397,17 +386,7 @@ export default function AgendaPage() {
     const { linhaIndex, colaboradorId } = detectarLinhaColaborador(e.clientY, timelineContainer as HTMLElement);
 
     if (colaboradorId !== -1) {
-      // Posição visual: onde o MOUSE está (linha acompanha o mouse)
       const posicaoX = ((e.clientX - timelineAreaLeft) / timelineAreaWidth) * 100;
-
-      console.log('🔍 DRAG ANÁLISE:', {
-        mouseX: e.clientX,
-        timelineAreaLeft,
-        timelineAreaWidth,
-        posicaoX: posicaoX.toFixed(2) + '%',
-        horarioMouse,
-        horarioCard,
-      });
 
       setDragPreview({
         novoHorario: horarioCard, // Salva o horário do início do card
@@ -463,10 +442,7 @@ export default function AgendaPage() {
   // Calcular nova duração baseada na posição do mouse na timeline
   const calcularNovaDuracao = (clientX: number, agendamento: Agendamento, cardElement: HTMLElement) => {
     const timelineContainer = document.querySelector('[data-timeline-container]');
-    if (!timelineContainer) {
-      console.log('❌ Timeline container não encontrado');
-      return null;
-    }
+    if (!timelineContainer) return null;
 
     const timelineRect = timelineContainer.getBoundingClientRect();
     const cardRect = cardElement.getBoundingClientRect();
@@ -501,10 +477,6 @@ export default function AgendaPage() {
     e.preventDefault();
     e.stopPropagation();
 
-    console.log('========== RESIZE START ==========');
-    console.log('Agendamento:', agendamento.id, agendamento.descricao_servico);
-    console.log('Duração atual do agendamento:', agendamento.duracao_minutos, 'minutos');
-
     setResizingAgendamento(agendamento);
     setIsResizing(true);
 
@@ -512,7 +484,6 @@ export default function AgendaPage() {
     const cardElement = document.querySelector(`[data-agendamento-id="${agendamento.id}"]`) as HTMLElement;
 
     if (!timelineContainer || !cardElement) {
-      console.log('❌ Elementos não encontrados');
       setIsResizing(false);
       setResizingAgendamento(null);
       return;
@@ -520,18 +491,6 @@ export default function AgendaPage() {
 
     const timelineRect = timelineContainer.getBoundingClientRect();
     const cardRect = cardElement.getBoundingClientRect();
-
-    console.log('Timeline rect:', {
-      left: timelineRect.left,
-      right: timelineRect.right,
-      width: timelineRect.width
-    });
-
-    console.log('Card rect:', {
-      left: cardRect.left,
-      right: cardRect.right,
-      width: cardRect.width
-    });
 
     // Timeline tem 16 horas (06:00 às 22:00) = 960 minutos
     const totalMinutosTimeline = 16 * 60;
@@ -564,16 +523,6 @@ export default function AgendaPage() {
     // Posição inicial do mouse (para calcular delta)
     const initialMouseX = e.clientX;
 
-    console.log('Cálculos iniciais:', {
-      duracaoMinutos,
-      horaInicio: `${horaInicio}:${minutoInicio.toString().padStart(2, '0')}`,
-      minutosInicioAgendamento,
-      cardLeftPercent: cardLeftPercent.toFixed(2) + '%',
-      cardStartX: cardStartX.toFixed(2),
-      initialMouseX,
-      timelineWidth: timelineRect.width.toFixed(2)
-    });
-
     // Variável para armazenar o último resultado
     let ultimoResultado: { novaDuracao: number; larguraPercent: number } | null = null;
     let moveCount = 0;
@@ -600,17 +549,6 @@ export default function AgendaPage() {
 
       // Snap para intervalos de 15 minutos (só para salvar)
       const duracaoSnap = Math.max(15, Math.round(novaDuracaoMinutos / 15) * 15);
-
-      if (moveCount <= 5 || moveCount % 20 === 0) {
-        console.log(`Move #${moveCount}:`, {
-          deltaX: deltaX.toFixed(2),
-          larguraInicialPx: larguraInicialPx.toFixed(2),
-          newCardWidthPx: newCardWidthPx.toFixed(2),
-          larguraPercent: larguraPercent.toFixed(2) + '%',
-          novaDuracaoMinutos: novaDuracaoMinutos.toFixed(0),
-          duracaoSnap
-        });
-      }
 
       const resultado = {
         novaDuracao: duracaoSnap,
@@ -661,14 +599,6 @@ export default function AgendaPage() {
         const minutosFim = hInicio * 60 + mInicio + duracaoSnap;
         const horaFim = `${Math.floor(minutosFim / 60).toString().padStart(2, '0')}:${(minutosFim % 60).toString().padStart(2, '0')}`;
 
-        console.log('=== RESIZE DEBUG ===');
-        console.log('Agendamento ID:', agendamento.id);
-        console.log('Lancamento ID:', agendamento.lancamento_id);
-        console.log('data_hora original:', dataHoraStr);
-        console.log('Hora início extraída:', horaInicio);
-        console.log('Duração:', duracaoSnap, 'minutos');
-        console.log('Hora fim calculada:', horaFim);
-
         // Atualizar lançamento vinculado (se existir)
         if (agendamento.lancamento_id) {
           const { error: lancError } = await supabase
@@ -678,11 +608,7 @@ export default function AgendaPage() {
 
           if (lancError) {
             console.error('Erro ao atualizar lançamento:', lancError);
-          } else {
-            console.log('Lançamento atualizado com hora_fim:', horaFim);
           }
-        } else {
-          console.log('Agendamento não tem lancamento_id vinculado');
         }
 
         alert(`✅ Duração ajustada para ${duracaoSnap} minutos (${horaInicio} - ${horaFim})`);
