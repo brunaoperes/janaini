@@ -17,20 +17,30 @@ interface Usuario {
   username: string;
   nome: string;
   role: 'admin' | 'user';
+  colaborador_id: number | null;
+  colaborador_nome: string | null;
   created_at: string;
-  last_sign_in: string | null;
-  email_confirmed: boolean;
+  last_sign_in_at: string | null;
+}
+
+interface Colaborador {
+  id: number;
+  nome: string;
 }
 
 export default function UsuariosPage() {
   const { isAdmin, loading: authLoading } = useAuth();
   const router = useRouter();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showColaboradorModal, setShowColaboradorModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<Usuario | null>(null);
+  const [selectedColaboradorId, setSelectedColaboradorId] = useState<number | null>(null);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [savingColaborador, setSavingColaborador] = useState(false);
 
   useEffect(() => {
     console.log('Auth state:', { authLoading, isAdmin });
@@ -42,7 +52,26 @@ export default function UsuariosPage() {
 
     console.log('Loading usuarios...');
     loadUsuarios();
+    loadColaboradores();
   }, [authLoading, isAdmin]);
+
+  const loadColaboradores = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('colaboradores')
+        .select('id, nome')
+        .order('nome');
+
+      if (error) {
+        console.error('Erro ao carregar colaboradores:', error);
+        return;
+      }
+
+      setColaboradores(data || []);
+    } catch (err) {
+      console.error('Erro:', err);
+    }
+  };
 
   const loadUsuarios = async () => {
     console.log('Chamando list_all_users...');
@@ -144,6 +173,40 @@ export default function UsuariosPage() {
     }
   };
 
+  const handleUpdateColaborador = async () => {
+    if (!selectedUser) return;
+
+    setSavingColaborador(true);
+    try {
+      const { error } = await supabase.rpc('update_user_colaborador', {
+        p_user_id: selectedUser.id,
+        p_colaborador_id: selectedColaboradorId
+      });
+
+      if (error) {
+        toast.error(error.message || 'Erro ao vincular colaborador');
+        return;
+      }
+
+      const colaboradorNome = colaboradores.find(c => c.id === selectedColaboradorId)?.nome || null;
+
+      toast.success('Colaborador vinculado com sucesso');
+      setUsuarios(usuarios.map(u =>
+        u.id === selectedUser.id
+          ? { ...u, colaborador_id: selectedColaboradorId, colaborador_nome: colaboradorNome }
+          : u
+      ));
+    } catch (err) {
+      console.error('Erro:', err);
+      toast.error('Erro ao vincular colaborador');
+    } finally {
+      setSavingColaborador(false);
+      setShowColaboradorModal(false);
+      setSelectedUser(null);
+      setSelectedColaboradorId(null);
+    }
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Nunca';
     return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
@@ -191,7 +254,7 @@ export default function UsuariosPage() {
                   <th className="px-6 py-4 text-left text-sm font-semibold">Usuário</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold">Email</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold">Permissão</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Cadastro</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold">Colaborador</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold">Último Acesso</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
                 </tr>
@@ -215,14 +278,33 @@ export default function UsuariosPage() {
                         {usuario.role === 'admin' ? 'Administrador' : 'Usuário'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {formatDate(usuario.created_at)}
+                    <td className="px-6 py-4">
+                      {usuario.colaborador_nome ? (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-pink-100 text-pink-700">
+                          {usuario.colaborador_nome}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">Não vinculado</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {formatDate(usuario.last_sign_in)}
+                      {formatDate(usuario.last_sign_in_at)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedUser(usuario);
+                            setSelectedColaboradorId(usuario.colaborador_id);
+                            setShowColaboradorModal(true);
+                          }}
+                          className="p-2 text-pink-600 hover:bg-pink-100 rounded-lg transition-colors"
+                          title="Vincular colaborador"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </button>
                         <button
                           onClick={() => {
                             setSelectedUser(usuario);
@@ -235,7 +317,7 @@ export default function UsuariosPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                           </svg>
                         </button>
-                        {!usuario.last_sign_in && (
+                        {!usuario.last_sign_in_at && (
                           <button
                             onClick={() => handleResendEmail(usuario)}
                             disabled={sendingEmail === usuario.id}
@@ -335,6 +417,61 @@ export default function UsuariosPage() {
                   </div>
                 </div>
               </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Modal de Vincular Colaborador */}
+        <Modal
+          isOpen={showColaboradorModal}
+          onClose={() => {
+            setShowColaboradorModal(false);
+            setSelectedUser(null);
+            setSelectedColaboradorId(null);
+          }}
+          title="Vincular Colaborador"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Vincular <strong>{selectedUser?.nome}</strong> a uma colaboradora:
+            </p>
+            <p className="text-sm text-gray-500">
+              Isso permite que o usuário veja apenas suas próprias comissões.
+            </p>
+
+            <select
+              value={selectedColaboradorId ?? ''}
+              onChange={(e) => setSelectedColaboradorId(e.target.value ? parseInt(e.target.value, 10) : null)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+            >
+              <option value="">Sem vínculo</option>
+              {colaboradores.map((colab) => (
+                <option key={colab.id} value={colab.id}>
+                  {colab.nome}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowColaboradorModal(false);
+                  setSelectedUser(null);
+                  setSelectedColaboradorId(null);
+                }}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpdateColaborador}
+                disabled={savingColaborador}
+                className="flex-1"
+              >
+                {savingColaborador ? 'Salvando...' : 'Salvar'}
+              </Button>
             </div>
           </div>
         </Modal>

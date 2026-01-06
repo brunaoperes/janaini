@@ -123,6 +123,45 @@ export default function AgendaPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Atualizar status dos agendamentos automaticamente
+  // Quando o horário chegar, muda de "pendente" para "executando"
+  useEffect(() => {
+    const atualizarStatusAgendamentos = async () => {
+      const agora = new Date();
+      const hoje = format(agora, 'yyyy-MM-dd');
+
+      // Só atualiza se estiver vendo o dia de hoje
+      if (selectedDate !== hoje) return;
+
+      // Filtrar agendamentos pendentes cujo horário já passou
+      const agendamentosParaAtualizar = agendamentos.filter(ag => {
+        if (ag.status !== 'pendente') return false;
+
+        const dataHoraAgendamento = parseAsLocalTime(ag.data_hora);
+        return dataHoraAgendamento <= agora;
+      });
+
+      // Atualizar status para "executando"
+      for (const ag of agendamentosParaAtualizar) {
+        await supabase
+          .from('agendamentos')
+          .update({ status: 'executando' })
+          .eq('id', ag.id);
+      }
+
+      // Se atualizou algum, recarregar dados
+      if (agendamentosParaAtualizar.length > 0) {
+        loadData();
+      }
+    };
+
+    // Executar imediatamente e a cada minuto
+    atualizarStatusAgendamentos();
+    const timer = setInterval(atualizarStatusAgendamentos, 60000);
+
+    return () => clearInterval(timer);
+  }, [agendamentos, selectedDate]);
+
   useEffect(() => {
     loadData();
     // Atualizar data do formulário quando a data selecionada mudar
@@ -132,49 +171,23 @@ export default function AgendaPage() {
   const loadData = async () => {
     setLoading(true);
 
-    const { data: colabData } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .order('nome');
+    try {
+      // Usar API para buscar dados (bypass RLS)
+      const response = await fetch(`/api/agenda?data=${selectedDate}`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar dados');
+      }
+      const data = await response.json();
 
-    const { data: clienteData } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('nome');
-
-    const { data: servicoData } = await supabase
-      .from('servicos')
-      .select('*')
-      .eq('ativo', true) // Apenas serviços ativos
-      .order('nome');
-
-    // Buscar todos os agendamentos do dia selecionado
-    // Formato: YYYY-MM-DD 00:00:00 (sem timezone)
-    const startDate = `${selectedDate} 00:00:00`;
-    const endDate = `${selectedDate} 23:59:59`;
-
-    const { data: agendData, error } = await supabase
-      .from('agendamentos')
-      .select(`
-        *,
-        clientes!fk_agendamentos_cliente(*),
-        colaboradores!fk_agendamentos_colaborador(*)
-      `)
-      .gte('data_hora', startDate)
-      .lte('data_hora', endDate)
-      .order('data_hora');
-
-    if (error) {
-      console.error('Erro ao buscar agendamentos:', error);
-      console.error('Detalhes do erro:', JSON.stringify(error, null, 2));
+      setColaboradores(data.colaboradores || []);
+      setClientes(data.clientes || []);
+      setServicos(data.servicos || []);
+      setAgendamentos(data.agendamentos || []);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+    } finally {
+      setLoading(false);
     }
-
-    if (colabData) setColaboradores(colabData);
-    if (clienteData) setClientes(clienteData);
-    if (servicoData) setServicos(servicoData);
-    if (agendData) setAgendamentos(agendData);
-
-    setLoading(false);
   };
 
   // Gera horários de 06:00 às 22:00 (apenas horários inteiros)
@@ -799,8 +812,8 @@ export default function AgendaPage() {
 
   // Finalizar agendamento (marcar como concluído)
   const finalizarAgendamento = async () => {
-    if (!selectedAgendamento || !selectedAgendamento.lancamento_id) {
-      alert('❌ Este agendamento não possui lançamento vinculado');
+    if (!selectedAgendamento) {
+      alert('❌ Nenhum agendamento selecionado');
       return;
     }
 
@@ -810,42 +823,106 @@ export default function AgendaPage() {
     }
 
     try {
-      // Buscar o lançamento para pegar a porcentagem de comissão
-      const { data: lancamento } = await supabase
-        .from('lancamentos')
-        .select('*, colaboradores(porcentagem_comissao)')
-        .eq('id', selectedAgendamento.lancamento_id)
+      const valorPago = parseFloat(finalizarData.valor_pago);
+      let lancamentoId = selectedAgendamento.lancamento_id;
+
+      // Buscar taxa da forma de pagamento
+      const { data: formaPagamento } = await supabase
+        .from('formas_pagamento')
+        .select('taxa_percentual')
+        .eq('codigo', finalizarData.forma_pagamento)
         .single();
 
-      const valorPago = parseFloat(finalizarData.valor_pago);
-      const porcentagem = lancamento?.colaboradores?.porcentagem_comissao || 50;
-      const comissaoColaborador = (valorPago * porcentagem) / 100;
-      const comissaoSalao = valorPago - comissaoColaborador;
+      const taxaPercentual = formaPagamento?.taxa_percentual || 0;
+      const valorTaxa = (valorPago * taxaPercentual) / 100;
 
-      // Atualizar lançamento
-      const { error: lancError } = await supabase
-        .from('lancamentos')
-        .update({
-          status: 'concluido',
-          forma_pagamento: finalizarData.forma_pagamento,
-          valor_total: valorPago,
-          comissao_colaborador: comissaoColaborador,
-          comissao_salao: comissaoSalao,
-          data_pagamento: new Date().toISOString(),
-        })
-        .eq('id', selectedAgendamento.lancamento_id);
+      // Se o agendamento já tem lançamento vinculado, atualizar
+      if (lancamentoId) {
+        // Buscar o lançamento para pegar a porcentagem de comissão
+        const { data: lancamento } = await supabase
+          .from('lancamentos')
+          .select('*, colaboradores(porcentagem_comissao)')
+          .eq('id', lancamentoId)
+          .single();
 
-      if (lancError) throw lancError;
+        const porcentagem = lancamento?.colaboradores?.porcentagem_comissao || 50;
+        const comissaoBruta = (valorPago * porcentagem) / 100;
+        // Taxa é descontada da comissão do colaborador
+        const comissaoColaborador = comissaoBruta - valorTaxa;
+        const comissaoSalao = valorPago - comissaoBruta;
 
-      // Atualizar agendamento
+        // Atualizar lançamento existente
+        const { error: lancError } = await supabase
+          .from('lancamentos')
+          .update({
+            status: 'concluido',
+            forma_pagamento: finalizarData.forma_pagamento,
+            valor_total: valorPago,
+            comissao_colaborador: comissaoColaborador,
+            comissao_salao: comissaoSalao,
+            taxa_pagamento: valorTaxa,
+            data_pagamento: new Date().toISOString(),
+          })
+          .eq('id', lancamentoId);
+
+        if (lancError) throw lancError;
+      } else {
+        // Se não tem lançamento, criar um novo
+        // Buscar porcentagem do colaborador
+        const { data: colaborador } = await supabase
+          .from('colaboradores')
+          .select('porcentagem_comissao')
+          .eq('id', selectedAgendamento.colaborador_id)
+          .single();
+
+        const porcentagem = colaborador?.porcentagem_comissao || 50;
+        const comissaoBruta = (valorPago * porcentagem) / 100;
+        // Taxa é descontada da comissão do colaborador
+        const comissaoColaborador = comissaoBruta - valorTaxa;
+        const comissaoSalao = valorPago - comissaoBruta;
+
+        // Criar novo lançamento
+        // Usar a data/hora do agendamento para o lançamento
+        const dataAgendamento = selectedAgendamento.data_hora.split('T')[0];
+        const horaAgendamento = selectedAgendamento.data_hora.split('T')[1]?.substring(0, 5) || '00:00';
+        const dataLancamento = `${dataAgendamento}T${horaAgendamento}:00`;
+
+        const { data: novoLancamento, error: lancError } = await supabase
+          .from('lancamentos')
+          .insert({
+            colaborador_id: selectedAgendamento.colaborador_id,
+            cliente_id: selectedAgendamento.cliente_id,
+            servicos_nomes: selectedAgendamento.descricao_servico,
+            valor_total: valorPago,
+            forma_pagamento: finalizarData.forma_pagamento,
+            status: 'concluido',
+            comissao_colaborador: comissaoColaborador,
+            comissao_salao: comissaoSalao,
+            taxa_pagamento: valorTaxa,
+            data: dataLancamento,
+            hora_inicio: horaAgendamento,
+            data_pagamento: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (lancError) throw lancError;
+        lancamentoId = novoLancamento.id;
+      }
+
+      // Atualizar agendamento com status e vincular ao lançamento
       const { error: agendError } = await supabase
         .from('agendamentos')
-        .update({ status: 'concluido' })
+        .update({
+          status: 'concluido',
+          lancamento_id: lancamentoId
+        })
         .eq('id', selectedAgendamento.id);
 
       if (agendError) throw agendError;
 
-      alert('✅ Serviço concluído com sucesso!');
+      const msgTaxa = taxaPercentual > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
+      alert(`✅ Serviço concluído com sucesso!${msgTaxa}`);
       setSelectedAgendamento(null);
       setIsFinalizando(false);
       setFinalizarData({ forma_pagamento: 'pix', valor_pago: '' });
@@ -1221,6 +1298,14 @@ export default function AgendaPage() {
                           ? `${resizePreview.larguraPercent}%`
                           : posicao.width;
 
+                        // Cores baseadas no status
+                        const statusColors = {
+                          concluido: { gradient: 'from-green-400 to-green-600', shadow: 'shadow-green-500/20' },
+                          executando: { gradient: 'from-blue-400 to-blue-600', shadow: 'shadow-blue-500/20' },
+                          pendente: color, // Usa a cor do colaborador
+                        };
+                        const cardColor = statusColors[agendamento.status as keyof typeof statusColors] || color;
+
                         return (
                           <div
                             key={agendamento.id}
@@ -1244,8 +1329,8 @@ export default function AgendaPage() {
                             <div
                               className={`
                                 relative h-full rounded-xl overflow-hidden
-                                bg-gradient-to-r ${color.gradient}
-                                shadow-xl ${color.shadow}
+                                bg-gradient-to-r ${cardColor.gradient}
+                                shadow-xl ${cardColor.shadow}
                                 transition-all duration-300
                                 ${isHovered ? 'scale-105 shadow-2xl z-20 ring-2 ring-white/50' : 'scale-100 shadow-lg'}
                               `}
@@ -1935,10 +2020,16 @@ export default function AgendaPage() {
                     <div className={`bg-white rounded-xl p-4 border-2 transition-colors col-span-2 ${
                       selectedAgendamento.status === 'concluido'
                         ? 'border-green-300 bg-green-50'
-                        : 'border-yellow-200 bg-yellow-50'
+                        : selectedAgendamento.status === 'executando'
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-yellow-200 bg-yellow-50'
                     }`}>
                       <label className={`text-xs font-bold uppercase tracking-wide flex items-center gap-1 ${
-                        selectedAgendamento.status === 'concluido' ? 'text-green-600' : 'text-yellow-600'
+                        selectedAgendamento.status === 'concluido'
+                          ? 'text-green-600'
+                          : selectedAgendamento.status === 'executando'
+                            ? 'text-blue-600'
+                            : 'text-yellow-600'
                       }`}>
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1946,9 +2037,17 @@ export default function AgendaPage() {
                         Status
                       </label>
                       <div className={`mt-2 text-sm font-semibold ${
-                        selectedAgendamento.status === 'concluido' ? 'text-green-600' : 'text-yellow-600'
+                        selectedAgendamento.status === 'concluido'
+                          ? 'text-green-600'
+                          : selectedAgendamento.status === 'executando'
+                            ? 'text-blue-600'
+                            : 'text-yellow-600'
                       }`}>
-                        {selectedAgendamento.status === 'concluido' ? '✅ Concluído' : '⏳ Pendente'}
+                        {selectedAgendamento.status === 'concluido'
+                          ? '✅ Concluído'
+                          : selectedAgendamento.status === 'executando'
+                            ? '🔄 Executando'
+                            : '⏳ Pendente'}
                       </div>
                     </div>
                   </div>
@@ -1966,8 +2065,8 @@ export default function AgendaPage() {
                     </div>
                   </div>
 
-                  {/* Bloco Finalizar Serviço */}
-                  {selectedAgendamento.lancamento_id && selectedAgendamento.status !== 'concluido' && (
+                  {/* Bloco Finalizar Serviço - disponível para TODOS os agendamentos pendentes */}
+                  {selectedAgendamento.status !== 'concluido' && (
                     <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border-2 border-green-200">
                       <div className="flex items-center justify-between mb-4">
                         <label className="text-sm font-bold text-green-700 flex items-center gap-2">

@@ -28,66 +28,72 @@ export default function ClientesAdminPage() {
   const loadClientes = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('nome');
+    try {
+      const response = await fetch('/api/admin?tabela=clientes');
+      const result = await response.json();
 
-    if (data && !error) {
-      setClientes(data);
-      await loadStats(data);
+      if (result.data) {
+        setClientes(result.data);
+        await loadStats(result.data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error);
     }
     setLoading(false);
   };
 
   const loadStats = async (clientes: Cliente[]) => {
-    // Carregar lançamentos para cada cliente
-    const { data: lancamentos } = await supabase
-      .from('lancamentos')
-      .select('*');
+    try {
+      // Carregar lançamentos para cada cliente
+      const lancResponse = await fetch('/api/admin?tabela=lancamentos');
+      const lancResult = await lancResponse.json();
+      const lancamentos = lancResult.data || [];
 
-    // Carregar agendamentos para cada cliente
-    const { data: agendamentos } = await supabase
-      .from('agendamentos')
-      .select('*');
+      // Carregar agendamentos para cada cliente
+      const agendResponse = await fetch('/api/admin?tabela=agendamentos');
+      const agendResult = await agendResponse.json();
+      const agendamentos = agendResult.data || [];
 
-    const statsMap: any = {};
+      const statsMap: any = {};
 
-    clientes.forEach((cliente) => {
-      const lancamentosCliente = lancamentos?.filter((l) => l.cliente_id === cliente.id) || [];
-      const agendamentosCliente = agendamentos?.filter((a) => a.cliente_id === cliente.id) || [];
+      clientes.forEach((cliente) => {
+        const lancamentosCliente = lancamentos?.filter((l: any) => l.cliente_id === cliente.id) || [];
+        const agendamentosCliente = agendamentos?.filter((a: any) => a.cliente_id === cliente.id) || [];
 
-      // Último lançamento (atendimento concluído)
-      const ultimoLancamento = lancamentosCliente.length > 0
-        ? lancamentosCliente.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())[0]
-        : null;
+        // Último lançamento (atendimento concluído)
+        const ultimoLancamento = lancamentosCliente.length > 0
+          ? lancamentosCliente.sort((a: any, b: any) => new Date(b.data).getTime() - new Date(a.data).getTime())[0]
+          : null;
 
-      // Último agendamento (pode ser pendente ou concluído)
-      const ultimoAgendamento = agendamentosCliente.length > 0
-        ? agendamentosCliente.sort((a, b) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime())[0]
-        : null;
+        // Último agendamento (pode ser pendente ou concluído)
+        const ultimoAgendamento = agendamentosCliente.length > 0
+          ? agendamentosCliente.sort((a: any, b: any) => new Date(b.data_hora).getTime() - new Date(a.data_hora).getTime())[0]
+          : null;
 
-      // Usar a data mais recente entre lançamento e agendamento
-      let ultimaVisita = null;
-      if (ultimoLancamento && ultimoAgendamento) {
-        const dataLanc = new Date(ultimoLancamento.data).getTime();
-        const dataAgend = new Date(ultimoAgendamento.data_hora).getTime();
-        ultimaVisita = dataLanc > dataAgend ? ultimoLancamento.data : ultimoAgendamento.data_hora.split('T')[0];
-      } else if (ultimoLancamento) {
-        ultimaVisita = ultimoLancamento.data;
-      } else if (ultimoAgendamento) {
-        ultimaVisita = ultimoAgendamento.data_hora.split('T')[0];
-      }
+        // Usar a data mais recente entre lançamento e agendamento
+        let ultimaVisita = null;
+        if (ultimoLancamento && ultimoAgendamento) {
+          const dataLanc = new Date(ultimoLancamento.data).getTime();
+          const dataAgend = new Date(ultimoAgendamento.data_hora).getTime();
+          ultimaVisita = dataLanc > dataAgend ? ultimoLancamento.data : ultimoAgendamento.data_hora.split('T')[0];
+        } else if (ultimoLancamento) {
+          ultimaVisita = ultimoLancamento.data;
+        } else if (ultimoAgendamento) {
+          ultimaVisita = ultimoAgendamento.data_hora.split('T')[0];
+        }
 
-      statsMap[cliente.id] = {
-        totalAtendimentos: lancamentosCliente.length,
-        totalAgendamentos: agendamentosCliente.length,
-        totalGasto: lancamentosCliente.reduce((sum, l) => sum + l.valor_total, 0),
-        ultimoAtendimento: ultimaVisita,
-      };
-    });
+        statsMap[cliente.id] = {
+          totalAtendimentos: lancamentosCliente.length,
+          totalAgendamentos: agendamentosCliente.length,
+          totalGasto: lancamentosCliente.reduce((sum: number, l: any) => sum + l.valor_total, 0),
+          ultimoAtendimento: ultimaVisita,
+        };
+      });
 
-    setClientesStats(statsMap);
+      setClientesStats(statsMap);
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+    }
   };
 
   const handleSubmit = async () => {
@@ -96,32 +102,47 @@ export default function ClientesAdminPage() {
       return;
     }
 
-    if (editingCliente) {
-      const { error } = await supabase
-        .from('clientes')
-        .update(formData)
-        .eq('id', editingCliente.id);
+    try {
+      if (editingCliente) {
+        const response = await fetch('/api/admin', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'clientes', id: editingCliente.id, dados: formData }),
+        });
 
-      if (!error) {
-        loadClientes();
-        closeModal();
-      }
-    } else {
-      const { error } = await supabase.from('clientes').insert(formData);
+        if (response.ok) {
+          loadClientes();
+          closeModal();
+        }
+      } else {
+        const response = await fetch('/api/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'clientes', dados: formData }),
+        });
 
-      if (!error) {
-        loadClientes();
-        closeModal();
+        if (response.ok) {
+          loadClientes();
+          closeModal();
+        }
       }
+    } catch (error) {
+      console.error('Erro ao salvar cliente:', error);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (confirm('Tem certeza que deseja excluir este cliente?')) {
-      const { error } = await supabase.from('clientes').delete().eq('id', id);
+      try {
+        const response = await fetch(`/api/admin?tabela=clientes&id=${id}`, {
+          method: 'DELETE',
+        });
 
-      if (!error) {
-        loadClientes();
+        if (response.ok) {
+          loadClientes();
+        }
+      } catch (error) {
+        console.error('Erro ao excluir cliente:', error);
       }
     }
   };

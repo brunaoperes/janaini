@@ -27,6 +27,12 @@ interface LancamentoComRelacoes {
   observacoes: string | null;
   colaboradores?: { nome: string; porcentagem_comissao: number } | null;
   clientes?: { nome: string } | null;
+  _canViewComissao?: boolean;
+}
+
+interface UserProfile {
+  isAdmin: boolean;
+  colaboradorId: number | null;
 }
 
 const FORMAS_PAGAMENTO = [
@@ -37,11 +43,21 @@ const FORMAS_PAGAMENTO = [
 ];
 
 
+interface FormaPagamentoDB {
+  id: number;
+  nome: string;
+  codigo: string;
+  icone: string;
+  taxa_percentual: number;
+  ativo: boolean;
+}
+
 export default function LancamentosPage() {
   const [lancamentos, setLancamentos] = useState<LancamentoComRelacoes[]>([]);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [formasPagamentoDB, setFormasPagamentoDB] = useState<FormaPagamentoDB[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [formErrors, setFormErrors] = useState<string>('');
@@ -69,6 +85,7 @@ export default function LancamentosPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [jaRealizado, setJaRealizado] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     loadData();
@@ -77,71 +94,29 @@ export default function LancamentosPage() {
   async function loadData() {
     setLoading(true);
 
-    // Carregar colaboradores
-    const { data: colabData } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .order('nome');
-    if (colabData) setColaboradores(colabData);
+    try {
+      // Usar API para buscar dados (bypass RLS)
+      const response = await fetch(`/api/lancamentos?filtro=${selectedFilter}`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar dados');
+      }
+      const data = await response.json();
 
-    // Carregar clientes
-    const { data: clienteData } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('nome');
-    if (clienteData) setClientes(clienteData);
+      setColaboradores(data.colaboradores || []);
+      setClientes(data.clientes || []);
+      setServicos(data.servicos || []);
+      setFormasPagamentoDB(data.formasPagamento || []);
+      setLancamentos(data.lancamentos || []);
 
-    // Carregar serviços ativos
-    const { data: servicoData } = await supabase
-      .from('servicos')
-      .select('*')
-      .eq('ativo', true)
-      .order('nome');
-    if (servicoData) setServicos(servicoData);
-
-    // Carregar lançamentos
-    console.log('=== CARREGANDO LANÇAMENTOS ===');
-    console.log('Filtro selecionado:', selectedFilter);
-
-    // Query simples primeiro para testar
-    const { data: testData, error: testError } = await supabase
-      .from('lancamentos')
-      .select('*')
-      .limit(10);
-
-    console.log('Teste simples:', { testData, testError });
-
-    // Query sem joins por enquanto
-    let query = supabase
-      .from('lancamentos')
-      .select('*')
-      .order('data', { ascending: false });
-
-    if (selectedFilter === 'hoje') {
-      const hoje = format(new Date(), 'yyyy-MM-dd');
-      console.log('Filtrando por hoje:', hoje);
-      query = query.gte('data', `${hoje}T00:00:00`).lte('data', `${hoje}T23:59:59`);
-    } else if (selectedFilter === 'pendentes') {
-      console.log('Filtrando por pendentes');
-      query = query.eq('status', 'pendente');
-    } else {
-      console.log('Sem filtro (todos)');
+      // Capturar perfil do usuário para controle de comissões
+      if (data._userProfile) {
+        setUserProfile(data._userProfile);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+    } finally {
+      setLoading(false);
     }
-
-    const { data: lancData, error: lancError } = await query.limit(100);
-
-    console.log('Resultado da query com joins:');
-    console.log('- Erro:', lancError);
-    console.log('- Dados:', lancData);
-    console.log('- Quantidade:', lancData?.length || 0);
-
-    if (lancError) {
-      console.error('Erro ao carregar lançamentos:', JSON.stringify(lancError));
-    }
-
-    if (lancData) setLancamentos(lancData);
-
-    setLoading(false);
   }
 
   // Calcular valor total baseado nos serviços selecionados
@@ -237,10 +212,25 @@ export default function LancamentosPage() {
         return;
       }
 
-      // Calcular comissões
+      // Buscar taxa da forma de pagamento (se já realizado)
+      let taxaPercentual = 0;
+      let valorTaxa = 0;
+      if (jaRealizado && formData.forma_pagamento) {
+        const { data: formaPagamento } = await supabase
+          .from('formas_pagamento')
+          .select('taxa_percentual')
+          .eq('codigo', formData.forma_pagamento)
+          .single();
+
+        taxaPercentual = formaPagamento?.taxa_percentual || 0;
+        valorTaxa = (validationData.valor_total * taxaPercentual) / 100;
+      }
+
+      // Calcular comissões (taxa é descontada da comissão do colaborador)
       const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
-      const comissaoColaborador = (validationData.valor_total * porcentagem) / 100;
-      const comissaoSalao = validationData.valor_total - comissaoColaborador;
+      const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
+      const comissaoColaborador = comissaoBruta - valorTaxa;
+      const comissaoSalao = validationData.valor_total - comissaoBruta;
 
       // Montar data/hora completa (garantir formato HH:MM:SS)
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
@@ -252,6 +242,7 @@ export default function LancamentosPage() {
         valor_total: validationData.valor_total,
         comissao_colaborador: comissaoColaborador,
         comissao_salao: comissaoSalao,
+        taxa_pagamento: valorTaxa,
         data: dataCompleta,
         hora_inicio: formData.hora_inicio,
         hora_fim: formData.hora_fim,
@@ -336,7 +327,8 @@ export default function LancamentosPage() {
         }
       }
 
-      toast.success(editingId ? 'Lançamento atualizado!' : 'Lançamento criado com sucesso!');
+      const msgTaxa = valorTaxa > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
+      toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgTaxa);
       setShowModal(false);
       resetForm();
       loadData();
@@ -663,7 +655,11 @@ export default function LancamentosPage() {
                   >
                     <option value="">Selecione...</option>
                     {colaboradores.map(c => (
-                      <option key={c.id} value={c.id}>{c.nome} ({c.porcentagem_comissao}%)</option>
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                        {/* Mostrar % comissão apenas para admin ou próprio colaborador */}
+                        {(userProfile?.isAdmin || userProfile?.colaboradorId === c.id) && ` (${c.porcentagem_comissao}%)`}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -762,6 +758,9 @@ export default function LancamentosPage() {
                     />
                   </div>
                   {selectedColaborador && formData.valor_total && (
+                    // Mostrar comissão apenas se for admin ou se for o próprio colaborador
+                    userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id
+                  ) && (
                     <p className="text-xs text-gray-500 mt-1">
                       Comissão: R$ {((parseFloat(formData.valor_total) * selectedColaborador.porcentagem_comissao) / 100).toFixed(2)}
                       ({selectedColaborador.porcentagem_comissao}%)
@@ -785,22 +784,68 @@ export default function LancamentosPage() {
                     <div className="mt-4 space-y-3">
                       <p className="text-sm text-gray-600">Como foi recebido o pagamento?</p>
                       <div className="flex flex-wrap gap-2">
-                        {FORMAS_PAGAMENTO.map(forma => (
-                          <button
-                            key={forma.value}
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.value }))}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                              formData.forma_pagamento === forma.value
-                                ? 'bg-green-500 text-white'
-                                : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
-                            }`}
-                          >
-                            <span>{forma.icon}</span>
-                            <span>{forma.label}</span>
-                          </button>
-                        ))}
+                        {formasPagamentoDB.length > 0 ? (
+                          formasPagamentoDB.map(forma => (
+                            <button
+                              key={forma.codigo}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.codigo }))}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                                formData.forma_pagamento === forma.codigo
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
+                              }`}
+                            >
+                              <span>{forma.icone}</span>
+                              <span>{forma.nome}</span>
+                              {forma.taxa_percentual > 0 && (
+                                <span className={`text-xs ${formData.forma_pagamento === forma.codigo ? 'text-green-200' : 'text-red-500'}`}>
+                                  ({forma.taxa_percentual}%)
+                                </span>
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          FORMAS_PAGAMENTO.map(forma => (
+                            <button
+                              key={forma.value}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.value }))}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                                formData.forma_pagamento === forma.value
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
+                              }`}
+                            >
+                              <span>{forma.icon}</span>
+                              <span>{forma.label}</span>
+                            </button>
+                          ))
+                        )}
                       </div>
+
+                      {/* Preview da taxa quando selecionada uma forma com taxa */}
+                      {/* Só mostra se for admin ou o próprio colaborador */}
+                      {formData.forma_pagamento && formData.valor_total && selectedColaborador &&
+                       (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (() => {
+                        const formaSelecionada = formasPagamentoDB.find(f => f.codigo === formData.forma_pagamento);
+                        const taxa = formaSelecionada?.taxa_percentual || 0;
+                        if (taxa <= 0) return null;
+                        const valorTotal = parseFloat(formData.valor_total);
+                        const valorTaxa = (valorTotal * taxa) / 100;
+                        const comissaoBruta = (valorTotal * selectedColaborador.porcentagem_comissao) / 100;
+                        const comissaoLiquida = comissaoBruta - valorTaxa;
+                        return (
+                          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                            <p className="text-yellow-800 font-medium">Taxa de {formaSelecionada?.nome}: {taxa}%</p>
+                            <ul className="text-yellow-700 mt-1 space-y-1">
+                              <li>Comissão bruta: R$ {comissaoBruta.toFixed(2)}</li>
+                              <li>Taxa descontada: -R$ {valorTaxa.toFixed(2)}</li>
+                              <li className="font-bold">Comissão líquida: R$ {comissaoLiquida.toFixed(2)}</li>
+                            </ul>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

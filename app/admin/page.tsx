@@ -85,16 +85,22 @@ export default function AdminPage() {
   const loadStats = async () => {
     setLoading(true);
 
+    // Formatar data de hoje no padrão YYYY-MM-DD
+    const hoje = new Date();
+    const hojeStr = format(hoje, 'yyyy-MM-dd');
+
     const [
       { data: clientes },
       { data: colaboradores },
       { data: agendamentosHoje },
       { data: lancamentos },
+      { data: lancamentosHoje },
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('colaboradores').select('*'),
-      supabase.from('agendamentos').select('*').gte('data_hora', new Date().toISOString().split('T')[0]),
+      supabase.from('agendamentos').select('*').gte('data_hora', `${hojeStr}T00:00:00`).lte('data_hora', `${hojeStr}T23:59:59`),
       supabase.from('lancamentos').select('*'),
+      supabase.from('lancamentos').select('*').gte('data', `${hojeStr}T00:00:00`).lte('data', `${hojeStr}T23:59:59`),
     ]);
 
     // Calcular comissão média
@@ -112,11 +118,7 @@ export default function AdminPage() {
 
     // Calcular faturamento
     const faturamentoTotal = lancamentos?.reduce((sum, l) => sum + l.valor_total, 0) || 0;
-    const faturamentoHoje = lancamentos?.filter((l) => {
-      const dataLanc = new Date(l.data).toISOString().split('T')[0];
-      const hoje = new Date().toISOString().split('T')[0];
-      return dataLanc === hoje;
-    }).reduce((sum, l) => sum + l.valor_total, 0) || 0;
+    const faturamentoHoje = lancamentosHoje?.reduce((sum, l) => sum + l.valor_total, 0) || 0;
 
     setStats({
       totalClientes: clientes?.length || 0,
@@ -260,6 +262,19 @@ export default function AdminPage() {
             }
             gradient="from-indigo-400 to-indigo-600"
             delay={250}
+          />
+
+          <AdminCard
+            href="/admin/pagamentos"
+            title="Formas de Pagamento"
+            description="Gerenciar taxas de cartão"
+            icon={
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            }
+            gradient="from-emerald-400 to-teal-600"
+            delay={260}
           />
 
           <AdminCard

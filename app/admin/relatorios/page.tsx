@@ -38,12 +38,13 @@ export default function RelatoriosPage() {
   }, [periodo, selectedDate, dataInicio, dataFim, selectedColaborador, selectedPagamento, colaboradores]);
 
   const loadColaboradores = async () => {
-    const { data } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .order('nome');
-
-    if (data) setColaboradores(data);
+    try {
+      const response = await fetch('/api/admin?tabela=colaboradores');
+      const result = await response.json();
+      if (result.data) setColaboradores(result.data);
+    } catch (error) {
+      console.error('Erro ao carregar colaboradores:', error);
+    }
   };
 
   const loadLancamentos = async () => {
@@ -74,42 +75,24 @@ export default function RelatoriosPage() {
       endDateAnterior = new Date(endDate.getTime() - diff);
     }
 
-    let query = supabase
-      .from('lancamentos')
-      .select(`
-        *,
-        colaborador:colaboradores(*),
-        cliente:clientes(*)
-      `)
-      .gte('data', startDate.toISOString())
-      .lte('data', endDate.toISOString())
-      .order('data', { ascending: false });
+    try {
+      const params = new URLSearchParams({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        startDateAnterior: startDateAnterior.toISOString(),
+        endDateAnterior: endDateAnterior.toISOString(),
+        colaboradorId: selectedColaborador.toString(),
+        pagamento: selectedPagamento,
+      });
 
-    if (selectedColaborador !== 'todos') {
-      query = query.eq('colaborador_id', selectedColaborador);
+      const response = await fetch(`/api/relatorios?${params.toString()}`);
+      const result = await response.json();
+
+      if (result.lancamentos) setLancamentos(result.lancamentos);
+      if (result.lancamentosAnterior) setLancamentosAnterior(result.lancamentosAnterior);
+    } catch (error) {
+      console.error('Erro ao carregar lançamentos:', error);
     }
-
-    if (selectedPagamento !== 'todos') {
-      query = query.eq('forma_pagamento', selectedPagamento);
-    }
-
-    const { data } = await query;
-
-    // Carregar período anterior para comparação
-    let queryAnterior = supabase
-      .from('lancamentos')
-      .select('*')
-      .gte('data', startDateAnterior.toISOString())
-      .lte('data', endDateAnterior.toISOString());
-
-    if (selectedColaborador !== 'todos') {
-      queryAnterior = queryAnterior.eq('colaborador_id', selectedColaborador);
-    }
-
-    const { data: dataAnterior } = await queryAnterior;
-
-    if (data) setLancamentos(data);
-    if (dataAnterior) setLancamentosAnterior(dataAnterior);
     setLoading(false);
   };
 

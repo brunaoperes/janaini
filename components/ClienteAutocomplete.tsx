@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase, Cliente } from '@/lib/supabase';
+import { Cliente } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 
 interface ClienteAutocompleteProps {
@@ -27,15 +27,16 @@ export default function ClienteAutocomplete({ onSelect, selectedCliente }: Clien
   }, [search, selectedCliente]);
 
   const searchClientes = async (query: string) => {
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('*')
-      .ilike('nome', `%${query}%`)
-      .limit(10);
+    try {
+      const response = await fetch(`/api/clientes?search=${encodeURIComponent(query)}`);
+      const result = await response.json();
 
-    if (data && !error) {
-      setClientes(data);
-      setShowDropdown(true);
+      if (result.data) {
+        setClientes(result.data);
+        setShowDropdown(true);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar clientes:', error);
     }
   };
 
@@ -58,23 +59,25 @@ export default function ClienteAutocomplete({ onSelect, selectedCliente }: Clien
 
     setIsCreating(true);
     try {
-      const { data, error } = await supabase
-        .from('clientes')
-        .insert({
+      const response = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           nome: search.trim(),
           telefone: newClientPhone.trim(),
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (error) {
-        console.error('Erro ao criar cliente:', error);
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Erro ao criar cliente:', result.error);
         toast.error('Erro ao cadastrar cliente');
         return;
       }
 
-      toast.success(`Cliente "${data.nome}" cadastrado!`);
-      handleSelect(data);
+      toast.success(`Cliente "${result.data.nome}" cadastrado!`);
+      handleSelect(result.data);
       setNewClientPhone('');
     } catch (err) {
       console.error('Erro:', err);

@@ -27,16 +27,13 @@ export default function ServicosAdminPage() {
 
   async function loadServicos() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('servicos')
-      .select('*')
-      .order('nome');
-
-    if (error) {
+    try {
+      const response = await fetch('/api/admin?tabela=servicos');
+      const result = await response.json();
+      setServicos(result.data || []);
+    } catch (error) {
       console.error('Erro ao carregar serviços:', error);
       toast.error('Erro ao carregar serviços');
-    } else {
-      setServicos(data || []);
     }
     setLoading(false);
   }
@@ -91,13 +88,14 @@ export default function ServicosAdminPage() {
 
       if (editingServico) {
         // Atualizar
-        const { error } = await supabase
-          .from('servicos')
-          .update(servicoData)
-          .eq('id', editingServico.id);
+        const response = await fetch('/api/admin', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'servicos', id: editingServico.id, dados: servicoData }),
+        });
 
-        if (error) {
-          console.error('Erro ao atualizar serviço:', error);
+        if (!response.ok) {
+          console.error('Erro ao atualizar serviço');
           toast.error('Erro ao atualizar serviço');
         } else {
           toast.success('Serviço atualizado com sucesso!');
@@ -106,12 +104,14 @@ export default function ServicosAdminPage() {
         }
       } else {
         // Criar novo
-        const { error } = await supabase
-          .from('servicos')
-          .insert([servicoData]);
+        const response = await fetch('/api/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'servicos', dados: servicoData }),
+        });
 
-        if (error) {
-          console.error('Erro ao criar serviço:', error);
+        if (!response.ok) {
+          console.error('Erro ao criar serviço');
           toast.error('Erro ao criar serviço');
         } else {
           toast.success('Serviço criado com sucesso!');
@@ -129,32 +129,42 @@ export default function ServicosAdminPage() {
       return;
     }
 
-    const { error } = await supabase
-      .from('servicos')
-      .delete()
-      .eq('id', servico.id);
+    try {
+      const response = await fetch(`/api/admin?tabela=servicos&id=${servico.id}`, {
+        method: 'DELETE',
+      });
 
-    if (error) {
+      if (!response.ok) {
+        console.error('Erro ao excluir serviço');
+        toast.error('Erro ao excluir serviço');
+      } else {
+        toast.success('Serviço excluído com sucesso!');
+        loadServicos();
+      }
+    } catch (error) {
       console.error('Erro ao excluir serviço:', error);
       toast.error('Erro ao excluir serviço');
-    } else {
-      toast.success('Serviço excluído com sucesso!');
-      loadServicos();
     }
   }
 
   async function toggleAtivo(servico: Servico) {
-    const { error } = await supabase
-      .from('servicos')
-      .update({ ativo: !servico.ativo })
-      .eq('id', servico.id);
+    try {
+      const response = await fetch('/api/admin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tabela: 'servicos', id: servico.id, dados: { ativo: !servico.ativo } }),
+      });
 
-    if (error) {
+      if (!response.ok) {
+        console.error('Erro ao atualizar status');
+        toast.error('Erro ao atualizar status');
+      } else {
+        toast.success(`Serviço ${!servico.ativo ? 'ativado' : 'desativado'} com sucesso!`);
+        loadServicos();
+      }
+    } catch (error) {
       console.error('Erro ao atualizar status:', error);
       toast.error('Erro ao atualizar status');
-    } else {
-      toast.success(`Serviço ${!servico.ativo ? 'ativado' : 'desativado'} com sucesso!`);
-      loadServicos();
     }
   }
 

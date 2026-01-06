@@ -38,47 +38,54 @@ export default function ColaboradoresAdminPage() {
   const loadColaboradores = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .order('nome');
+    try {
+      const response = await fetch('/api/admin?tabela=colaboradores');
+      const result = await response.json();
 
-    if (data && !error) {
-      setColaboradores(data);
-      await loadStats(data);
+      if (result.data) {
+        setColaboradores(result.data);
+        await loadStats(result.data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar colaboradores:', error);
     }
     setLoading(false);
   };
 
   const loadStats = async (colaboradores: Colaborador[]) => {
-    const hoje = new Date();
-    const inicioMes = startOfMonth(hoje);
-    const fimMes = endOfMonth(hoje);
+    try {
+      const hoje = new Date();
+      const inicioMes = startOfMonth(hoje);
+      const fimMes = endOfMonth(hoje);
 
-    // Carregar lançamentos do mês
-    const { data: lancamentos } = await supabase
-      .from('lancamentos')
-      .select('*')
-      .gte('data', inicioMes.toISOString())
-      .lte('data', fimMes.toISOString());
+      // Carregar lançamentos do mês
+      const response = await fetch('/api/admin?tabela=lancamentos');
+      const result = await response.json();
+      const lancamentos = result.data || [];
 
-    // Calcular stats por colaboradora
-    const statsMap: any = {};
+      // Calcular stats por colaboradora
+      const statsMap: any = {};
 
-    colaboradores.forEach((colab) => {
-      const lancamentosColab = lancamentos?.filter((l) => l.colaborador_id === colab.id) || [];
-      const totalFaturado = lancamentosColab.reduce((sum, l) => sum + l.valor_total, 0);
-      const totalComissao = lancamentosColab.reduce((sum, l) => sum + l.comissao_colaborador, 0);
-      const atendimentos = lancamentosColab.length;
+      colaboradores.forEach((colab) => {
+        const lancamentosColab = lancamentos?.filter((l: any) => {
+          const dataLanc = new Date(l.data);
+          return l.colaborador_id === colab.id && dataLanc >= inicioMes && dataLanc <= fimMes;
+        }) || [];
+        const totalFaturado = lancamentosColab.reduce((sum: number, l: any) => sum + l.valor_total, 0);
+        const totalComissao = lancamentosColab.reduce((sum: number, l: any) => sum + l.comissao_colaborador, 0);
+        const atendimentos = lancamentosColab.length;
 
-      statsMap[colab.id] = {
-        atendimentos,
-        faturamento: totalFaturado,
-        comissao: totalComissao,
-      };
-    });
+        statsMap[colab.id] = {
+          atendimentos,
+          faturamento: totalFaturado,
+          comissao: totalComissao,
+        };
+      });
 
-    setStats(statsMap);
+      setStats(statsMap);
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+    }
   };
 
   const handleSubmit = async () => {
@@ -105,13 +112,14 @@ export default function ColaboradoresAdminPage() {
       };
 
       if (editingColaborador) {
-        const { error } = await supabase
-          .from('colaboradores')
-          .update(data)
-          .eq('id', editingColaborador.id);
+        const response = await fetch('/api/admin', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'colaboradores', id: editingColaborador.id, dados: data }),
+        });
 
-        if (error) {
-          console.error('Erro ao atualizar colaboradora:', error);
+        if (!response.ok) {
+          console.error('Erro ao atualizar colaboradora');
           toast.error('Erro ao atualizar colaboradora');
         } else {
           toast.success('Colaboradora atualizada com sucesso!');
@@ -119,10 +127,14 @@ export default function ColaboradoresAdminPage() {
           closeModal();
         }
       } else {
-        const { error } = await supabase.from('colaboradores').insert(data);
+        const response = await fetch('/api/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tabela: 'colaboradores', dados: data }),
+        });
 
-        if (error) {
-          console.error('Erro ao criar colaboradora:', error);
+        if (!response.ok) {
+          console.error('Erro ao criar colaboradora');
           toast.error('Erro ao criar colaboradora');
         } else {
           toast.success('Colaboradora criada com sucesso!');
@@ -137,14 +149,21 @@ export default function ColaboradoresAdminPage() {
 
   const handleDelete = async (id: number) => {
     if (confirm('Tem certeza que deseja excluir esta colaboradora?')) {
-      const { error } = await supabase.from('colaboradores').delete().eq('id', id);
+      try {
+        const response = await fetch(`/api/admin?tabela=colaboradores&id=${id}`, {
+          method: 'DELETE',
+        });
 
-      if (error) {
+        if (!response.ok) {
+          console.error('Erro ao excluir colaboradora');
+          toast.error('Erro ao excluir colaboradora');
+        } else {
+          toast.success('Colaboradora excluída com sucesso!');
+          loadColaboradores();
+        }
+      } catch (error) {
         console.error('Erro ao excluir colaboradora:', error);
         toast.error('Erro ao excluir colaboradora');
-      } else {
-        toast.success('Colaboradora excluída com sucesso!');
-        loadColaboradores();
       }
     }
   };

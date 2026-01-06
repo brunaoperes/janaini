@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { format, startOfMonth, endOfMonth, startOfDay, endOfDay, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import StatCard from '@/components/admin/StatCard';
 import ChartCard from '@/components/admin/ChartCard';
@@ -23,12 +23,12 @@ export default function DashboardPage() {
     setLoading(true);
 
     const hoje = new Date();
-    const inicioHoje = startOfDay(hoje);
-    const fimHoje = endOfDay(hoje);
-    const inicioMes = startOfMonth(hoje);
-    const fimMes = endOfMonth(hoje);
-    const inicioMesAnterior = startOfMonth(subMonths(hoje, 1));
-    const fimMesAnterior = endOfMonth(subMonths(hoje, 1));
+    // Formatar datas no padrão do banco (YYYY-MM-DD)
+    const hojeStr = format(hoje, 'yyyy-MM-dd');
+    const inicioMesStr = format(startOfMonth(hoje), 'yyyy-MM-dd');
+    const fimMesStr = format(endOfMonth(hoje), 'yyyy-MM-dd');
+    const inicioMesAnteriorStr = format(startOfMonth(subMonths(hoje, 1)), 'yyyy-MM-dd');
+    const fimMesAnteriorStr = format(endOfMonth(subMonths(hoje, 1)), 'yyyy-MM-dd');
 
     // Carregar dados
     const [
@@ -42,11 +42,13 @@ export default function DashboardPage() {
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('colaboradores').select('*'),
-      supabase.from('agendamentos').select('*').gte('data_hora', inicioHoje.toISOString()).lte('data_hora', fimHoje.toISOString()),
-      supabase.from('agendamentos').select('*').gte('data_hora', inicioMes.toISOString()).lte('data_hora', fimMes.toISOString()),
-      supabase.from('lancamentos').select('*, colaborador:colaboradores(nome), cliente:clientes(nome)').gte('data', inicioHoje.toISOString()).lte('data', fimHoje.toISOString()),
-      supabase.from('lancamentos').select('*, colaborador:colaboradores(nome)').gte('data', inicioMes.toISOString()).lte('data', fimMes.toISOString()),
-      supabase.from('lancamentos').select('*').gte('data', inicioMesAnterior.toISOString()).lte('data', fimMesAnterior.toISOString()),
+      // Agendamentos: filtrar por data_hora (timestamp) - usar range do dia
+      supabase.from('agendamentos').select('*').gte('data_hora', `${hojeStr}T00:00:00`).lte('data_hora', `${hojeStr}T23:59:59`),
+      supabase.from('agendamentos').select('*').gte('data_hora', `${inicioMesStr}T00:00:00`).lte('data_hora', `${fimMesStr}T23:59:59`),
+      // Lançamentos: filtrar por data (pode ser timestamp ou date) - usar like para pegar o dia
+      supabase.from('lancamentos').select('*, colaborador:colaboradores(nome), cliente:clientes(nome)').gte('data', `${hojeStr}T00:00:00`).lte('data', `${hojeStr}T23:59:59`),
+      supabase.from('lancamentos').select('*, colaborador:colaboradores(nome)').gte('data', `${inicioMesStr}T00:00:00`).lte('data', `${fimMesStr}T23:59:59`),
+      supabase.from('lancamentos').select('*').gte('data', `${inicioMesAnteriorStr}T00:00:00`).lte('data', `${fimMesAnteriorStr}T23:59:59`),
     ]);
 
     // Calcular estatísticas

@@ -4,12 +4,14 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { initializeActivity, clearActivity } from '@/hooks/useActivityTracker';
 
 interface Profile {
   id: string;
   username: string;
   nome: string;
   role: 'admin' | 'user';
+  colaborador_id: string | null;
 }
 
 interface AuthContextType {
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, nome, role')
+        .select('id, username, nome, role, colaborador_id')
         .eq('id', userId)
         .maybeSingle();
 
@@ -52,7 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Garantir que role existe
         setProfile({
           ...data,
-          role: data.role || 'user'
+          role: data.role || 'user',
+          colaborador_id: data.colaborador_id || null
         });
         return;
       }
@@ -68,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           nome: username,
           role: isAdminEmail ? 'admin' : 'user',
         })
-        .select('id, username, nome, role')
+        .select('id, username, nome, role, colaborador_id')
         .single();
 
       if (insertError) {
@@ -78,7 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (newProfile) {
-        setProfile(newProfile);
+        setProfile({
+          ...newProfile,
+          colaborador_id: newProfile.colaborador_id || null
+        });
       } else {
         setProfile(null);
       }
@@ -197,6 +203,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
     });
+
+    // Inicializar rastreamento de atividade após login bem-sucedido
+    if (!error) {
+      initializeActivity();
+    }
+
     return { error };
   };
 
@@ -229,6 +241,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Limpar rastreamento de atividade antes do logout
+    clearActivity();
     await supabase.auth.signOut();
     setProfile(null);
     router.push('/login');
