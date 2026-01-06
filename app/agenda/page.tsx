@@ -100,6 +100,7 @@ export default function AgendaPage() {
     hora_inicio: '',
     hora_fim: '',
     descricao_servico: '',
+    valor_servico: '',
   });
 
   // Estado para seleção múltipla de serviços (novo agendamento)
@@ -1071,12 +1072,16 @@ export default function AgendaPage() {
     // Combinar data e hora sem timezone (formato: 2025-11-19 17:00:00)
     const dataHoraInicio = `${formData.data} ${formData.hora_inicio}:00`;
 
+    // Pegar valor do serviço (editável pelo usuário)
+    const valorEstimado = formData.valor_servico ? parseFloat(formData.valor_servico) : 0;
+
     const { error } = await supabase.from('agendamentos').insert([{
       colaborador_id: Number(formData.colaborador_id),
       cliente_id: clienteSelecionado.id,
       data_hora: dataHoraInicio,
       descricao_servico: descricaoServicos,
       duracao_minutos: duracaoTotal,
+      valor_estimado: valorEstimado,
     }]).select();
 
     if (error) {
@@ -1092,6 +1097,7 @@ export default function AgendaPage() {
         hora_inicio: '',
         hora_fim: '',
         descricao_servico: '',
+        valor_servico: '',
       });
       setServicosSelecionados([]); // Limpar serviços selecionados
       setClienteSelecionado(null); // Limpar cliente selecionado
@@ -1428,6 +1434,14 @@ export default function AgendaPage() {
                                     </svg>
                                     <span>{formatarHorario(agendamento.data_hora)}</span>
                                   </div>
+
+                                  {/* Valor Estimado */}
+                                  {agendamento.valor_estimado && agendamento.valor_estimado > 0 && (
+                                    <div className="text-green-400 mt-2 flex items-center gap-2 font-semibold">
+                                      <span>R$</span>
+                                      <span>{agendamento.valor_estimado.toFixed(2)}</span>
+                                    </div>
+                                  )}
 
                                   {/* Progresso */}
                                   {progresso > 0 && progresso < 100 && (
@@ -1824,42 +1838,96 @@ export default function AgendaPage() {
                           type="checkbox"
                           checked={isSelected}
                           onChange={(e) => {
+                            let novosServicos: string[];
                             if (e.target.checked) {
-                              setServicosSelecionados([...servicosSelecionados, servico.nome]);
+                              novosServicos = [...servicosSelecionados, servico.nome];
                             } else {
-                              setServicosSelecionados(servicosSelecionados.filter(s => s !== servico.nome));
+                              novosServicos = servicosSelecionados.filter(s => s !== servico.nome);
                             }
+                            setServicosSelecionados(novosServicos);
+                            // Calcular valor total dos serviços selecionados
+                            const valorTotal = novosServicos.reduce((total, nomeServico) => {
+                              const s = servicos.find(srv => srv.nome === nomeServico);
+                              return total + (s?.valor || 0);
+                            }, 0);
+                            setFormData(prev => ({ ...prev, valor_servico: valorTotal.toFixed(2) }));
                           }}
                           className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
                         />
                         <div className="flex-1">
                           <div className="font-semibold text-gray-800">{servico.nome}</div>
-                          <div className="text-xs text-gray-500">{servico.duracao_minutos} minutos</div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-500">{servico.duracao_minutos} min</span>
+                            <span className="text-green-600 font-semibold">R$ {servico.valor.toFixed(2)}</span>
+                          </div>
                         </div>
                       </label>
                     );
                   })}
                 </div>
-                {/* Preview da duração total */}
+                {/* Preview da duração e valor total */}
                 {servicosSelecionados.length > 0 && (
                   <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <div>
-                        <span className="text-gray-600">Serviços selecionados:</span>
-                        <span className="ml-2 font-semibold text-purple-600">{servicosSelecionados.length}</span>
+                        <span className="text-gray-600">Serviços:</span>
+                        <span className="ml-1 font-semibold text-purple-600">{servicosSelecionados.length}</span>
                       </div>
                       <div>
-                        <span className="text-gray-600">Duração total:</span>
-                        <span className="ml-2 font-bold text-purple-700">
+                        <span className="text-gray-600">Duração:</span>
+                        <span className="ml-1 font-bold text-purple-700">
                           {servicosSelecionados.reduce((total, nomeServico) => {
                             const servico = servicos.find(s => s.nome === nomeServico);
                             return total + (servico?.duracao_minutos || 0);
-                          }, 0)} minutos
+                          }, 0)} min
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Valor:</span>
+                        <span className="ml-1 font-bold text-green-600">
+                          R$ {servicosSelecionados.reduce((total, nomeServico) => {
+                            const servico = servicos.find(s => s.nome === nomeServico);
+                            return total + (servico?.valor || 0);
+                          }, 0).toFixed(2)}
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Valor do Serviço (editável) */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  💰 Valor do Serviço <span className="text-xs text-gray-500">(editável para descontos)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.valor_servico}
+                    onChange={(e) => setFormData({ ...formData, valor_servico: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors"
+                  />
+                </div>
+                {formData.valor_servico && servicosSelecionados.length > 0 && (() => {
+                  const valorOriginal = servicosSelecionados.reduce((total, nomeServico) => {
+                    const servico = servicos.find(s => s.nome === nomeServico);
+                    return total + (servico?.valor || 0);
+                  }, 0);
+                  const valorAtual = parseFloat(formData.valor_servico) || 0;
+                  const desconto = valorOriginal - valorAtual;
+                  if (desconto > 0) {
+                    return (
+                      <p className="text-xs text-orange-600 mt-1">
+                        Desconto aplicado: R$ {desconto.toFixed(2)} ({((desconto / valorOriginal) * 100).toFixed(0)}% off)
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Horários */}
@@ -2064,6 +2132,15 @@ export default function AgendaPage() {
                     <div className="mt-2 text-lg font-semibold text-gray-800">
                       {getServicoIcon(selectedAgendamento.descricao_servico || '')} {selectedAgendamento.descricao_servico}
                     </div>
+                    {/* Valor Estimado */}
+                    {selectedAgendamento.valor_estimado && selectedAgendamento.valor_estimado > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-sm text-gray-500">Valor:</span>
+                        <span className="text-lg font-bold text-green-600">
+                          R$ {selectedAgendamento.valor_estimado.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Bloco Finalizar Serviço - disponível para TODOS os agendamentos pendentes */}
@@ -2074,7 +2151,16 @@ export default function AgendaPage() {
                           ✅ Finalizar Serviço
                         </label>
                         <button
-                          onClick={() => setIsFinalizando(!isFinalizando)}
+                          onClick={() => {
+                            if (!isFinalizando && selectedAgendamento?.valor_estimado) {
+                              // Pré-preencher com o valor estimado
+                              setFinalizarData(prev => ({
+                                ...prev,
+                                valor_pago: selectedAgendamento.valor_estimado?.toFixed(2) || ''
+                              }));
+                            }
+                            setIsFinalizando(!isFinalizando);
+                          }}
                           className={`px-4 py-2 rounded-lg font-medium transition-all ${
                             isFinalizando
                               ? 'bg-gray-200 text-gray-600'

@@ -46,6 +46,7 @@ export type Agendamento = {
   data_hora: string;
   descricao_servico: string;
   duracao_minutos?: number;
+  valor_estimado?: number; // Valor estimado dos serviços
   lancamento_id?: number; // Vínculo com lançamento
   status?: 'pendente' | 'executando' | 'concluido' | 'cancelado';
   cliente?: Cliente;
