@@ -106,9 +106,18 @@ export async function GET(request: Request) {
       .order('data', { ascending: false });
 
     if (filtro === 'hoje') {
-      const hoje = new Date();
-      const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-      query = query.like('data', `${hojeStr}%`);
+      // Usar timezone de Brasília (UTC-3)
+      const now = new Date();
+      const brasiliaOffset = -3 * 60; // -3 horas em minutos
+      const brasiliaTime = new Date(now.getTime() + (now.getTimezoneOffset() + brasiliaOffset) * 60000);
+
+      const hojeStr = `${brasiliaTime.getFullYear()}-${String(brasiliaTime.getMonth() + 1).padStart(2, '0')}-${String(brasiliaTime.getDate()).padStart(2, '0')}`;
+      const inicioHoje = `${hojeStr}T00:00:00`;
+      const fimHoje = `${hojeStr}T23:59:59`;
+
+      console.log('[API/lancamentos] Filtro hoje:', { inicioHoje, fimHoje });
+
+      query = query.gte('data', inicioHoje).lte('data', fimHoje);
     } else if (filtro === 'pendentes') {
       query = query.eq('status', 'pendente');
     }
