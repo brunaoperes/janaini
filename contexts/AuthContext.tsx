@@ -96,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    let profileLoaded = false; // Flag para evitar carregamento duplicado
 
     // Verificar sessão atual
     const initAuth = async () => {
@@ -118,8 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (session?.user) {
+        if (session?.user && !profileLoaded) {
           console.log('AuthContext: Carregando perfil...');
+          profileLoaded = true;
           await loadProfile(session.user.id, session.user.email);
           console.log('AuthContext: Perfil carregado');
         }
@@ -141,25 +143,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
 
         console.log('AuthContext: onAuthStateChange:', event, !!session);
+
+        // Ignorar INITIAL_SESSION pois initAuth já trata
+        if (event === 'INITIAL_SESSION') {
+          console.log('AuthContext: Ignorando INITIAL_SESSION (já tratado por initAuth)');
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (session?.user) {
+        // Só carregar perfil em eventos de login real (não no INITIAL_SESSION)
+        if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          // Se perfil já foi carregado e usuário é o mesmo, não recarregar
+          if (profileLoaded && profile?.id === session.user.id) {
+            console.log('AuthContext: Perfil já carregado, ignorando');
+            return;
+          }
+
           console.log('AuthContext: onAuthStateChange - carregando perfil...');
           try {
+            profileLoaded = true;
             await loadProfile(session.user.id, session.user.email);
             console.log('AuthContext: onAuthStateChange - perfil carregado');
           } catch (err) {
             console.error('AuthContext: Erro ao carregar perfil:', err);
           }
-        } else {
+        } else if (!session) {
           setProfile(null);
+          profileLoaded = false;
         }
 
         setLoading(false);
         console.log('AuthContext: onAuthStateChange - loading finalizado');
 
         if (event === 'SIGNED_OUT') {
+          profileLoaded = false;
           router.push('/login');
         }
       }
@@ -169,7 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, profile?.id]);
 
   // Função para verificar se é email
   const isEmail = (value: string) => {
