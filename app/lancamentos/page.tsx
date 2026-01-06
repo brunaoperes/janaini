@@ -93,15 +93,36 @@ export default function LancamentosPage() {
   }, [selectedFilter]);
 
   async function loadData() {
+    console.log('[Lancamentos] Iniciando loadData, filtro:', selectedFilter);
     setLoading(true);
 
     try {
       // Usar API para buscar dados (bypass RLS)
-      const response = await fetch(`/api/lancamentos?filtro=${selectedFilter}`);
+      const url = `/api/lancamentos?filtro=${selectedFilter}&_t=${Date.now()}`;
+      console.log('[Lancamentos] Fazendo fetch:', url);
+
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+
+      console.log('[Lancamentos] Response status:', response.status);
+
       if (!response.ok) {
         throw new Error('Erro ao carregar dados');
       }
+
       const data = await response.json();
+
+      console.log('[Lancamentos] Dados recebidos:', {
+        colaboradores: data.colaboradores?.length || 0,
+        clientes: data.clientes?.length || 0,
+        servicos: data.servicos?.length || 0,
+        formasPagamento: data.formasPagamento?.length || 0,
+        lancamentos: data.lancamentos?.length || 0,
+      });
 
       setColaboradores(data.colaboradores || []);
       setClientes(data.clientes || []);
@@ -113,10 +134,13 @@ export default function LancamentosPage() {
       if (data._userProfile) {
         setUserProfile(data._userProfile);
       }
+
+      console.log('[Lancamentos] Estados atualizados com sucesso');
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('[Lancamentos] ERRO ao carregar dados:', error);
     } finally {
       setLoading(false);
+      console.log('[Lancamentos] loadData finalizado');
     }
   }
 

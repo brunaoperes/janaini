@@ -45,40 +45,48 @@ async function getUserProfile() {
 }
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
+  console.log('[API/lancamentos] Iniciando requisição...');
+
   try {
     const { searchParams } = new URL(request.url);
     const filtro = searchParams.get('filtro') || 'hoje';
+    console.log('[API/lancamentos] Filtro:', filtro);
 
     // Obter perfil do usuário para filtrar comissões
     const userProfile = await getUserProfile();
     const isAdmin = userProfile?.role === 'admin';
     const userColaboradorId = userProfile?.colaborador_id;
+    console.log('[API/lancamentos] UserProfile:', { isAdmin, userColaboradorId });
 
-    // Carregar colaboradores
-    const { data: colaboradores } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .order('nome');
+    // Carregar todos os dados em paralelo para melhor performance
+    console.log('[API/lancamentos] Carregando dados em paralelo...');
 
-    // Carregar clientes
-    const { data: clientes } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('nome');
+    const [
+      { data: colaboradores, error: colabError },
+      { data: clientes, error: clientesError },
+      { data: servicos, error: servicosError },
+      { data: formasPagamento, error: formasError }
+    ] = await Promise.all([
+      supabase.from('colaboradores').select('*').order('nome'),
+      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('servicos').select('*').eq('ativo', true).order('nome'),
+      supabase.from('formas_pagamento').select('*').eq('ativo', true).order('ordem')
+    ]);
 
-    // Carregar serviços ativos
-    const { data: servicos } = await supabase
-      .from('servicos')
-      .select('*')
-      .eq('ativo', true)
-      .order('nome');
+    // Log de erros se houver
+    if (colabError) console.error('[API/lancamentos] Erro colaboradores:', colabError);
+    if (clientesError) console.error('[API/lancamentos] Erro clientes:', clientesError);
+    if (servicosError) console.error('[API/lancamentos] Erro servicos:', servicosError);
+    if (formasError) console.error('[API/lancamentos] Erro formas:', formasError);
 
-    // Carregar formas de pagamento
-    const { data: formasPagamento } = await supabase
-      .from('formas_pagamento')
-      .select('*')
-      .eq('ativo', true)
-      .order('ordem');
+    console.log('[API/lancamentos] Dados carregados:', {
+      colaboradores: colaboradores?.length || 0,
+      clientes: clientes?.length || 0,
+      servicos: servicos?.length || 0,
+      formasPagamento: formasPagamento?.length || 0,
+      tempoMs: Date.now() - startTime
+    });
 
     // Carregar lançamentos com filtro
     let query = supabase
@@ -128,7 +136,7 @@ export async function GET(request: Request) {
       }));
     }
 
-    return jsonResponse({
+    const responseData = {
       lancamentos: lancamentosFiltrados,
       colaboradores: colaboradores || [],
       clientes: clientes || [],
@@ -138,9 +146,20 @@ export async function GET(request: Request) {
         isAdmin,
         colaboradorId: userColaboradorId,
       },
+    };
+
+    console.log('[API/lancamentos] Enviando resposta:', {
+      lancamentos: responseData.lancamentos.length,
+      colaboradores: responseData.colaboradores.length,
+      clientes: responseData.clientes.length,
+      servicos: responseData.servicos.length,
+      formasPagamento: responseData.formasPagamento.length,
+      tempoTotalMs: Date.now() - startTime
     });
+
+    return jsonResponse(responseData);
   } catch (error: any) {
-    console.error('Erro na API de lançamentos:', error);
+    console.error('[API/lancamentos] ERRO:', error);
     return errorResponse(error.message, 500);
   }
 }
