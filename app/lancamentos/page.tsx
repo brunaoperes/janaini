@@ -152,6 +152,12 @@ export default function LancamentosPage() {
       const colaboradoresData = data.colaboradores || [];
       const servicosData = data.servicos || [];
 
+      console.log('[Lancamentos] Dados recebidos:', {
+        colaboradores: colaboradoresData.length,
+        servicos: servicosData.length,
+        userProfile: data._userProfile,
+      });
+
       setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
       setServicos(servicosData);
@@ -161,17 +167,26 @@ export default function LancamentosPage() {
       if (data._userProfile) {
         setUserProfile(data._userProfile);
 
-        // Pré-selecionar colaborador do usuário logado (se não for admin ou se não estiver editando)
-        if (data._userProfile.colaboradorId && !editingId) {
+        console.log('[Lancamentos] UserProfile:', {
+          isAdmin: data._userProfile.isAdmin,
+          colaboradorId: data._userProfile.colaboradorId,
+          editingId: editingId,
+        });
+
+        // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId e não estiver editando)
+        if (data._userProfile.colaboradorId) {
           const colaboradorDoUsuario = colaboradoresData.find(
             (c: Colaborador) => c.id === data._userProfile.colaboradorId
           );
-          if (colaboradorDoUsuario) {
+          console.log('[Lancamentos] Colaborador encontrado:', colaboradorDoUsuario?.nome);
+
+          if (colaboradorDoUsuario && !editingId) {
             setSelectedColaborador(colaboradorDoUsuario);
             setFormData(prev => ({
               ...prev,
               colaborador_id: colaboradorDoUsuario.id.toString(),
             }));
+            console.log('[Lancamentos] Colaborador pré-selecionado:', colaboradorDoUsuario.nome);
           }
         }
       }

@@ -181,15 +181,23 @@ export default function AgendaPage() {
       const data = await response.json();
 
       const colaboradoresData = data.colaboradores || [];
+      const servicosData = data.servicos || [];
+
+      console.log('[Agenda] Dados recebidos:', {
+        colaboradores: colaboradoresData.length,
+        servicos: servicosData.length,
+        userProfile: data._userProfile,
+      });
 
       setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
-      setServicos(data.servicos || []);
+      setServicos(servicosData);
       setAgendamentos(data.agendamentos || []);
 
-      // Pré-selecionar colaborador do usuário logado (se não for admin)
-      if (data._userProfile?.colaboradorId && !data._userProfile?.isAdmin) {
+      // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId)
+      if (data._userProfile?.colaboradorId) {
         const colaboradorId = data._userProfile.colaboradorId;
+        console.log('[Agenda] Pré-selecionando colaborador:', colaboradorId);
         setFormData(prev => ({
           ...prev,
           colaborador_id: colaboradorId.toString(),
