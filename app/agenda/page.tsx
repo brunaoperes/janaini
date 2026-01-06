@@ -989,11 +989,10 @@ export default function AgendaPage() {
     // Combinar serviços selecionados em uma string
     const descricaoServicos = servicosSelecionados.join(' + ');
 
-    // Calcular duração total somando todos os serviços
-    const duracaoTotal = servicosSelecionados.reduce((total, nomeServico) => {
-      const servico = servicos.find(s => s.nome === nomeServico);
-      return total + (servico?.duracao_minutos || 0);
-    }, 0);
+    // Calcular duração baseada nos horários definidos pelo usuário (não na média do serviço)
+    const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
+    const [hFim, mFim] = (formData.hora_fim || formData.hora_inicio).split(':').map(Number);
+    const duracaoTotal = Math.max(15, (hFim * 60 + mFim) - (hInicio * 60 + mInicio));
 
     // Combinar data e hora sem timezone (formato: 2025-11-19 17:00:00)
     const dataHoraInicio = `${formData.data} ${formData.hora_inicio}:00`;
@@ -1001,6 +1000,37 @@ export default function AgendaPage() {
     // Valor estimado dos serviços (editável pelo usuário)
     const valorEstimado = formData.valor_servico ? parseFloat(formData.valor_servico) : 0;
 
+    // Buscar colaborador para calcular comissão
+    const colaborador = colaboradores.find(c => c.id === Number(formData.colaborador_id));
+    const porcentagemComissao = colaborador?.porcentagem_comissao || 50;
+    const comissaoColaborador = (valorEstimado * porcentagemComissao) / 100;
+    const comissaoSalao = valorEstimado - comissaoColaborador;
+
+    // 1. Criar lançamento primeiro (pendente)
+    const { data: lancamento, error: lancError } = await supabase
+      .from('lancamentos')
+      .insert({
+        colaborador_id: Number(formData.colaborador_id),
+        cliente_id: clienteSelecionado.id,
+        valor_total: valorEstimado,
+        comissao_colaborador: comissaoColaborador,
+        comissao_salao: comissaoSalao,
+        data: dataHoraInicio,
+        hora_inicio: formData.hora_inicio,
+        hora_fim: formData.hora_fim || formData.hora_inicio,
+        servicos_nomes: descricaoServicos,
+        status: 'pendente',
+      })
+      .select()
+      .single();
+
+    if (lancError) {
+      console.error('Erro ao criar lançamento:', lancError);
+      alert(`❌ Erro ao criar lançamento: ${lancError.message}`);
+      return;
+    }
+
+    // 2. Criar agendamento vinculado ao lançamento
     const { error } = await supabase.from('agendamentos').insert([{
       colaborador_id: Number(formData.colaborador_id),
       cliente_id: clienteSelecionado.id,
@@ -1008,10 +1038,14 @@ export default function AgendaPage() {
       descricao_servico: descricaoServicos,
       duracao_minutos: duracaoTotal,
       valor_estimado: valorEstimado,
+      lancamento_id: lancamento.id,
+      status: 'pendente',
     }]).select();
 
     if (error) {
       console.error('Erro ao criar agendamento:', error);
+      // Se falhou, deletar o lançamento criado
+      await supabase.from('lancamentos').delete().eq('id', lancamento.id);
       alert(`❌ Erro ao criar agendamento: ${error.message}`);
     } else {
       alert('✅ Agendamento criado com sucesso!');
