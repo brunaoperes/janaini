@@ -92,8 +92,8 @@ export default function LancamentosPage() {
     loadData();
   }, [selectedFilter]);
 
-  async function loadData() {
-    console.log('[Lancamentos] Iniciando loadData, filtro:', selectedFilter);
+  async function loadData(retryCount = 0) {
+    console.log('[Lancamentos] Iniciando loadData, filtro:', selectedFilter, 'retry:', retryCount);
     setLoading(true);
 
     try {
@@ -105,13 +105,20 @@ export default function LancamentosPage() {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
         },
       });
 
       console.log('[Lancamentos] Response status:', response.status);
 
       if (!response.ok) {
-        throw new Error('Erro ao carregar dados');
+        // Se falhou e ainda tem tentativas, retry após 500ms
+        if (retryCount < 2) {
+          console.log('[Lancamentos] Falha, tentando novamente em 500ms...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return loadData(retryCount + 1);
+        }
+        throw new Error(`Erro ao carregar dados (status: ${response.status})`);
       }
 
       const data = await response.json();
@@ -138,6 +145,7 @@ export default function LancamentosPage() {
       console.log('[Lancamentos] Estados atualizados com sucesso');
     } catch (error) {
       console.error('[Lancamentos] ERRO ao carregar dados:', error);
+      // Mesmo com erro, finaliza o loading para não travar a interface
     } finally {
       setLoading(false);
       console.log('[Lancamentos] loadData finalizado');

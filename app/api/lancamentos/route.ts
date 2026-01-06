@@ -19,7 +19,10 @@ export const dynamic = 'force-dynamic';
 // Função para obter o perfil do usuário autenticado
 async function getUserProfile() {
   try {
+    console.log('[API/lancamentos] getUserProfile: Iniciando...');
     const cookieStore = await cookies();
+    console.log('[API/lancamentos] getUserProfile: Cookies obtidos');
+
     const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {
@@ -29,17 +32,21 @@ async function getUserProfile() {
       },
     });
 
-    const { data: { user } } = await supabaseAuth.auth.getUser();
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+    console.log('[API/lancamentos] getUserProfile: User obtido:', !!user, userError?.message);
+
     if (!user) return null;
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, colaborador_id')
       .eq('id', user.id)
       .single();
 
+    console.log('[API/lancamentos] getUserProfile: Profile obtido:', !!profile, profileError?.message);
     return profile;
-  } catch {
+  } catch (error: any) {
+    console.error('[API/lancamentos] getUserProfile: ERRO:', error?.message || error);
     return null;
   }
 }
@@ -62,29 +69,39 @@ export async function GET(request: Request) {
     // Carregar todos os dados em paralelo para melhor performance
     console.log('[API/lancamentos] Carregando dados em paralelo...');
 
-    const [
-      { data: colaboradores, error: colabError },
-      { data: clientes, error: clientesError },
-      { data: servicos, error: servicosError },
-      { data: formasPagamento, error: formasError }
-    ] = await Promise.all([
-      supabase.from('colaboradores').select('*').order('nome'),
-      supabase.from('clientes').select('*').order('nome'),
-      supabase.from('servicos').select('*').eq('ativo', true).order('nome'),
-      supabase.from('formas_pagamento').select('*').eq('ativo', true).order('ordem')
-    ]);
+    let colaboradores: any[] = [];
+    let clientes: any[] = [];
+    let servicos: any[] = [];
+    let formasPagamento: any[] = [];
 
-    // Log de erros se houver
-    if (colabError) console.error('[API/lancamentos] Erro colaboradores:', colabError);
-    if (clientesError) console.error('[API/lancamentos] Erro clientes:', clientesError);
-    if (servicosError) console.error('[API/lancamentos] Erro servicos:', servicosError);
-    if (formasError) console.error('[API/lancamentos] Erro formas:', formasError);
+    try {
+      const results = await Promise.all([
+        supabase.from('colaboradores').select('*').order('nome'),
+        supabase.from('clientes').select('*').order('nome'),
+        supabase.from('servicos').select('*').eq('ativo', true).order('nome'),
+        supabase.from('formas_pagamento').select('*').eq('ativo', true).order('ordem')
+      ]);
+
+      colaboradores = results[0].data || [];
+      clientes = results[1].data || [];
+      servicos = results[2].data || [];
+      formasPagamento = results[3].data || [];
+
+      // Log de erros se houver
+      if (results[0].error) console.error('[API/lancamentos] Erro colaboradores:', results[0].error);
+      if (results[1].error) console.error('[API/lancamentos] Erro clientes:', results[1].error);
+      if (results[2].error) console.error('[API/lancamentos] Erro servicos:', results[2].error);
+      if (results[3].error) console.error('[API/lancamentos] Erro formas:', results[3].error);
+    } catch (parallelError: any) {
+      console.error('[API/lancamentos] ERRO no Promise.all:', parallelError?.message || parallelError);
+      // Continuar mesmo com erro - retornar arrays vazios
+    }
 
     console.log('[API/lancamentos] Dados carregados:', {
-      colaboradores: colaboradores?.length || 0,
-      clientes: clientes?.length || 0,
-      servicos: servicos?.length || 0,
-      formasPagamento: formasPagamento?.length || 0,
+      colaboradores: colaboradores.length,
+      clientes: clientes.length,
+      servicos: servicos.length,
+      formasPagamento: formasPagamento.length,
       tempoMs: Date.now() - startTime
     });
 
