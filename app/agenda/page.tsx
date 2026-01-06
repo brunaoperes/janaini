@@ -1037,6 +1037,13 @@ export default function AgendaPage() {
     const comissaoSalao = valorEstimado - comissaoColaborador;
 
     // 1. Criar lançamento primeiro (pendente)
+    console.log('[Agenda] Criando lançamento...', {
+      colaborador_id: Number(formData.colaborador_id),
+      cliente_id: clienteSelecionado.id,
+      valor_total: valorEstimado,
+      data: dataHoraInicio,
+    });
+
     const { data: lancamento, error: lancError } = await supabase
       .from('lancamentos')
       .insert({
@@ -1055,12 +1062,21 @@ export default function AgendaPage() {
       .single();
 
     if (lancError) {
-      console.error('Erro ao criar lançamento:', lancError);
+      console.error('[Agenda] Erro ao criar lançamento:', lancError);
       alert(`❌ Erro ao criar lançamento: ${lancError.message}`);
       return;
     }
 
+    console.log('[Agenda] Lançamento criado:', lancamento?.id);
+
     // 2. Criar agendamento vinculado ao lançamento
+    console.log('[Agenda] Criando agendamento...', {
+      colaborador_id: Number(formData.colaborador_id),
+      cliente_id: clienteSelecionado.id,
+      data_hora: dataHoraInicio,
+      lancamento_id: lancamento.id,
+    });
+
     const { error } = await supabase.from('agendamentos').insert([{
       colaborador_id: Number(formData.colaborador_id),
       cliente_id: clienteSelecionado.id,
@@ -1073,11 +1089,12 @@ export default function AgendaPage() {
     }]).select();
 
     if (error) {
-      console.error('Erro ao criar agendamento:', error);
+      console.error('[Agenda] Erro ao criar agendamento:', error);
       // Se falhou, deletar o lançamento criado
       await supabase.from('lancamentos').delete().eq('id', lancamento.id);
       alert(`❌ Erro ao criar agendamento: ${error.message}`);
     } else {
+      console.log('[Agenda] Agendamento criado com sucesso!');
       alert('✅ Agendamento criado com sucesso!');
       setShowNovoAgendamento(false);
       setFormData({
