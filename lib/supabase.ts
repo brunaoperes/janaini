@@ -36,6 +36,7 @@ export type Servico = {
   valor: number;
   descricao?: string;
   ativo: boolean;
+  colaboradores_ids?: number[];
   created_at?: string;
 };
 

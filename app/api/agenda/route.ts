@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
@@ -18,6 +21,35 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const data = searchParams.get('data');
 
+    // Tentar obter perfil do usuário para filtrar serviços
+    let userProfile: { role?: string; colaborador_id?: number } | null = null;
+    try {
+      const cookieStore = await cookies();
+      const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll() {},
+        },
+      });
+
+      const { data: { user } } = await supabaseAuth.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role, colaborador_id')
+          .eq('id', user.id)
+          .single();
+        userProfile = profile;
+      }
+    } catch {
+      // Continua sem perfil
+    }
+
+    const isAdmin = userProfile?.role === 'admin';
+    const userColaboradorId = userProfile?.colaborador_id;
+
     // Carregar colaboradores
     const { data: colaboradores } = await supabase
       .from('colaboradores')
@@ -31,11 +63,19 @@ export async function GET(request: Request) {
       .order('nome');
 
     // Carregar serviços ativos
-    const { data: servicos } = await supabase
+    const { data: servicosData } = await supabase
       .from('servicos')
       .select('*')
       .eq('ativo', true)
       .order('nome');
+
+    // FILTRO DE SERVIÇOS: usuário não-admin só vê serviços do seu colaborador
+    let servicos = servicosData || [];
+    if (!isAdmin && userColaboradorId) {
+      servicos = servicos.filter((s: any) =>
+        s.colaboradores_ids && s.colaboradores_ids.includes(userColaboradorId)
+      );
+    }
 
     // Carregar formas de pagamento
     const { data: formasPagamento } = await supabase
@@ -69,8 +109,12 @@ export async function GET(request: Request) {
       agendamentos,
       colaboradores: colaboradores || [],
       clientes: clientes || [],
-      servicos: servicos || [],
+      servicos,
       formasPagamento: formasPagamento || [],
+      _userProfile: {
+        isAdmin,
+        colaboradorId: userColaboradorId,
+      },
     });
   } catch (error: any) {
     console.error('Erro na API de agenda:', error);

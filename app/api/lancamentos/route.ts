@@ -80,8 +80,15 @@ export async function GET(request: Request) {
 
     const colaboradores = colaboradoresRes.data || [];
     const clientes = clientesRes.data || [];
-    const servicos = servicosRes.data || [];
+    let servicos = servicosRes.data || [];
     const formasPagamento = formasRes.data || [];
+
+    // FILTRO DE SERVIÇOS: usuário não-admin só vê serviços do seu colaborador
+    if (!isAdmin && userColaboradorId) {
+      servicos = servicos.filter((s: any) =>
+        s.colaboradores_ids && s.colaboradores_ids.includes(userColaboradorId)
+      );
+    }
 
     // Carregar lançamentos
     let query = supabase
