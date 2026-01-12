@@ -70,6 +70,17 @@ export default function PermissoesPage() {
   const [savingCreate, setSavingCreate] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<number[]>([]); // Grupos expandidos
+
+  const toggleGroupExpand = (groupId: number) => {
+    setExpandedGroups(prev =>
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    );
+  };
+
+  const isGroupExpanded = (groupId: number) => expandedGroups.includes(groupId) || selectedGroup?.id === groupId;
 
   useEffect(() => {
     if (authLoading) return;
@@ -317,30 +328,40 @@ export default function PermissoesPage() {
           ) : (
             groups.map((group) => (
               <div key={group.id} className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                {/* Header do Grupo */}
-                <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4">
+                {/* Header do Grupo - Clicável para expandir */}
+                <button
+                  onClick={() => toggleGroupExpand(group.id)}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 text-left hover:from-purple-700 hover:to-pink-700 transition-all"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      {/* Ícone de expandir/minimizar */}
+                      <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                        <svg
+                          className={`w-5 h-5 text-white transition-transform duration-200 ${isGroupExpanded(group.id) ? 'rotate-90' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
                       <div>
-                        <h2 className="text-xl font-bold text-white">{group.display_name}</h2>
+                        <h2 className="text-lg font-bold text-white">{group.display_name}</h2>
                         <p className="text-purple-100 text-sm">
-                          {group.description || `Código: ${group.name}`}
+                          {group.permissions.length} permissões
                           {group.is_system && (
                             <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">Sistema</span>
                           )}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       {!group.is_system && (
                         <>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSelectedGroup(group);
                               setEditForm({
                                 display_name: group.display_name,
@@ -356,7 +377,8 @@ export default function PermissoesPage() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSelectedGroup(group);
                               setShowDeleteConfirm(true);
                             }}
@@ -369,15 +391,16 @@ export default function PermissoesPage() {
                           </button>
                         </>
                       )}
-                      <span className="bg-white/20 px-3 py-1 rounded-full text-sm text-white">
-                        {group.permissions.length} permissões
+                      <span className="text-white/80 text-sm hidden sm:inline">
+                        {isGroupExpanded(group.id) ? 'Clique para minimizar' : 'Clique para expandir'}
                       </span>
                     </div>
                   </div>
-                </div>
+                </button>
 
-                {/* Permissões do Grupo */}
-                <div className="p-6">
+                {/* Permissões do Grupo - Só aparece quando expandido */}
+                {isGroupExpanded(group.id) && (
+                <div className="p-6 border-t border-purple-100 animate-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-gray-800">Permissões deste grupo:</h3>
                     <Button
@@ -487,6 +510,7 @@ export default function PermissoesPage() {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             ))
           )}
