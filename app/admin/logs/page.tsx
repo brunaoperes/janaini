@@ -34,6 +34,55 @@ const ACOES = ['todos', 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'ACCESS
 const MODULOS = ['todos', 'Agenda', 'Lancamentos', 'Usuarios', 'Servicos', 'Clientes', 'Comissoes', 'Auth', 'Sistema'];
 const RESULTADOS = ['todos', 'success', 'error', 'denied'];
 
+// Função para parsear User Agent e extrair informações legíveis
+const parseUserAgent = (ua: string | null): { browser: string; os: string; device: string } => {
+  if (!ua) return { browser: 'Desconhecido', os: 'Desconhecido', device: '💻' };
+
+  let browser = 'Navegador';
+  let os = 'Sistema';
+  let device = '💻';
+
+  // Detectar navegador
+  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Google Chrome';
+  else if (ua.includes('Firefox')) browser = 'Mozilla Firefox';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+  else if (ua.includes('Edg')) browser = 'Microsoft Edge';
+  else if (ua.includes('Opera') || ua.includes('OPR')) browser = 'Opera';
+
+  // Detectar sistema operacional
+  if (ua.includes('Windows NT 10')) os = 'Windows 10/11';
+  else if (ua.includes('Windows NT 6.3')) os = 'Windows 8.1';
+  else if (ua.includes('Windows NT 6.1')) os = 'Windows 7';
+  else if (ua.includes('Mac OS X')) os = 'macOS';
+  else if (ua.includes('Linux') && !ua.includes('Android')) os = 'Linux';
+  else if (ua.includes('Android')) { os = 'Android'; device = '📱'; }
+  else if (ua.includes('iPhone') || ua.includes('iPad')) { os = 'iOS'; device = '📱'; }
+
+  return { browser, os, device };
+};
+
+// Mapeamento de ações para texto amigável
+const ACAO_LABELS: Record<string, { text: string; icon: string }> = {
+  CREATE: { text: 'Criou', icon: '➕' },
+  UPDATE: { text: 'Editou', icon: '✏️' },
+  DELETE: { text: 'Excluiu', icon: '🗑️' },
+  LOGIN: { text: 'Entrou no sistema', icon: '🔓' },
+  LOGOUT: { text: 'Saiu do sistema', icon: '🔒' },
+  ACCESS_DENIED: { text: 'Acesso negado', icon: '⛔' },
+};
+
+// Mapeamento de tabelas para nomes amigáveis
+const TABELA_LABELS: Record<string, string> = {
+  agendamentos: 'um agendamento',
+  lancamentos: 'um lançamento',
+  clientes: 'um cliente',
+  colaboradores: 'uma colaboradora',
+  servicos: 'um serviço',
+  profiles: 'um usuário',
+  pagamentos_comissao: 'um pagamento de comissão',
+  pagamentos_fiado: 'um pagamento de fiado',
+};
+
 // Mapeamento de campos para nomes legíveis em português
 const FIELD_LABELS: Record<string, string> = {
   id: 'ID',
@@ -505,79 +554,72 @@ export default function LogsAuditoriaPage() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Info Básica */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Data/Hora</label>
-                  <p className="text-sm font-medium text-gray-800 mt-1">
-                    {format(parseISO(selectedLog.created_at), "dd/MM/yyyy 'às' HH:mm:ss", { locale: ptBR })}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Plataforma</label>
-                  <p className="text-sm font-medium text-gray-800 mt-1">{selectedLog.plataforma || 'N/A'}</p>
-                </div>
-              </div>
+              {/* Resumo da Ação - Card Principal */}
+              {(() => {
+                const acaoInfo = ACAO_LABELS[selectedLog.acao] || { text: selectedLog.acao, icon: '📝' };
+                const tabelaLabel = selectedLog.tabela ? (TABELA_LABELS[selectedLog.tabela] || selectedLog.tabela) : '';
+                const userAgentInfo = parseUserAgent(selectedLog.user_agent);
 
-              {/* Usuário */}
-              <div className="bg-purple-50 p-4 rounded-xl">
-                <label className="text-xs font-semibold text-purple-600 uppercase">Usuário</label>
-                <p className="text-sm font-medium text-gray-800 mt-1">{selectedLog.usuario_nome || 'Sistema'}</p>
-                <p className="text-xs text-gray-600">{selectedLog.usuario_email || '-'}</p>
-                <p className="text-xs text-gray-500 mt-1">Role: {selectedLog.usuario_role || 'N/A'}</p>
-              </div>
+                return (
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-5 rounded-2xl text-white">
+                    <div className="flex items-start gap-4">
+                      <div className="text-4xl">{acaoInfo.icon}</div>
+                      <div className="flex-1">
+                        <p className="text-xl font-bold">
+                          {selectedLog.usuario_nome || 'Sistema'} {acaoInfo.text.toLowerCase()} {tabelaLabel}
+                        </p>
+                        <p className="text-purple-100 mt-1">
+                          {format(parseISO(selectedLog.created_at), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                        {selectedLog.usuario_email && (
+                          <p className="text-purple-200 text-sm mt-2">{selectedLog.usuario_email}</p>
+                        )}
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        selectedLog.resultado === 'success' ? 'bg-green-400/30 text-green-100' :
+                        selectedLog.resultado === 'error' ? 'bg-red-400/30 text-red-100' :
+                        'bg-orange-400/30 text-orange-100'
+                      }`}>
+                        {selectedLog.resultado === 'success' ? '✓ Sucesso' :
+                         selectedLog.resultado === 'error' ? '✕ Erro' : '⚠ Negado'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
-              {/* Ação */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Ação</label>
-                  <p className="mt-1">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAcaoColor(selectedLog.acao)}`}>
-                      {selectedLog.acao}
-                    </span>
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Resultado</label>
-                  <p className="mt-1">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getResultadoColor(selectedLog.resultado)}`}>
-                      {selectedLog.resultado}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Módulo/Tabela */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Módulo</label>
-                  <p className="text-sm font-medium text-gray-800 mt-1">{selectedLog.modulo}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Tabela</label>
-                  <p className="text-sm font-medium text-gray-800 mt-1">{selectedLog.tabela || '-'}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">ID Registro</label>
-                  <p className="text-sm font-medium text-gray-800 mt-1">{selectedLog.registro_id || '-'}</p>
-                </div>
-              </div>
-
-              {/* IP e User Agent */}
-              <div className="bg-gray-50 p-4 rounded-xl">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Contexto</label>
-                <p className="text-sm text-gray-800 mt-1">IP: {selectedLog.ip_origem || 'N/A'}</p>
-                <p className="text-xs text-gray-500 mt-1 break-all">{selectedLog.user_agent || 'N/A'}</p>
-              </div>
+              {/* Dispositivo e Navegador */}
+              {(() => {
+                const ua = parseUserAgent(selectedLog.user_agent);
+                return (
+                  <div className="bg-gray-50 p-4 rounded-xl">
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{ua.device}</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{ua.os}</p>
+                          <p className="text-xs text-gray-500">{ua.browser}</p>
+                        </div>
+                      </div>
+                      {selectedLog.ip_origem && (
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <span className="text-lg">🌐</span>
+                          <span className="text-sm">IP: {selectedLog.ip_origem}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Campos Alterados */}
               {selectedLog.campos_alterados && selectedLog.campos_alterados.length > 0 && (
                 <div className="bg-blue-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-blue-600 uppercase">Campos Alterados</label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <label className="text-xs font-semibold text-blue-600 uppercase mb-2 block">Campos Alterados</label>
+                  <div className="flex flex-wrap gap-2">
                     {selectedLog.campos_alterados.map((campo, i) => (
-                      <span key={i} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                        {campo}
+                      <span key={i} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                        {FIELD_LABELS[campo] || campo}
                       </span>
                     ))}
                   </div>
@@ -597,16 +639,24 @@ export default function LogsAuditoriaPage() {
               {selectedLog.dados_novo && (
                 <ReadableData
                   data={selectedLog.dados_novo}
-                  title={selectedLog.acao === 'CREATE' ? 'Dados do Registro' : 'Dados Novos'}
+                  title={selectedLog.acao === 'CREATE' ? 'Detalhes do Registro' : 'Dados Atualizados'}
                   colorClass="bg-green-50"
                 />
               )}
 
               {/* Erro */}
               {selectedLog.erro_mensagem && (
-                <div className="bg-orange-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-orange-600 uppercase">Erro</label>
-                  <p className="text-sm text-gray-800 mt-1">{selectedLog.erro_codigo}: {selectedLog.erro_mensagem}</p>
+                <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                      <p className="font-medium text-red-800">Erro na operação</p>
+                      <p className="text-sm text-red-600 mt-1">{selectedLog.erro_mensagem}</p>
+                      {selectedLog.erro_codigo && (
+                        <p className="text-xs text-red-400 mt-1">Código: {selectedLog.erro_codigo}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
