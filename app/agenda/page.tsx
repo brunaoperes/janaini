@@ -86,6 +86,10 @@ export default function AgendaPage() {
     is_troca_gratis: false,
     valor_referencia: '',
   });
+
+  // Estados para serviço compartilhado na finalização
+  const [compartilhadoFinal, setCompartilhadoFinal] = useState(false);
+  const [divisoesFinal, setDivisoesFinal] = useState<{ colaborador_id: number; valor: string }[]>([]);
   const [editData, setEditData] = useState({
     colaborador_id: '',
     cliente_id: '',
@@ -804,6 +808,21 @@ export default function AgendaPage() {
       }
     }
 
+    // Validação: se é serviço compartilhado
+    if (compartilhadoFinal && !finalizarData.is_troca_gratis) {
+      const colaboradoresValidos = divisoesFinal.filter(d => d.colaborador_id > 0);
+      if (colaboradoresValidos.length < 2) {
+        alert('⚠️ Serviço compartilhado precisa de pelo menos 2 colaboradores');
+        return;
+      }
+      const valorTotal = parseFloat(finalizarData.valor_pago) || 0;
+      const somaDivisoes = divisoesFinal.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
+      if (Math.abs(valorTotal - somaDivisoes) > 0.01) {
+        alert('⚠️ A soma das divisões deve ser igual ao valor total');
+        return;
+      }
+    }
+
     try {
       // Determinar valor pago
       let valorPago = finalizarData.is_troca_gratis ? 0 : parseFloat(finalizarData.valor_pago);
@@ -923,6 +942,38 @@ export default function AgendaPage() {
         lancamentoId = novoLancamento.id;
       }
 
+      // Salvar divisões se for serviço compartilhado
+      if (compartilhadoFinal && !finalizarData.is_troca_gratis && lancamentoId) {
+        // Primeiro, deletar divisões antigas
+        await supabase
+          .from('lancamento_divisoes')
+          .delete()
+          .eq('lancamento_id', lancamentoId);
+
+        // Inserir novas divisões
+        const divisoesParaSalvar = divisoesFinal.map(d => {
+          const colab = colaboradores.find(c => c.id === d.colaborador_id);
+          const porcentagemColab = colab?.porcentagem_comissao || 50;
+          const valorDivisao = parseFloat(d.valor) || 0;
+          const comissaoCalculada = (valorDivisao * porcentagemColab) / 100;
+
+          return {
+            lancamento_id: lancamentoId,
+            colaborador_id: d.colaborador_id,
+            valor: valorDivisao,
+            comissao_calculada: comissaoCalculada,
+          };
+        });
+
+        const { error: divError } = await supabase
+          .from('lancamento_divisoes')
+          .insert(divisoesParaSalvar);
+
+        if (divError) {
+          console.error('Erro ao salvar divisões:', divError);
+        }
+      }
+
       // Atualizar agendamento com status e vincular ao lançamento
       // Se é fiado, o status do agendamento também fica pendente (ainda não foi finalizado de fato)
       const { error: agendError } = await supabase
@@ -950,6 +1001,8 @@ export default function AgendaPage() {
       setSelectedAgendamento(null);
       setIsFinalizando(false);
       setFinalizarData({ forma_pagamento: 'pix', valor_pago: '', is_fiado: false, is_troca_gratis: false, valor_referencia: '' });
+      setCompartilhadoFinal(false);
+      setDivisoesFinal([]);
       await loadData();
 
     } catch (error: any) {
@@ -2405,6 +2458,137 @@ export default function AgendaPage() {
                                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                 />
                               </div>
+                            </div>
+                          )}
+
+                          {/* Serviço Compartilhado - Oculto para troca/grátis */}
+                          {!finalizarData.is_troca_gratis && (
+                            <div className="bg-blue-50 rounded-xl p-4">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={compartilhadoFinal}
+                                  onChange={(e) => {
+                                    setCompartilhadoFinal(e.target.checked);
+                                    if (e.target.checked && divisoesFinal.length === 0) {
+                                      const valorTotal = parseFloat(finalizarData.valor_pago) || 0;
+                                      const valorMetade = valorTotal / 2;
+                                      setDivisoesFinal([
+                                        { colaborador_id: selectedAgendamento?.colaborador_id || 0, valor: valorMetade.toFixed(2) },
+                                        { colaborador_id: 0, valor: valorMetade.toFixed(2) },
+                                      ]);
+                                    }
+                                  }}
+                                  className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="font-medium text-gray-700">Serviço compartilhado</span>
+                              </label>
+
+                              {compartilhadoFinal && (
+                                <div className="mt-4 space-y-4">
+                                  <p className="text-sm text-gray-600">Divida o valor entre os colaboradores:</p>
+
+                                  {/* Lista de divisões */}
+                                  <div className="space-y-3">
+                                    {divisoesFinal.map((div, index) => {
+                                      const colab = colaboradores.find(c => c.id === div.colaborador_id);
+                                      const valorTotal = parseFloat(finalizarData.valor_pago) || 0;
+                                      const valorDiv = parseFloat(div.valor) || 0;
+                                      const percentual = valorTotal > 0 ? ((valorDiv / valorTotal) * 100).toFixed(0) : '0';
+
+                                      return (
+                                        <div key={index} className="flex items-center gap-2 bg-white rounded-lg p-3 border border-blue-200">
+                                          <select
+                                            value={div.colaborador_id}
+                                            onChange={(e) => {
+                                              const newDivisoes = [...divisoesFinal];
+                                              newDivisoes[index].colaborador_id = parseInt(e.target.value);
+                                              setDivisoesFinal(newDivisoes);
+                                            }}
+                                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-blue-500"
+                                          >
+                                            <option value={0}>Selecione...</option>
+                                            {colaboradores.map(c => (
+                                              <option key={c.id} value={c.id}>{c.nome}</option>
+                                            ))}
+                                          </select>
+
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-gray-500 text-sm">R$</span>
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              value={div.valor}
+                                              onChange={(e) => {
+                                                const newDivisoes = [...divisoesFinal];
+                                                newDivisoes[index].valor = e.target.value;
+                                                setDivisoesFinal(newDivisoes);
+                                              }}
+                                              className="w-20 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-blue-500 text-right"
+                                              placeholder="0.00"
+                                            />
+                                          </div>
+
+                                          <span className="text-sm text-blue-600 font-medium w-10 text-right">
+                                            {percentual}%
+                                          </span>
+
+                                          {divisoesFinal.length > 2 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const newDivisoes = divisoesFinal.filter((_, i) => i !== index);
+                                                setDivisoesFinal(newDivisoes);
+                                              }}
+                                              className="text-red-500 hover:text-red-700 p-1"
+                                            >
+                                              ✕
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Adicionar colaborador */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDivisoesFinal([...divisoesFinal, { colaborador_id: 0, valor: '0' }]);
+                                    }}
+                                    className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                  >
+                                    + Adicionar colaborador
+                                  </button>
+
+                                  {/* Resumo da divisão */}
+                                  {(() => {
+                                    const valorTotal = parseFloat(finalizarData.valor_pago) || 0;
+                                    const somaDivisoes = divisoesFinal.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
+                                    const diferenca = valorTotal - somaDivisoes;
+                                    const isValid = Math.abs(diferenca) < 0.01 && somaDivisoes > 0;
+
+                                    return (
+                                      <div className={`p-2 rounded-lg text-sm ${isValid ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                        <div className="flex justify-between items-center">
+                                          <span className={isValid ? 'text-green-700' : 'text-red-700'}>
+                                            Total: R$ {somaDivisoes.toFixed(2)} / R$ {valorTotal.toFixed(2)}
+                                          </span>
+                                          {Math.abs(diferenca) >= 0.01 && (
+                                            <span className={diferenca > 0 ? 'text-orange-600' : 'text-red-600'}>
+                                              {diferenca > 0 ? `Restam R$ ${diferenca.toFixed(2)}` : `Excede R$ ${Math.abs(diferenca).toFixed(2)}`}
+                                            </span>
+                                          )}
+                                          {isValid && (
+                                            <span className="text-green-600 font-medium">✓ OK</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
                             </div>
                           )}
 

@@ -60,8 +60,8 @@ export async function GET(request: Request) {
       .from('lancamentos')
       .select(`
         *,
-        cliente:clientes!fk_lancamentos_cliente(id, nome, telefone),
-        colaborador:colaboradores!fk_lancamentos_colaborador(id, nome, porcentagem_comissao)
+        cliente:clientes(id, nome, telefone),
+        colaborador:colaboradores(id, nome, porcentagem_comissao)
       `)
       .eq('is_fiado', true)
       .order('data', { ascending: false });
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
       .from('lancamentos')
       .select(`
         *,
-        colaborador:colaboradores!fk_lancamentos_colaborador(id, nome, porcentagem_comissao)
+        colaborador:colaboradores(id, nome, porcentagem_comissao)
       `)
       .eq('id', lancamentoId)
       .single();

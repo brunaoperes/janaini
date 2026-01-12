@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function UserMenu() {
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -23,7 +23,8 @@ export default function UserMenu() {
     await signOut();
   };
 
-  const userName = user?.user_metadata?.nome || user?.email?.split('@')[0] || 'Usuário';
+  // Usar profile.nome (do banco) em vez de user_metadata.nome (do auth)
+  const userName = profile?.nome || user?.user_metadata?.nome || user?.email?.split('@')[0] || 'Usuário';
 
   return (
     <div className="relative" ref={menuRef}>
