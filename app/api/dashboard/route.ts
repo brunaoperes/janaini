@@ -44,6 +44,9 @@ export async function GET(request: Request) {
     console.log('Data fim personalizada:', dataFim);
 
     // Faturamento do dia (com detalhes)
+    // IMPORTANTE: Excluir fiados pendentes (is_fiado=true com status pendente)
+    // e excluir troca/grátis (is_troca_gratis=true)
+    // Fiados pagos entram pelo pagamento (pagamentos_fiado), não pelo lançamento original
     const { data: faturamentoDia, error: errDia } = await supabase
       .from('lancamentos')
       .select(`
@@ -52,6 +55,9 @@ export async function GET(request: Request) {
         forma_pagamento,
         servicos_nomes,
         data,
+        is_fiado,
+        is_troca_gratis,
+        status,
         clientes(nome),
         colaboradores(nome)
       `)
@@ -61,10 +67,24 @@ export async function GET(request: Request) {
 
     console.log('Faturamento dia:', faturamentoDia?.length, 'erro:', errDia?.message);
 
-    const totalDia = faturamentoDia?.reduce((sum, l) => sum + (l.valor_total || 0), 0) || 0;
+    // Filtrar para faturamento: apenas lançamentos normais (não fiado, não troca/grátis)
+    const lancamentosNormaisDia = faturamentoDia?.filter((l: any) =>
+      !l.is_fiado && !l.is_troca_gratis
+    ) || [];
+
+    // Buscar pagamentos de fiado do dia (fiados que foram pagos hoje)
+    const { data: pagamentosFiadoDia } = await supabase
+      .from('pagamentos_fiado')
+      .select('valor_pago, data_pagamento')
+      .gte('data_pagamento', hojeStr)
+      .lte('data_pagamento', hojeStr);
+
+    const totalPagamentosFiadoDia = pagamentosFiadoDia?.reduce((sum, p) => sum + (p.valor_pago || 0), 0) || 0;
+    const totalDia = lancamentosNormaisDia.reduce((sum, l) => sum + (l.valor_total || 0), 0) + totalPagamentosFiadoDia;
     const lancamentosHoje = faturamentoDia || [];
 
     // Faturamento do mês (com detalhes)
+    // IMPORTANTE: Mesma lógica - excluir fiados pendentes e troca/grátis
     const { data: faturamentoMes, error: errMes } = await supabase
       .from('lancamentos')
       .select(`
@@ -73,6 +93,9 @@ export async function GET(request: Request) {
         forma_pagamento,
         servicos_nomes,
         data,
+        is_fiado,
+        is_troca_gratis,
+        status,
         clientes(nome),
         colaboradores(nome)
       `)
@@ -82,7 +105,20 @@ export async function GET(request: Request) {
 
     console.log('Faturamento mes:', faturamentoMes?.length, 'erro:', errMes?.message);
 
-    const totalMes = faturamentoMes?.reduce((sum, l) => sum + (l.valor_total || 0), 0) || 0;
+    // Filtrar para faturamento: apenas lançamentos normais (não fiado, não troca/grátis)
+    const lancamentosNormaisMes = faturamentoMes?.filter((l: any) =>
+      !l.is_fiado && !l.is_troca_gratis
+    ) || [];
+
+    // Buscar pagamentos de fiado do mês
+    const { data: pagamentosFiadoMes } = await supabase
+      .from('pagamentos_fiado')
+      .select('valor_pago, data_pagamento')
+      .gte('data_pagamento', inicioMesStr)
+      .lte('data_pagamento', fimMesStr);
+
+    const totalPagamentosFiadoMes = pagamentosFiadoMes?.reduce((sum, p) => sum + (p.valor_pago || 0), 0) || 0;
+    const totalMes = lancamentosNormaisMes.reduce((sum, l) => sum + (l.valor_total || 0), 0) + totalPagamentosFiadoMes;
     const lancamentosMes = faturamentoMes || [];
 
     // Total de clientes
@@ -102,18 +138,33 @@ export async function GET(request: Request) {
     console.log('Agendamentos hoje:', agendamentosHoje, 'erro:', errAgend?.message);
 
     // Top 5 Colaboradoras (por valor total)
+    // IMPORTANTE: Excluir fiados pendentes e troca/grátis
     const { data: topColaboradoras } = await supabase
       .from('lancamentos')
       .select(`
         colaborador_id,
         valor_total,
+        is_fiado,
+        is_troca_gratis,
         colaboradores(nome)
       `)
       .gte('data', `${inicioMesStr}T00:00:00`)
       .lte('data', `${fimMesStr}T23:59:59`);
 
+    // Buscar pagamentos de fiado do mês para incluir no ranking
+    const { data: pagamentosFiadoColabs } = await supabase
+      .from('pagamentos_fiado')
+      .select(`
+        valor_pago,
+        lancamento:lancamentos(colaborador_id, colaborador:colaboradores(nome))
+      `)
+      .gte('data_pagamento', inicioMesStr)
+      .lte('data_pagamento', fimMesStr);
+
     const colaboradorasMap = new Map();
-    topColaboradoras?.forEach((lanc: any) => {
+
+    // Adicionar lançamentos normais (não fiado, não troca/grátis)
+    topColaboradoras?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const id = lanc.colaborador_id;
       const nome = lanc.colaboradores?.nome || 'Desconhecida';
       const valor = lanc.valor_total || 0;
@@ -124,26 +175,55 @@ export async function GET(request: Request) {
       colaboradorasMap.get(id).total += valor;
     });
 
+    // Adicionar pagamentos de fiado
+    pagamentosFiadoColabs?.forEach((pag: any) => {
+      const id = pag.lancamento?.colaborador_id;
+      const nome = pag.lancamento?.colaborador?.nome || 'Desconhecida';
+      const valor = pag.valor_pago || 0;
+
+      if (id) {
+        if (!colaboradorasMap.has(id)) {
+          colaboradorasMap.set(id, { nome, total: 0 });
+        }
+        colaboradorasMap.get(id).total += valor;
+      }
+    });
+
     const topColab = Array.from(colaboradorasMap.values())
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
     // Top 10 Clientes (por valor total gasto no mês)
+    // IMPORTANTE: Excluir fiados pendentes e troca/grátis
     const { data: topClientesData } = await supabase
       .from('lancamentos')
       .select(`
         cliente_id,
         valor_total,
+        is_fiado,
+        is_troca_gratis,
         clientes(nome)
       `)
       .gte('data', `${inicioMesStr}T00:00:00`)
       .lte('data', `${fimMesStr}T23:59:59`)
       .not('cliente_id', 'is', null);
 
+    // Buscar pagamentos de fiado para clientes
+    const { data: pagamentosFiadoClientes } = await supabase
+      .from('pagamentos_fiado')
+      .select(`
+        valor_pago,
+        lancamento:lancamentos(cliente_id, cliente:clientes(nome))
+      `)
+      .gte('data_pagamento', inicioMesStr)
+      .lte('data_pagamento', fimMesStr);
+
     console.log('Top clientes data:', topClientesData?.length, 'registros');
 
     const clientesMap = new Map();
-    topClientesData?.forEach((lanc: any) => {
+
+    // Adicionar lançamentos normais (não fiado, não troca/grátis)
+    topClientesData?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const id = lanc.cliente_id;
       const nome = lanc.clientes?.nome || 'Desconhecido';
       const valor = lanc.valor_total || 0;
@@ -153,6 +233,21 @@ export async function GET(request: Request) {
       }
       clientesMap.get(id).visitas += 1;
       clientesMap.get(id).total += valor;
+    });
+
+    // Adicionar pagamentos de fiado
+    pagamentosFiadoClientes?.forEach((pag: any) => {
+      const id = pag.lancamento?.cliente_id;
+      const nome = pag.lancamento?.cliente?.nome || 'Desconhecido';
+      const valor = pag.valor_pago || 0;
+
+      if (id) {
+        if (!clientesMap.has(id)) {
+          clientesMap.set(id, { id, nome, visitas: 0, total: 0 });
+        }
+        clientesMap.get(id).visitas += 1;
+        clientesMap.get(id).total += valor;
+      }
     });
 
     // Ordenar por valor total (maior primeiro) e pegar os 10 melhores
@@ -192,20 +287,40 @@ export async function GET(request: Request) {
       chartDataFim = hojeStr;
     }
 
+    // Faturamento do período (gráfico)
+    // IMPORTANTE: Excluir fiados pendentes e troca/grátis
     const { data: faturamentoPeriodo } = await supabase
       .from('lancamentos')
-      .select('data, valor_total')
+      .select('data, valor_total, is_fiado, is_troca_gratis')
       .gte('data', `${chartDataInicio}T00:00:00`)
       .lte('data', `${chartDataFim}T23:59:59`)
       .order('data', { ascending: true });
 
+    // Buscar pagamentos de fiado do período
+    const { data: pagamentosFiadoPeriodo } = await supabase
+      .from('pagamentos_fiado')
+      .select('data_pagamento, valor_pago')
+      .gte('data_pagamento', chartDataInicio)
+      .lte('data_pagamento', chartDataFim);
+
     const faturamentoPorDia = new Map();
-    faturamentoPeriodo?.forEach((lanc: any) => {
+
+    // Adicionar lançamentos normais (não fiado, não troca/grátis)
+    faturamentoPeriodo?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const data = new Date(lanc.data).toLocaleDateString('pt-BR');
       if (!faturamentoPorDia.has(data)) {
         faturamentoPorDia.set(data, 0);
       }
       faturamentoPorDia.set(data, faturamentoPorDia.get(data) + (lanc.valor_total || 0));
+    });
+
+    // Adicionar pagamentos de fiado (pelo dia do pagamento)
+    pagamentosFiadoPeriodo?.forEach((pag: any) => {
+      const data = new Date(pag.data_pagamento).toLocaleDateString('pt-BR');
+      if (!faturamentoPorDia.has(data)) {
+        faturamentoPorDia.set(data, 0);
+      }
+      faturamentoPorDia.set(data, faturamentoPorDia.get(data) + (pag.valor_pago || 0));
     });
 
     const chartData = Array.from(faturamentoPorDia.entries()).map(([data, valor]) => ({
@@ -214,7 +329,10 @@ export async function GET(request: Request) {
     }));
 
     // Total do período do gráfico
-    const totalPeriodoGrafico = faturamentoPeriodo?.reduce((sum, l) => sum + (l.valor_total || 0), 0) || 0;
+    const totalLancamentosNormais = faturamentoPeriodo?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis)
+      .reduce((sum, l) => sum + (l.valor_total || 0), 0) || 0;
+    const totalPagamentosFiadoPeriodo = pagamentosFiadoPeriodo?.reduce((sum, p) => sum + (p.valor_pago || 0), 0) || 0;
+    const totalPeriodoGrafico = totalLancamentosNormais + totalPagamentosFiadoPeriodo;
 
     return jsonResponse({
       totalDia,

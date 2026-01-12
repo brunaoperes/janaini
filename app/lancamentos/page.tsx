@@ -43,6 +43,16 @@ const parseAsLocalTime = (dataHora: string): Date => {
   return new Date(dataHora);
 };
 
+interface DivisaoColaborador {
+  colaborador_id: number;
+  valor: number;
+  colaborador?: {
+    id: number;
+    nome: string;
+    porcentagem_comissao: number;
+  };
+}
+
 interface LancamentoComRelacoes {
   id: number;
   colaborador_id: number;
@@ -62,6 +72,8 @@ interface LancamentoComRelacoes {
   colaboradores?: { nome: string; porcentagem_comissao: number } | null;
   clientes?: { nome: string } | null;
   _canViewComissao?: boolean;
+  compartilhado?: boolean;
+  divisoes?: DivisaoColaborador[];
 }
 
 interface UserProfile {
@@ -113,6 +125,9 @@ export default function LancamentosPage() {
     valor_total: '',
     observacoes: '',
     forma_pagamento: '',
+    is_fiado: false,
+    is_troca_gratis: false,
+    valor_referencia: '',
   });
 
   const [selectedColaborador, setSelectedColaborador] = useState<Colaborador | null>(null);
@@ -120,6 +135,11 @@ export default function LancamentosPage() {
   const [jaRealizado, setJaRealizado] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [filtroServico, setFiltroServico] = useState('');
+
+  // Estado para serviço compartilhado
+  const [compartilhado, setCompartilhado] = useState(false);
+  const [divisoes, setDivisoes] = useState<{ colaborador_id: number; valor: string }[]>([]);
 
   useEffect(() => {
     loadData();
@@ -152,12 +172,6 @@ export default function LancamentosPage() {
       const colaboradoresData = data.colaboradores || [];
       const servicosData = data.servicos || [];
 
-      console.log('[Lancamentos] Dados recebidos:', {
-        colaboradores: colaboradoresData.length,
-        servicos: servicosData.length,
-        userProfile: data._userProfile,
-      });
-
       setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
       setServicos(servicosData);
@@ -167,18 +181,11 @@ export default function LancamentosPage() {
       if (data._userProfile) {
         setUserProfile(data._userProfile);
 
-        console.log('[Lancamentos] UserProfile:', {
-          isAdmin: data._userProfile.isAdmin,
-          colaboradorId: data._userProfile.colaboradorId,
-          editingId: editingId,
-        });
-
         // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId e não estiver editando)
         if (data._userProfile.colaboradorId) {
           const colaboradorDoUsuario = colaboradoresData.find(
             (c: Colaborador) => c.id === data._userProfile.colaboradorId
           );
-          console.log('[Lancamentos] Colaborador encontrado:', colaboradorDoUsuario?.nome);
 
           if (colaboradorDoUsuario && !editingId) {
             setSelectedColaborador(colaboradorDoUsuario);
@@ -186,7 +193,6 @@ export default function LancamentosPage() {
               ...prev,
               colaborador_id: colaboradorDoUsuario.id.toString(),
             }));
-            console.log('[Lancamentos] Colaborador pré-selecionado:', colaboradorDoUsuario.nome);
           }
         }
       }
@@ -256,14 +262,59 @@ export default function LancamentosPage() {
         .filter(Boolean)
         .join(' + ');
 
-      // Validar forma de pagamento se já realizado
-      if (jaRealizado && !formData.forma_pagamento) {
+      // Validar forma de pagamento se já realizado (não precisa para fiado/troca)
+      if (jaRealizado && !formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
         setFormErrors('Selecione uma forma de pagamento');
         setIsSubmitting(false);
         return;
       }
 
-      const statusFinal = jaRealizado ? 'concluido' : 'pendente';
+      // Validar serviço compartilhado
+      if (compartilhado) {
+        if (divisoes.length < 2) {
+          setFormErrors('Serviço compartilhado precisa de pelo menos 2 colaboradores');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const valorTotal = parseFloat(formData.valor_total) || 0;
+        const somaDivisoes = divisoes.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
+
+        if (somaDivisoes > valorTotal) {
+          setFormErrors(`Soma das divisões (R$ ${somaDivisoes.toFixed(2)}) excede o valor total (R$ ${valorTotal.toFixed(2)})`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        const temValorNegativo = divisoes.some(d => parseFloat(d.valor) < 0);
+        if (temValorNegativo) {
+          setFormErrors('Valores não podem ser negativos');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const temColaboradorDuplicado = divisoes.some((d, i) =>
+          divisoes.findIndex(x => x.colaborador_id === d.colaborador_id) !== i
+        );
+        if (temColaboradorDuplicado) {
+          setFormErrors('Não pode repetir colaborador na divisão');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Status final:
+      // - Fiado: sempre pendente (até ser pago)
+      // - Troca/Grátis: sempre concluído
+      // - Normal: concluído se já realizado, pendente se não
+      let statusFinal = 'pendente';
+      if (formData.is_fiado) {
+        statusFinal = 'pendente'; // Fiado sempre fica pendente
+      } else if (formData.is_troca_gratis) {
+        statusFinal = 'concluido'; // Troca/grátis já está finalizado
+      } else if (jaRealizado) {
+        statusFinal = 'concluido';
+      }
 
       const validationData = {
         colaborador_id: Number(formData.colaborador_id),
@@ -287,10 +338,10 @@ export default function LancamentosPage() {
         return;
       }
 
-      // Buscar taxa da forma de pagamento (se já realizado)
+      // Buscar taxa da forma de pagamento (apenas para pagamentos normais, não para fiado/troca)
       let taxaPercentual = 0;
       let valorTaxa = 0;
-      if (jaRealizado && formData.forma_pagamento) {
+      if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
         const { data: formaPagamento } = await supabase
           .from('formas_pagamento')
           .select('taxa_percentual')
@@ -301,20 +352,57 @@ export default function LancamentosPage() {
         valorTaxa = (validationData.valor_total * taxaPercentual) / 100;
       }
 
-      // Calcular comissões (taxa é descontada da comissão do colaborador)
-      const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
-      const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
-      const comissaoColaborador = comissaoBruta - valorTaxa;
-      const comissaoSalao = validationData.valor_total - comissaoBruta;
+      // Calcular comissões
+      let comissaoColaborador = 0;
+      let comissaoSalao = 0;
+
+      if (formData.is_troca_gratis) {
+        // Troca/Grátis: comissões são zero
+        comissaoColaborador = 0;
+        comissaoSalao = 0;
+      } else if (formData.is_fiado) {
+        // Fiado: comissões são calculadas, mas só serão "confirmadas" quando pago
+        const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
+        const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
+        comissaoColaborador = comissaoBruta;
+        comissaoSalao = validationData.valor_total - comissaoBruta;
+      } else {
+        // Normal: comissões com desconto de taxa
+        const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
+        const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
+        comissaoColaborador = comissaoBruta - valorTaxa;
+        comissaoSalao = validationData.valor_total - comissaoBruta;
+      }
 
       // Montar data/hora completa (garantir formato HH:MM:SS)
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
       const dataCompleta = `${formData.data}T${horaInicioFormatada}`;
 
+      // Determinar valor_total (para troca/grátis é sempre 0)
+      const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
+
+      // Determinar forma_pagamento e data_pagamento
+      let formaPagamentoFinal = null;
+      let dataPagamentoFinal = null;
+
+      if (formData.is_fiado) {
+        // Fiado: sem forma de pagamento ainda, sem data de pagamento
+        formaPagamentoFinal = 'fiado';
+        dataPagamentoFinal = null;
+      } else if (formData.is_troca_gratis) {
+        // Troca/Grátis: marca como troca_gratis
+        formaPagamentoFinal = 'troca_gratis';
+        dataPagamentoFinal = new Date().toISOString();
+      } else if (jaRealizado && formData.forma_pagamento) {
+        // Normal concluído
+        formaPagamentoFinal = formData.forma_pagamento;
+        dataPagamentoFinal = new Date().toISOString();
+      }
+
       const lancamentoData = {
         colaborador_id: validationData.colaborador_id,
         cliente_id: validationData.cliente_id,
-        valor_total: validationData.valor_total,
+        valor_total: valorTotalFinal,
         comissao_colaborador: comissaoColaborador,
         comissao_salao: comissaoSalao,
         taxa_pagamento: valorTaxa,
@@ -325,8 +413,15 @@ export default function LancamentosPage() {
         servicos_nomes: servicosNomes,
         status: statusFinal,
         observacoes: formData.observacoes || null,
-        forma_pagamento: jaRealizado ? formData.forma_pagamento : null,
-        data_pagamento: jaRealizado ? new Date().toISOString() : null,
+        forma_pagamento: formaPagamentoFinal,
+        data_pagamento: dataPagamentoFinal,
+        compartilhado: compartilhado,
+        // Campos especiais para fiado e troca/grátis
+        is_fiado: formData.is_fiado || false,
+        is_troca_gratis: formData.is_troca_gratis || false,
+        valor_referencia: formData.is_troca_gratis && formData.valor_referencia
+          ? parseFloat(formData.valor_referencia)
+          : null,
       };
 
       let lancamento;
@@ -360,10 +455,55 @@ export default function LancamentosPage() {
         return;
       }
 
+      // Salvar divisões se for serviço compartilhado
+      if (compartilhado && divisoes.length > 0) {
+        // Primeiro, deletar divisões antigas (se editando)
+        if (editingId) {
+          await supabase
+            .from('lancamento_divisoes')
+            .delete()
+            .eq('lancamento_id', editingId);
+        }
+
+        // Inserir novas divisões
+        const divisoesParaSalvar = divisoes.map(d => {
+          const colab = colaboradores.find(c => c.id === d.colaborador_id);
+          const porcentagemColab = colab?.porcentagem_comissao || 50;
+          const valorDivisao = parseFloat(d.valor) || 0;
+          const comissaoCalculada = (valorDivisao * porcentagemColab) / 100;
+
+          return {
+            lancamento_id: lancamento.id,
+            colaborador_id: d.colaborador_id,
+            valor: valorDivisao,
+            comissao_calculada: comissaoCalculada,
+          };
+        });
+
+        const { error: divError } = await supabase
+          .from('lancamento_divisoes')
+          .insert(divisoesParaSalvar);
+
+        if (divError) {
+          console.error('Erro ao salvar divisões:', divError);
+        }
+      } else if (editingId) {
+        // Se não é mais compartilhado, deletar divisões existentes
+        await supabase
+          .from('lancamento_divisoes')
+          .delete()
+          .eq('lancamento_id', editingId);
+      }
+
       // Calcular duração real baseada nos horários definidos pelo usuário
       const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
       const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
       const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
+
+      // Preparar colaboradores_ids para agendamento (se compartilhado)
+      const colaboradoresIdsAgenda = compartilhado
+        ? divisoes.map(d => d.colaborador_id)
+        : [validationData.colaborador_id];
 
       if (editingId) {
         // Atualizar agendamento vinculado
@@ -377,6 +517,7 @@ export default function LancamentosPage() {
             duracao_minutos: duracaoTotal,
             valor_estimado: validationData.valor_total,
             status: statusFinal,
+            colaboradores_ids: colaboradoresIdsAgenda,
           })
           .eq('lancamento_id', editingId);
 
@@ -396,6 +537,7 @@ export default function LancamentosPage() {
             valor_estimado: validationData.valor_total,
             lancamento_id: lancamento.id,
             status: statusFinal,
+            colaboradores_ids: colaboradoresIdsAgenda,
           });
 
         if (agendError) {
@@ -403,8 +545,15 @@ export default function LancamentosPage() {
         }
       }
 
-      const msgTaxa = valorTaxa > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
-      toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgTaxa);
+      let msgExtra = '';
+      if (formData.is_fiado) {
+        msgExtra = ' - Marcado como FIADO (pendente)';
+      } else if (formData.is_troca_gratis) {
+        msgExtra = ' - Troca/Grátis registrado';
+      } else if (valorTaxa > 0) {
+        msgExtra = ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})`;
+      }
+      toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgExtra);
       setShowModal(false);
       resetForm();
       loadData();
@@ -418,8 +567,20 @@ export default function LancamentosPage() {
   }
 
   function resetForm() {
+    // Manter colaborador pré-selecionado para usuários não-admin
+    let preSelectedColaboradorId = '';
+    let preSelectedColaborador: Colaborador | null = null;
+
+    if (userProfile?.colaboradorId) {
+      const colaboradorDoUsuario = colaboradores.find(c => c.id === userProfile.colaboradorId);
+      if (colaboradorDoUsuario) {
+        preSelectedColaboradorId = colaboradorDoUsuario.id.toString();
+        preSelectedColaborador = colaboradorDoUsuario;
+      }
+    }
+
     setFormData({
-      colaborador_id: '',
+      colaborador_id: preSelectedColaboradorId,
       cliente_id: '',
       data: format(new Date(), 'yyyy-MM-dd'),
       hora_inicio: '09:00',
@@ -428,12 +589,18 @@ export default function LancamentosPage() {
       valor_total: '',
       observacoes: '',
       forma_pagamento: '',
+      is_fiado: false,
+      is_troca_gratis: false,
+      valor_referencia: '',
     });
-    setSelectedColaborador(null);
+    setSelectedColaborador(preSelectedColaborador);
     setSelectedCliente(null);
     setJaRealizado(false);
     setEditingId(null);
     setFormErrors('');
+    setFiltroServico('');
+    setCompartilhado(false);
+    setDivisoes([]);
   }
 
   // Função para editar um lançamento - BUSCA DADOS FRESCOS DO BANCO
@@ -484,12 +651,34 @@ export default function LancamentosPage() {
       valor_total: lancFresh.valor_total.toFixed(2),
       observacoes: lancFresh.observacoes || '',
       forma_pagamento: lancFresh.forma_pagamento || '',
+      is_fiado: lancFresh.is_fiado || false,
+      is_troca_gratis: lancFresh.is_troca_gratis || false,
+      valor_referencia: lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '',
     });
 
     setSelectedCliente(cliente || null);
     setSelectedColaborador(colaborador || null);
-    setJaRealizado(lancFresh.status === 'concluido');
+    // Determinar jaRealizado: true se concluído OU se é fiado OU se é troca/grátis
+    setJaRealizado(lancFresh.status === 'concluido' || lancFresh.is_fiado || lancFresh.is_troca_gratis);
     setEditingId(lancFresh.id);
+
+    // Buscar divisões se existir
+    const { data: divisoesData } = await supabase
+      .from('lancamento_divisoes')
+      .select('colaborador_id, valor')
+      .eq('lancamento_id', lancFresh.id);
+
+    if (divisoesData && divisoesData.length > 0) {
+      setCompartilhado(true);
+      setDivisoes(divisoesData.map((d: any) => ({
+        colaborador_id: d.colaborador_id,
+        valor: d.valor.toFixed(2),
+      })));
+    } else {
+      setCompartilhado(false);
+      setDivisoes([]);
+    }
+
     setShowModal(true);
   }
 
@@ -628,9 +817,21 @@ export default function LancamentosPage() {
                         <td className="px-4 py-3">
                           {getStatusBadge(lanc.status)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {lanc.forma_pagamento ? (
-                            FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label || lanc.forma_pagamento
+                        <td className="px-4 py-3 text-sm">
+                          {(lanc as any).is_fiado ? (
+                            <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
+                              Fiado
+                            </span>
+                          ) : (lanc as any).is_troca_gratis ? (
+                            <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                              Troca/Grátis
+                            </span>
+                          ) : lanc.forma_pagamento ? (
+                            <span className="text-gray-700">
+                              {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome ||
+                               FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label ||
+                               lanc.forma_pagamento}
+                            </span>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -697,9 +898,24 @@ export default function LancamentosPage() {
                       </div>
                     )}
 
-                    {lanc.forma_pagamento && (
-                      <div className="text-sm text-gray-600 mb-3">
-                        <span className="font-medium">Pagamento:</span> {FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label || lanc.forma_pagamento}
+                    {((lanc as any).is_fiado || (lanc as any).is_troca_gratis || lanc.forma_pagamento) && (
+                      <div className="text-sm mb-3">
+                        <span className="font-medium text-gray-600">Pagamento: </span>
+                        {(lanc as any).is_fiado ? (
+                          <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
+                            Fiado
+                          </span>
+                        ) : (lanc as any).is_troca_gratis ? (
+                          <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+                            Troca/Grátis
+                          </span>
+                        ) : (
+                          <span className="text-gray-700">
+                            {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome ||
+                             FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label ||
+                             lanc.forma_pagamento}
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -831,23 +1047,35 @@ export default function LancamentosPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Serviços * (selecione um ou mais)
                   </label>
+                  <input
+                    type="text"
+                    placeholder="Pesquisar serviço..."
+                    value={filtroServico}
+                    onChange={(e) => setFiltroServico(e.target.value)}
+                    className="w-full px-4 py-2 mb-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                  />
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl">
-                    {servicos.map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => handleServicoToggle(s.id)}
-                        className={`text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                          formData.servicos_ids.includes(s.id)
-                            ? 'bg-purple-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-purple-100'
-                        }`}
-                      >
-                        <div className="font-medium truncate">{s.nome}</div>
-                        <div className="text-xs opacity-75">R$ {s.valor.toFixed(2)}</div>
-                      </button>
-                    ))}
+                    {servicos
+                      .filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase()))
+                      .map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleServicoToggle(s.id)}
+                          className={`text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                            formData.servicos_ids.includes(s.id)
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-purple-100'
+                          }`}
+                        >
+                          <div className="font-medium truncate">{s.nome}</div>
+                          <div className="text-xs opacity-75">R$ {s.valor.toFixed(2)}</div>
+                        </button>
+                      ))}
                   </div>
+                  {servicos.filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase())).length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-2">Nenhum serviço encontrado</p>
+                  )}
                 </div>
 
                 {/* Valor Total */}
@@ -881,7 +1109,19 @@ export default function LancamentosPage() {
                     <input
                       type="checkbox"
                       checked={jaRealizado}
-                      onChange={(e) => setJaRealizado(e.target.checked)}
+                      onChange={(e) => {
+                        setJaRealizado(e.target.checked);
+                        if (!e.target.checked) {
+                          // Limpar forma de pagamento e flags especiais
+                          setFormData(prev => ({
+                            ...prev,
+                            forma_pagamento: '',
+                            is_fiado: false,
+                            is_troca_gratis: false,
+                            valor_referencia: '',
+                          }));
+                        }
+                      }}
                       className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                     />
                     <span className="font-medium text-gray-700">Serviço já foi realizado</span>
@@ -891,14 +1131,22 @@ export default function LancamentosPage() {
                     <div className="mt-4 space-y-3">
                       <p className="text-sm text-gray-600">Como foi recebido o pagamento?</p>
                       <div className="flex flex-wrap gap-2">
-                        {formasPagamentoDB.length > 0 ? (
-                          formasPagamentoDB.map(forma => (
+                        {/* Formas de pagamento normais (do banco, excluindo fiado e troca) */}
+                        {formasPagamentoDB
+                          .filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis')
+                          .map(forma => (
                             <button
                               key={forma.codigo}
                               type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.codigo }))}
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                forma_pagamento: forma.codigo,
+                                is_fiado: false,
+                                is_troca_gratis: false,
+                                valor_referencia: '',
+                              }))}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                formData.forma_pagamento === forma.codigo
+                                formData.forma_pagamento === forma.codigo && !formData.is_fiado && !formData.is_troca_gratis
                                   ? 'bg-green-500 text-white'
                                   : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
                               }`}
@@ -912,28 +1160,98 @@ export default function LancamentosPage() {
                               )}
                             </button>
                           ))
-                        ) : (
-                          FORMAS_PAGAMENTO.map(forma => (
-                            <button
-                              key={forma.value}
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, forma_pagamento: forma.value }))}
-                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                formData.forma_pagamento === forma.value
-                                  ? 'bg-green-500 text-white'
-                                  : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
-                              }`}
-                            >
-                              <span>{forma.icon}</span>
-                              <span>{forma.label}</span>
-                            </button>
-                          ))
-                        )}
+                        }
+
+                        {/* Botão FIADO */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({
+                            ...prev,
+                            forma_pagamento: 'fiado',
+                            is_fiado: true,
+                            is_troca_gratis: false,
+                            valor_referencia: '',
+                          }))}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                            formData.is_fiado
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-white border border-gray-200 text-gray-700 hover:border-orange-300'
+                          }`}
+                        >
+                          <span>📝</span>
+                          <span>Fiado</span>
+                        </button>
+
+                        {/* Botão TROCA/GRÁTIS */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({
+                            ...prev,
+                            forma_pagamento: 'troca_gratis',
+                            is_fiado: false,
+                            is_troca_gratis: true,
+                            valor_total: '0',
+                          }))}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                            formData.is_troca_gratis
+                              ? 'bg-purple-500 text-white'
+                              : 'bg-white border border-gray-200 text-gray-700 hover:border-purple-300'
+                          }`}
+                        >
+                          <span>🎁</span>
+                          <span>Troca / Grátis</span>
+                        </button>
                       </div>
+
+                      {/* Info sobre FIADO */}
+                      {formData.is_fiado && (
+                        <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+                          <p className="text-orange-800 font-medium flex items-center gap-2">
+                            <span>📝</span> Fiado selecionado
+                          </p>
+                          <ul className="text-orange-700 mt-2 space-y-1 list-disc list-inside">
+                            <li>O serviço será marcado como <strong>pendente</strong></li>
+                            <li>Não entrará no faturamento até ser pago</li>
+                            <li>Você poderá receber o pagamento em Controle de Fiados</li>
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Campo de valor de referência para TROCA/GRÁTIS */}
+                      {formData.is_troca_gratis && (
+                        <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                          <p className="text-purple-800 font-medium flex items-center gap-2 mb-2">
+                            <span>🎁</span> Troca / Grátis selecionado
+                          </p>
+                          <p className="text-purple-700 text-sm mb-3">
+                            O valor será R$ 0,00 (sem faturamento e sem comissão).
+                          </p>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-1">
+                              Valor de referência (opcional)
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={formData.valor_referencia}
+                                onChange={(e) => setFormData(prev => ({ ...prev, valor_referencia: e.target.value }))}
+                                className="w-full pl-10 pr-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <p className="text-xs text-purple-600 mt-1">
+                              Apenas para referência/histórico. Não entra em relatórios.
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Preview da taxa quando selecionada uma forma com taxa */}
                       {/* Só mostra se for admin ou o próprio colaborador */}
                       {formData.forma_pagamento && formData.valor_total && selectedColaborador &&
+                       !formData.is_fiado && !formData.is_troca_gratis &&
                        (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (() => {
                         const formaSelecionada = formasPagamentoDB.find(f => f.codigo === formData.forma_pagamento);
                         const taxa = formaSelecionada?.taxa_percentual || 0;
@@ -950,6 +1268,152 @@ export default function LancamentosPage() {
                               <li>Taxa descontada: -R$ {valorTaxa.toFixed(2)}</li>
                               <li className="font-bold">Comissão líquida: R$ {comissaoLiquida.toFixed(2)}</li>
                             </ul>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Serviço Compartilhado */}
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={compartilhado}
+                      onChange={(e) => {
+                        setCompartilhado(e.target.checked);
+                        if (e.target.checked && divisoes.length === 0) {
+                          // Inicializar com o colaborador principal
+                          const valorTotal = parseFloat(formData.valor_total) || 0;
+                          const valorMetade = valorTotal / 2;
+                          setDivisoes([
+                            { colaborador_id: selectedColaborador?.id || 0, valor: valorMetade.toFixed(2) },
+                            { colaborador_id: 0, valor: valorMetade.toFixed(2) },
+                          ]);
+                        }
+                      }}
+                      className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="font-medium text-gray-700">Serviço compartilhado</span>
+                  </label>
+
+                  {compartilhado && (
+                    <div className="mt-4 space-y-4">
+                      <p className="text-sm text-gray-600">Divida o valor entre os colaboradores:</p>
+
+                      {/* Lista de divisões */}
+                      <div className="space-y-3">
+                        {divisoes.map((div, index) => {
+                          const colab = colaboradores.find(c => c.id === div.colaborador_id);
+                          const valorTotal = parseFloat(formData.valor_total) || 0;
+                          const valorDiv = parseFloat(div.valor) || 0;
+                          const percentual = valorTotal > 0 ? ((valorDiv / valorTotal) * 100).toFixed(0) : '0';
+
+                          return (
+                            <div key={index} className="flex items-center gap-2 bg-white rounded-lg p-3 border border-blue-200">
+                              <select
+                                value={div.colaborador_id}
+                                onChange={(e) => {
+                                  const newDivisoes = [...divisoes];
+                                  newDivisoes[index].colaborador_id = parseInt(e.target.value);
+                                  setDivisoes(newDivisoes);
+                                }}
+                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-blue-500"
+                              >
+                                <option value={0}>Selecione...</option>
+                                {colaboradores.map(c => (
+                                  <option key={c.id} value={c.id}>{c.nome}</option>
+                                ))}
+                              </select>
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-gray-500 text-sm">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={div.valor}
+                                  onChange={(e) => {
+                                    const newDivisoes = [...divisoes];
+                                    newDivisoes[index].valor = e.target.value;
+                                    setDivisoes(newDivisoes);
+                                  }}
+                                  className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-blue-500 text-right"
+                                  placeholder="0.00"
+                                />
+                              </div>
+
+                              <span className="text-sm text-blue-600 font-medium w-12 text-right">
+                                {percentual}%
+                              </span>
+
+                              {colab && (
+                                <span className="text-xs text-gray-400">
+                                  (Com: {colab.porcentagem_comissao}%)
+                                </span>
+                              )}
+
+                              {divisoes.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newDivisoes = divisoes.filter((_, i) => i !== index);
+                                    setDivisoes(newDivisoes);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Adicionar colaborador */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDivisoes([...divisoes, { colaborador_id: 0, valor: '0' }]);
+                        }}
+                        className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Adicionar colaborador
+                      </button>
+
+                      {/* Resumo da divisão */}
+                      {(() => {
+                        const valorTotal = parseFloat(formData.valor_total) || 0;
+                        const somaDivisoes = divisoes.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
+                        const diferenca = valorTotal - somaDivisoes;
+                        const isValid = diferenca >= 0 && somaDivisoes > 0;
+
+                        return (
+                          <div className={`p-3 rounded-lg text-sm ${isValid ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                            <div className="flex justify-between items-center">
+                              <span className={isValid ? 'text-green-700' : 'text-red-700'}>
+                                Total dividido: R$ {somaDivisoes.toFixed(2)} / R$ {valorTotal.toFixed(2)}
+                              </span>
+                              {diferenca > 0 && (
+                                <span className="text-orange-600 font-medium">
+                                  Restam R$ {diferenca.toFixed(2)}
+                                </span>
+                              )}
+                              {diferenca < 0 && (
+                                <span className="text-red-600 font-medium">
+                                  Excede R$ {Math.abs(diferenca).toFixed(2)}
+                                </span>
+                              )}
+                              {diferenca === 0 && somaDivisoes > 0 && (
+                                <span className="text-green-600 font-medium">✓ OK</span>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}

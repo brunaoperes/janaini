@@ -1,10 +1,45 @@
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { auditCreate } from '@/lib/audit';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const dynamic = 'force-dynamic';
+
+// Helper para obter dados do usuário autenticado
+async function getAuthUser(supabase: any) {
+  try {
+    const cookieStore = await cookies();
+    const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll() {},
+      },
+    });
+
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('nome, role')
+      .eq('id', user.id)
+      .single();
+
+    return {
+      userId: user.id,
+      userEmail: user.email || undefined,
+      userName: profile?.nome,
+      userRole: profile?.role,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -18,6 +53,7 @@ export async function POST(request: Request) {
       valor_estimado,
       hora_inicio,
       hora_fim,
+      observacoes,
     } = body;
 
     console.log('[API/agendamentos] Criando agendamento:', { colaborador_id, cliente_id, data_hora });
@@ -54,6 +90,7 @@ export async function POST(request: Request) {
         hora_fim: hora_fim || hora_inicio,
         servicos_nomes: descricao_servico,
         status: 'pendente',
+        observacoes: observacoes || null,
       })
       .select()
       .single();
@@ -77,6 +114,7 @@ export async function POST(request: Request) {
         valor_estimado,
         lancamento_id: lancamento.id,
         status: 'pendente',
+        observacoes: observacoes || null,
       })
       .select()
       .single();
@@ -89,6 +127,20 @@ export async function POST(request: Request) {
     }
 
     console.log('[API/agendamentos] Agendamento criado:', agendamento.id);
+
+    // Registrar auditoria
+    const authUser = await getAuthUser(supabase);
+    if (authUser) {
+      await auditCreate({
+        ...authUser,
+        modulo: 'Agenda',
+        tabela: 'agendamentos',
+        registroId: agendamento.id,
+        dadosNovo: { ...agendamento, lancamento_id: lancamento.id },
+        metodo: 'POST',
+        endpoint: '/api/agendamentos',
+      });
+    }
 
     return NextResponse.json({
       success: true,

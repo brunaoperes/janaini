@@ -82,6 +82,9 @@ export default function AgendaPage() {
   const [finalizarData, setFinalizarData] = useState({
     forma_pagamento: 'pix',
     valor_pago: '',
+    is_fiado: false,
+    is_troca_gratis: false,
+    valor_referencia: '',
   });
   const [editData, setEditData] = useState({
     colaborador_id: '',
@@ -90,6 +93,7 @@ export default function AgendaPage() {
     hora_inicio: '',
     hora_fim: '',
     descricao_servico: '',
+    observacoes: '',
   });
 
   // Estado do formulário de novo agendamento
@@ -101,6 +105,7 @@ export default function AgendaPage() {
     hora_fim: '',
     descricao_servico: '',
     valor_servico: '',
+    observacoes: '',
   });
 
   // Estado para seleção múltipla de serviços (novo agendamento)
@@ -111,6 +116,9 @@ export default function AgendaPage() {
 
   // Estado para seleção múltipla de serviços (edição)
   const [servicosSelecionadosEdit, setServicosSelecionadosEdit] = useState<string[]>([]);
+
+  // Estado para filtro de pesquisa de serviços
+  const [filtroServico, setFiltroServico] = useState('');
 
   // Serviços agora são carregados dinamicamente do banco de dados
   // Ver tabela 'servicos' e página /admin/servicos para gerenciamento
@@ -183,12 +191,6 @@ export default function AgendaPage() {
       const colaboradoresData = data.colaboradores || [];
       const servicosData = data.servicos || [];
 
-      console.log('[Agenda] Dados recebidos:', {
-        colaboradores: colaboradoresData.length,
-        servicos: servicosData.length,
-        userProfile: data._userProfile,
-      });
-
       setColaboradores(colaboradoresData);
       setClientes(data.clientes || []);
       setServicos(servicosData);
@@ -196,11 +198,9 @@ export default function AgendaPage() {
 
       // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId)
       if (data._userProfile?.colaboradorId) {
-        const colaboradorId = data._userProfile.colaboradorId;
-        console.log('[Agenda] Pré-selecionando colaborador:', colaboradorId);
         setFormData(prev => ({
           ...prev,
-          colaborador_id: colaboradorId.toString(),
+          colaborador_id: data._userProfile.colaboradorId.toString(),
         }));
       }
     } catch (error) {
@@ -672,6 +672,7 @@ export default function AgendaPage() {
       hora_inicio: horaInicio,
       hora_fim: horaFim,
       descricao_servico: selectedAgendamento.descricao_servico || '',
+      observacoes: (selectedAgendamento as any).observacoes || '',
     });
     setServicosSelecionadosEdit(servicosExistentes);
     setIsEditMode(true);
@@ -715,6 +716,7 @@ export default function AgendaPage() {
         data_hora: novoDataHora,
         descricao_servico: descricaoServicos,
         duracao_minutos: duracaoMinutos,
+        observacoes: editData.observacoes || null,
       })
       .eq('id', selectedAgendamento.id)
       .select();
@@ -747,6 +749,7 @@ export default function AgendaPage() {
     alert('✅ Agendamento atualizado com sucesso!');
     setIsEditMode(false);
     setSelectedAgendamento(null);
+    setFiltroServico('');
     // Se mudou a data, atualizar selectedDate
     if (editData.data !== selectedDate) {
       setSelectedDate(editData.data);
@@ -793,57 +796,46 @@ export default function AgendaPage() {
       return;
     }
 
-    if (!finalizarData.forma_pagamento || !finalizarData.valor_pago) {
-      alert('⚠️ Preencha a forma de pagamento e o valor');
-      return;
+    // Validação: se não é fiado nem troca/grátis, precisa de forma de pagamento e valor
+    if (!finalizarData.is_fiado && !finalizarData.is_troca_gratis) {
+      if (!finalizarData.forma_pagamento || !finalizarData.valor_pago) {
+        alert('⚠️ Preencha a forma de pagamento e o valor');
+        return;
+      }
     }
 
     try {
-      const valorPago = parseFloat(finalizarData.valor_pago);
+      // Determinar valor pago
+      let valorPago = finalizarData.is_troca_gratis ? 0 : parseFloat(finalizarData.valor_pago);
       let lancamentoId = selectedAgendamento.lancamento_id;
 
-      // Buscar taxa da forma de pagamento
-      const { data: formaPagamento } = await supabase
-        .from('formas_pagamento')
-        .select('taxa_percentual')
-        .eq('codigo', finalizarData.forma_pagamento)
-        .single();
+      // Determinar status final
+      // Fiado = pendente, Troca/Grátis = concluido, Normal = concluido
+      const statusFinal = finalizarData.is_fiado ? 'pendente' : 'concluido';
 
-      const taxaPercentual = formaPagamento?.taxa_percentual || 0;
-      const valorTaxa = (valorPago * taxaPercentual) / 100;
-
-      // Se o agendamento já tem lançamento vinculado, atualizar
-      if (lancamentoId) {
-        // Buscar o lançamento para pegar a porcentagem de comissão
-        const { data: lancamento } = await supabase
-          .from('lancamentos')
-          .select('*, colaboradores(porcentagem_comissao)')
-          .eq('id', lancamentoId)
+      // Buscar taxa da forma de pagamento (apenas para pagamentos normais)
+      let taxaPercentual = 0;
+      let valorTaxa = 0;
+      if (!finalizarData.is_fiado && !finalizarData.is_troca_gratis) {
+        const { data: formaPagamento } = await supabase
+          .from('formas_pagamento')
+          .select('taxa_percentual')
+          .eq('codigo', finalizarData.forma_pagamento)
           .single();
 
-        const porcentagem = lancamento?.colaboradores?.porcentagem_comissao || 50;
-        const comissaoBruta = (valorPago * porcentagem) / 100;
-        // Taxa é descontada da comissão do colaborador
-        const comissaoColaborador = comissaoBruta - valorTaxa;
-        const comissaoSalao = valorPago - comissaoBruta;
+        taxaPercentual = formaPagamento?.taxa_percentual || 0;
+        valorTaxa = (valorPago * taxaPercentual) / 100;
+      }
 
-        // Atualizar lançamento existente
-        const { error: lancError } = await supabase
-          .from('lancamentos')
-          .update({
-            status: 'concluido',
-            forma_pagamento: finalizarData.forma_pagamento,
-            valor_total: valorPago,
-            comissao_colaborador: comissaoColaborador,
-            comissao_salao: comissaoSalao,
-            taxa_pagamento: valorTaxa,
-            data_pagamento: new Date().toISOString(),
-          })
-          .eq('id', lancamentoId);
+      // Calcular comissões
+      let comissaoColaborador = 0;
+      let comissaoSalao = 0;
 
-        if (lancError) throw lancError;
+      if (finalizarData.is_troca_gratis) {
+        // Troca/Grátis: comissões são zero
+        comissaoColaborador = 0;
+        comissaoSalao = 0;
       } else {
-        // Se não tem lançamento, criar um novo
         // Buscar porcentagem do colaborador
         const { data: colaborador } = await supabase
           .from('colaboradores')
@@ -853,12 +845,52 @@ export default function AgendaPage() {
 
         const porcentagem = colaborador?.porcentagem_comissao || 50;
         const comissaoBruta = (valorPago * porcentagem) / 100;
-        // Taxa é descontada da comissão do colaborador
-        const comissaoColaborador = comissaoBruta - valorTaxa;
-        const comissaoSalao = valorPago - comissaoBruta;
 
-        // Criar novo lançamento
-        // Usar a data/hora do agendamento para o lançamento
+        if (finalizarData.is_fiado) {
+          // Fiado: comissões são calculadas mas não confirmadas até pagar
+          comissaoColaborador = comissaoBruta;
+          comissaoSalao = valorPago - comissaoBruta;
+        } else {
+          // Normal: taxa é descontada da comissão do colaborador
+          comissaoColaborador = comissaoBruta - valorTaxa;
+          comissaoSalao = valorPago - comissaoBruta;
+        }
+      }
+
+      // Determinar forma de pagamento e data de pagamento
+      let formaPagamentoFinal = finalizarData.forma_pagamento;
+      let dataPagamentoFinal: string | null = new Date().toISOString();
+
+      if (finalizarData.is_fiado) {
+        formaPagamentoFinal = 'fiado';
+        dataPagamentoFinal = null;
+      } else if (finalizarData.is_troca_gratis) {
+        formaPagamentoFinal = 'troca_gratis';
+      }
+
+      // Se o agendamento já tem lançamento vinculado, atualizar
+      if (lancamentoId) {
+        const { error: lancError } = await supabase
+          .from('lancamentos')
+          .update({
+            status: statusFinal,
+            forma_pagamento: formaPagamentoFinal,
+            valor_total: valorPago,
+            comissao_colaborador: comissaoColaborador,
+            comissao_salao: comissaoSalao,
+            taxa_pagamento: valorTaxa,
+            data_pagamento: dataPagamentoFinal,
+            is_fiado: finalizarData.is_fiado || false,
+            is_troca_gratis: finalizarData.is_troca_gratis || false,
+            valor_referencia: finalizarData.is_troca_gratis && finalizarData.valor_referencia
+              ? parseFloat(finalizarData.valor_referencia)
+              : null,
+          })
+          .eq('id', lancamentoId);
+
+        if (lancError) throw lancError;
+      } else {
+        // Se não tem lançamento, criar um novo
         const dataAgendamento = selectedAgendamento.data_hora.split('T')[0];
         const horaAgendamento = selectedAgendamento.data_hora.split('T')[1]?.substring(0, 5) || '00:00';
         const dataLancamento = `${dataAgendamento}T${horaAgendamento}:00`;
@@ -870,14 +902,19 @@ export default function AgendaPage() {
             cliente_id: selectedAgendamento.cliente_id,
             servicos_nomes: selectedAgendamento.descricao_servico,
             valor_total: valorPago,
-            forma_pagamento: finalizarData.forma_pagamento,
-            status: 'concluido',
+            forma_pagamento: formaPagamentoFinal,
+            status: statusFinal,
             comissao_colaborador: comissaoColaborador,
             comissao_salao: comissaoSalao,
             taxa_pagamento: valorTaxa,
             data: dataLancamento,
             hora_inicio: horaAgendamento,
-            data_pagamento: new Date().toISOString(),
+            data_pagamento: dataPagamentoFinal,
+            is_fiado: finalizarData.is_fiado || false,
+            is_troca_gratis: finalizarData.is_troca_gratis || false,
+            valor_referencia: finalizarData.is_troca_gratis && finalizarData.valor_referencia
+              ? parseFloat(finalizarData.valor_referencia)
+              : null,
           })
           .select()
           .single();
@@ -887,21 +924,32 @@ export default function AgendaPage() {
       }
 
       // Atualizar agendamento com status e vincular ao lançamento
+      // Se é fiado, o status do agendamento também fica pendente (ainda não foi finalizado de fato)
       const { error: agendError } = await supabase
         .from('agendamentos')
         .update({
-          status: 'concluido',
+          status: finalizarData.is_fiado ? 'pendente' : 'concluido',
           lancamento_id: lancamentoId
         })
         .eq('id', selectedAgendamento.id);
 
       if (agendError) throw agendError;
 
-      const msgTaxa = taxaPercentual > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
-      alert(`✅ Serviço concluído com sucesso!${msgTaxa}`);
+      // Mensagem de sucesso
+      let msg = '✅ ';
+      if (finalizarData.is_fiado) {
+        msg += 'Serviço marcado como FIADO! Aguardando pagamento.';
+      } else if (finalizarData.is_troca_gratis) {
+        msg += 'Troca/Grátis registrado com sucesso!';
+      } else {
+        const msgTaxa = taxaPercentual > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
+        msg += `Serviço concluído com sucesso!${msgTaxa}`;
+      }
+
+      alert(msg);
       setSelectedAgendamento(null);
       setIsFinalizando(false);
-      setFinalizarData({ forma_pagamento: 'pix', valor_pago: '' });
+      setFinalizarData({ forma_pagamento: 'pix', valor_pago: '', is_fiado: false, is_troca_gratis: false, valor_referencia: '' });
       await loadData();
 
     } catch (error: any) {
@@ -963,7 +1011,10 @@ export default function AgendaPage() {
   // Ranking de colaboradoras
   const getRankingColaboradoras = () => {
     const ranking = colaboradores.map(colaborador => {
-      const agendamentosColab = agendamentos.filter(a => a.colaborador_id === colaborador.id);
+      const agendamentosColab = agendamentos.filter(a =>
+        a.colaborador_id === colaborador.id ||
+        (a.colaboradores_ids && a.colaboradores_ids.includes(colaborador.id))
+      );
       return {
         nome: colaborador.nome,
         quantidade: agendamentosColab.length,
@@ -1056,12 +1107,6 @@ export default function AgendaPage() {
     const comissaoSalao = valorEstimado - comissaoColaborador;
 
     // Usar API para criar (bypass RLS)
-    console.log('[Agenda] Criando agendamento via API...', {
-      colaborador_id: Number(formData.colaborador_id),
-      cliente_id: clienteSelecionado.id,
-      data_hora: dataHoraInicio,
-    });
-
     try {
       const response = await fetch('/api/agendamentos', {
         method: 'POST',
@@ -1075,6 +1120,7 @@ export default function AgendaPage() {
           valor_estimado: valorEstimado,
           hora_inicio: formData.hora_inicio,
           hora_fim: formData.hora_fim || formData.hora_inicio,
+          observacoes: formData.observacoes || null,
         }),
       });
 
@@ -1086,7 +1132,6 @@ export default function AgendaPage() {
         return;
       }
 
-      console.log('[Agenda] Agendamento criado com sucesso!', result);
       alert('✅ Agendamento criado com sucesso!');
       setShowNovoAgendamento(false);
       setFormData({
@@ -1097,9 +1142,11 @@ export default function AgendaPage() {
         hora_fim: '',
         descricao_servico: '',
         valor_servico: '',
+        observacoes: '',
       });
       setServicosSelecionados([]); // Limpar serviços selecionados
       setClienteSelecionado(null); // Limpar cliente selecionado
+      setFiltroServico(''); // Limpar filtro de pesquisa
       // Atualizar a data selecionada para a data do agendamento
       setSelectedDate(formData.data);
       // Esperar um pouco antes de recarregar para garantir que o banco salvou
@@ -1248,7 +1295,8 @@ export default function AgendaPage() {
             {colaboradores.map((colaborador, colabIndex) => {
               const color = getColaboradorColor(colabIndex);
               const agendamentosColaborador = agendamentos.filter(
-                (a) => a.colaborador_id === colaborador.id
+                (a) => a.colaborador_id === colaborador.id ||
+                  (a.colaboradores_ids && a.colaboradores_ids.includes(colaborador.id))
               );
 
               return (
@@ -1366,8 +1414,13 @@ export default function AgendaPage() {
                               {/* Conteúdo da Barra */}
                               <div className="relative h-full px-2 md:px-3 py-1 flex flex-col justify-center text-white">
                                 {/* Linha 1: Nome do Cliente */}
-                                <div className="text-[10px] md:text-xs font-bold truncate leading-tight">
+                                <div className="text-[10px] md:text-xs font-bold truncate leading-tight flex items-center gap-1">
                                   {agendamento.cliente?.nome}
+                                  {agendamento.colaboradores_ids && agendamento.colaboradores_ids.length > 1 && (
+                                    <span className="bg-white/30 text-[7px] md:text-[8px] px-1 rounded font-normal" title="Serviço compartilhado">
+                                      👥{agendamento.colaboradores_ids.length}
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Linha 2: Serviço com ícone */}
@@ -1744,6 +1797,7 @@ export default function AgendaPage() {
             if (e.target === e.currentTarget) {
               setShowNovoAgendamento(false);
               setClienteSelecionado(null);
+              setFiltroServico('');
             }
           }}
         >
@@ -1759,6 +1813,7 @@ export default function AgendaPage() {
                   onClick={() => {
                     setShowNovoAgendamento(false);
                     setClienteSelecionado(null);
+                    setFiltroServico('');
                   }}
                   className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
                 >
@@ -1822,51 +1877,63 @@ export default function AgendaPage() {
               {/* Serviços (Seleção Múltipla) */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  💅 Serviços * <span className="text-xs text-gray-500">(selecione um ou mais)</span>
+                  Serviços * <span className="text-xs text-gray-500">(selecione um ou mais)</span>
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {servicos.map((servico) => {
-                    const isSelected = servicosSelecionados.includes(servico.nome);
-                    return (
-                      <label
-                        key={servico.id}
-                        className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                          isSelected
-                            ? 'border-purple-500 bg-purple-50'
-                            : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            let novosServicos: string[];
-                            if (e.target.checked) {
-                              novosServicos = [...servicosSelecionados, servico.nome];
-                            } else {
-                              novosServicos = servicosSelecionados.filter(s => s !== servico.nome);
-                            }
-                            setServicosSelecionados(novosServicos);
-                            // Calcular valor total dos serviços selecionados
-                            const valorTotal = novosServicos.reduce((total, nomeServico) => {
-                              const s = servicos.find(srv => srv.nome === nomeServico);
-                              return total + (s?.valor || 0);
-                            }, 0);
-                            setFormData(prev => ({ ...prev, valor_servico: valorTotal.toFixed(2) }));
-                          }}
-                          className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-                        />
-                        <div className="flex-1">
-                          <div className="font-semibold text-gray-800">{servico.nome}</div>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-500">{servico.duracao_minutos} min</span>
-                            <span className="text-green-600 font-semibold">R$ {servico.valor.toFixed(2)}</span>
+                <input
+                  type="text"
+                  placeholder="Pesquisar serviço..."
+                  value={filtroServico}
+                  onChange={(e) => setFiltroServico(e.target.value)}
+                  className="w-full px-4 py-2 mb-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                  {servicos
+                    .filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase()))
+                    .map((servico) => {
+                      const isSelected = servicosSelecionados.includes(servico.nome);
+                      return (
+                        <label
+                          key={servico.id}
+                          className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-purple-500 bg-purple-50'
+                              : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              let novosServicos: string[];
+                              if (e.target.checked) {
+                                novosServicos = [...servicosSelecionados, servico.nome];
+                              } else {
+                                novosServicos = servicosSelecionados.filter(s => s !== servico.nome);
+                              }
+                              setServicosSelecionados(novosServicos);
+                              // Calcular valor total dos serviços selecionados
+                              const valorTotal = novosServicos.reduce((total, nomeServico) => {
+                                const s = servicos.find(srv => srv.nome === nomeServico);
+                                return total + (s?.valor || 0);
+                              }, 0);
+                              setFormData(prev => ({ ...prev, valor_servico: valorTotal.toFixed(2) }));
+                            }}
+                            className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-800">{servico.nome}</div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-gray-500">{servico.duracao_minutos} min</span>
+                              <span className="text-green-600 font-semibold">R$ {servico.valor.toFixed(2)}</span>
+                            </div>
                           </div>
-                        </div>
-                      </label>
-                    );
-                  })}
+                        </label>
+                      );
+                    })}
                 </div>
+                {servicos.filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase())).length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-2">Nenhum serviço encontrado</p>
+                )}
                 {/* Preview da duração e valor total */}
                 {servicosSelecionados.length > 0 && (
                   <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
@@ -1965,11 +2032,25 @@ export default function AgendaPage() {
                 </div>
               </div>
 
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  📝 Observações <span className="text-xs text-gray-500">(opcional)</span>
+                </label>
+                <textarea
+                  value={formData.observacoes}
+                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
+                  placeholder="Anotações sobre o atendimento..."
+                  rows={2}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors resize-none"
+                />
+              </div>
+
               {/* Botões */}
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowNovoAgendamento(false)}
+                  onClick={() => { setShowNovoAgendamento(false); setFiltroServico(''); }}
                   className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
                 >
                   Cancelar
@@ -1995,6 +2076,7 @@ export default function AgendaPage() {
             onClick={() => {
               setSelectedAgendamento(null);
               setIsEditMode(false);
+              setFiltroServico('');
             }}
           />
 
@@ -2015,6 +2097,7 @@ export default function AgendaPage() {
                   onClick={() => {
                     setSelectedAgendamento(null);
                     setIsEditMode(false);
+                    setFiltroServico('');
                   }}
                   className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:scale-110"
                 >
@@ -2123,7 +2206,7 @@ export default function AgendaPage() {
                     </div>
                   </div>
 
-                  {/* Observações */}
+                  {/* Serviço */}
                   <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl p-5 border border-yellow-100">
                     <label className="text-xs font-bold text-orange-600 uppercase tracking-wide flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2144,6 +2227,21 @@ export default function AgendaPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Observações */}
+                  {(selectedAgendamento as any).observacoes && (
+                    <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border border-gray-200">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Observações
+                      </label>
+                      <div className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">
+                        {(selectedAgendamento as any).observacoes}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Bloco Finalizar Serviço - disponível para TODOS os agendamentos pendentes */}
                   {selectedAgendamento.status !== 'concluido' && (
@@ -2181,6 +2279,7 @@ export default function AgendaPage() {
                               Forma de Pagamento
                             </label>
                             <div className="grid grid-cols-2 gap-2">
+                              {/* Formas de pagamento normais */}
                               {[
                                 { value: 'pix', label: 'PIX', icon: '📱' },
                                 { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
@@ -2189,9 +2288,15 @@ export default function AgendaPage() {
                               ].map(forma => (
                                 <button
                                   key={forma.value}
-                                  onClick={() => setFinalizarData(prev => ({ ...prev, forma_pagamento: forma.value }))}
+                                  onClick={() => setFinalizarData(prev => ({
+                                    ...prev,
+                                    forma_pagamento: forma.value,
+                                    is_fiado: false,
+                                    is_troca_gratis: false,
+                                    valor_referencia: '',
+                                  }))}
                                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
-                                    finalizarData.forma_pagamento === forma.value
+                                    finalizarData.forma_pagamento === forma.value && !finalizarData.is_fiado && !finalizarData.is_troca_gratis
                                       ? 'bg-green-500 text-white'
                                       : 'bg-white border border-gray-200 hover:border-green-300'
                                   }`}
@@ -2199,33 +2304,124 @@ export default function AgendaPage() {
                                   {forma.icon} {forma.label}
                                 </button>
                               ))}
+
+                              {/* Botão FIADO */}
+                              <button
+                                onClick={() => setFinalizarData(prev => ({
+                                  ...prev,
+                                  forma_pagamento: 'fiado',
+                                  is_fiado: true,
+                                  is_troca_gratis: false,
+                                  valor_referencia: '',
+                                }))}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                  finalizarData.is_fiado
+                                    ? 'bg-orange-500 text-white'
+                                    : 'bg-white border border-gray-200 hover:border-orange-300'
+                                }`}
+                              >
+                                📝 Fiado
+                              </button>
+
+                              {/* Botão TROCA/GRÁTIS */}
+                              <button
+                                onClick={() => setFinalizarData(prev => ({
+                                  ...prev,
+                                  forma_pagamento: 'troca_gratis',
+                                  is_fiado: false,
+                                  is_troca_gratis: true,
+                                  valor_pago: '0',
+                                }))}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                  finalizarData.is_troca_gratis
+                                    ? 'bg-purple-500 text-white'
+                                    : 'bg-white border border-gray-200 hover:border-purple-300'
+                                }`}
+                              >
+                                🎁 Troca/Grátis
+                              </button>
                             </div>
                           </div>
 
-                          {/* Valor Pago */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Valor Pago
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={finalizarData.valor_pago}
-                                onChange={(e) => setFinalizarData(prev => ({ ...prev, valor_pago: e.target.value }))}
-                                placeholder="0.00"
-                                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                              />
+                          {/* Info sobre FIADO */}
+                          {finalizarData.is_fiado && (
+                            <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+                              <p className="text-orange-800 font-medium flex items-center gap-2">
+                                <span>📝</span> Fiado selecionado
+                              </p>
+                              <ul className="text-orange-700 mt-2 space-y-1 list-disc list-inside">
+                                <li>O serviço ficará <strong>pendente</strong></li>
+                                <li>Não entra no faturamento até ser pago</li>
+                                <li>Receba em Controle de Fiados</li>
+                              </ul>
                             </div>
-                          </div>
+                          )}
+
+                          {/* Campo de valor de referência para TROCA/GRÁTIS */}
+                          {finalizarData.is_troca_gratis && (
+                            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                              <p className="text-purple-800 font-medium flex items-center gap-2 mb-2">
+                                <span>🎁</span> Troca / Grátis
+                              </p>
+                              <p className="text-purple-700 text-sm mb-3">
+                                Valor será R$ 0,00 (sem faturamento/comissão).
+                              </p>
+                              <div>
+                                <label className="block text-sm font-medium text-purple-700 mb-1">
+                                  Valor de referência (opcional)
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={finalizarData.valor_referencia}
+                                    onChange={(e) => setFinalizarData(prev => ({ ...prev, valor_referencia: e.target.value }))}
+                                    className="w-full pl-10 pr-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <p className="text-xs text-purple-600 mt-1">
+                                  Apenas para referência/histórico.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Valor Pago - Oculto para troca/grátis */}
+                          {!finalizarData.is_troca_gratis && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                {finalizarData.is_fiado ? 'Valor do Serviço' : 'Valor Pago'}
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={finalizarData.valor_pago}
+                                  onChange={(e) => setFinalizarData(prev => ({ ...prev, valor_pago: e.target.value }))}
+                                  placeholder="0.00"
+                                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                />
+                              </div>
+                            </div>
+                          )}
 
                           {/* Botão Confirmar */}
                           <button
                             onClick={finalizarAgendamento}
-                            className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                            className={`w-full px-6 py-4 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 ${
+                              finalizarData.is_fiado
+                                ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white'
+                                : finalizarData.is_troca_gratis
+                                ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white'
+                                : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
+                            }`}
                           >
-                            ✅ Confirmar Conclusão
+                            {finalizarData.is_fiado ? '📝 Marcar como Fiado' :
+                             finalizarData.is_troca_gratis ? '🎁 Registrar Troca/Grátis' :
+                             '✅ Confirmar Conclusão'}
                           </button>
                         </div>
                       )}
@@ -2330,8 +2526,17 @@ export default function AgendaPage() {
                         </svg>
                         Serviços * <span className="text-xs text-gray-500 font-normal">(selecione um ou mais)</span>
                       </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {servicos.map((servico) => {
+                      <input
+                        type="text"
+                        placeholder="Pesquisar serviço..."
+                        value={filtroServico}
+                        onChange={(e) => setFiltroServico(e.target.value)}
+                        className="w-full px-4 py-2 mb-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                      />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                        {servicos
+                          .filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase()))
+                          .map((servico) => {
                           const isSelected = servicosSelecionadosEdit.includes(servico.nome);
                           return (
                             <label
@@ -2469,6 +2674,20 @@ export default function AgendaPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Observações */}
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        📝 Observações
+                      </label>
+                      <textarea
+                        value={editData.observacoes}
+                        onChange={(e) => setEditData({ ...editData, observacoes: e.target.value })}
+                        placeholder="Anotações sobre o atendimento..."
+                        rows={2}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors resize-none"
+                      />
+                    </div>
                   </div>
 
                   {/* Botões de Edição */}
@@ -2484,7 +2703,7 @@ export default function AgendaPage() {
                     </button>
 
                     <button
-                      onClick={() => setIsEditMode(false)}
+                      onClick={() => { setIsEditMode(false); setFiltroServico(''); }}
                       className="w-full px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

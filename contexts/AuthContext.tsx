@@ -249,8 +249,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] signInWithPassword retornou:', { error: error?.message });
 
       // Inicializar rastreamento de atividade após login bem-sucedido
+      // Passa o userId para criar chave única no localStorage
       if (!error) {
-        initializeActivity();
+        const { data: sessionData } = await supabase.auth.getSession();
+        initializeActivity(sessionData?.session?.user?.id);
       }
 
       return { error };
@@ -361,7 +363,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     // Limpar rastreamento de atividade antes do logout
-    clearActivity();
+    // Passa o userId atual para limpar a chave correta
+    clearActivity(user?.id);
     await supabase.auth.signOut();
     setProfile(null);
     router.push('/login');

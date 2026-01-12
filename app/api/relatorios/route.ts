@@ -77,6 +77,9 @@ export async function GET(request: Request) {
     const endDateAnterior = searchParams.get('endDateAnterior');
     const colaboradorId = searchParams.get('colaboradorId');
     const pagamento = searchParams.get('pagamento');
+    // Novo filtro: incluir/excluir fiados e troca/grátis
+    const incluirFiados = searchParams.get('incluirFiados') === 'true';
+    const incluirTroca = searchParams.get('incluirTroca') === 'true';
 
     // Obter perfil do usuário para filtrar comissões
     const userProfile = await getUserProfile();
@@ -116,6 +119,42 @@ export async function GET(request: Request) {
       return errorResponse(error.message, 500);
     }
 
+    // Filtrar fiados e troca/grátis se necessário
+    let lancamentosFinal = lancamentos || [];
+    if (!incluirFiados) {
+      lancamentosFinal = lancamentosFinal.filter((l: any) => !l.is_fiado);
+    }
+    if (!incluirTroca) {
+      lancamentosFinal = lancamentosFinal.filter((l: any) => !l.is_troca_gratis);
+    }
+
+    // Buscar pagamentos de fiado do período (para incluir no faturamento)
+    let pagamentosFiado: any[] = [];
+    if (incluirFiados) {
+      const { data: pagamentos } = await supabase
+        .from('pagamentos_fiado')
+        .select(`
+          id,
+          valor_pago,
+          forma_pagamento,
+          data_pagamento,
+          comissao_colaborador,
+          comissao_salao,
+          lancamento:lancamentos(
+            id,
+            colaborador_id,
+            cliente_id,
+            servicos_nomes,
+            colaboradores(nome, porcentagem_comissao),
+            clientes(nome, telefone)
+          )
+        `)
+        .gte('data_pagamento', startDate)
+        .lte('data_pagamento', endDate);
+
+      pagamentosFiado = pagamentos || [];
+    }
+
     // Query período anterior
     let queryAnterior = supabase
       .from('lancamentos')
@@ -138,14 +177,48 @@ export async function GET(request: Request) {
 
     const { data: lancamentosAnterior } = await queryAnterior;
 
+    // Filtrar período anterior também
+    let lancamentosAnteriorFinal = lancamentosAnterior || [];
+    if (!incluirFiados) {
+      lancamentosAnteriorFinal = lancamentosAnteriorFinal.filter((l: any) => !l.is_fiado);
+    }
+    if (!incluirTroca) {
+      lancamentosAnteriorFinal = lancamentosAnteriorFinal.filter((l: any) => !l.is_troca_gratis);
+    }
+
     // Filtrar comissões baseado nas permissões do usuário
-    const lancamentosFiltrados = filterComissoes(lancamentos || [], isAdmin, userColaboradorId);
-    const lancamentosAnteriorFiltrados = filterComissoes(lancamentosAnterior || [], isAdmin, userColaboradorId);
+    const lancamentosFiltrados = filterComissoes(lancamentosFinal, isAdmin, userColaboradorId);
+    const lancamentosAnteriorFiltrados = filterComissoes(lancamentosAnteriorFinal, isAdmin, userColaboradorId);
+
+    // Calcular totais
+    const totalFaturamento = lancamentosFinal
+      .filter((l: any) => !l.is_fiado && !l.is_troca_gratis)
+      .reduce((sum: number, l: any) => sum + (l.valor_total || 0), 0);
+
+    // Adicionar pagamentos de fiado ao faturamento
+    const totalPagamentosFiado = pagamentosFiado.reduce((sum, p) => sum + (p.valor_pago || 0), 0);
+
+    // Totais de fiados e troca para exibição
+    const totalFiadosPendentes = (lancamentos || [])
+      .filter((l: any) => l.is_fiado && l.status === 'pendente')
+      .reduce((sum: number, l: any) => sum + (l.valor_total || 0), 0);
+
+    const totalTrocaGratis = (lancamentos || [])
+      .filter((l: any) => l.is_troca_gratis)
+      .length;
 
     return jsonResponse({
       lancamentos: lancamentosFiltrados,
       lancamentosAnterior: lancamentosAnteriorFiltrados,
       colaboradores: colaboradores || [],
+      pagamentosFiado: pagamentosFiado,
+      totais: {
+        faturamento: totalFaturamento + totalPagamentosFiado,
+        faturamentoSemFiados: totalFaturamento,
+        pagamentosFiado: totalPagamentosFiado,
+        fiadosPendentes: totalFiadosPendentes,
+        trocaGratisQtd: totalTrocaGratis,
+      },
       _userProfile: {
         isAdmin,
         colaboradorId: userColaboradorId,

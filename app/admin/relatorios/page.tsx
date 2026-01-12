@@ -26,6 +26,17 @@ export default function RelatoriosPage() {
   const [selectedColaborador, setSelectedColaborador] = useState<number | 'todos'>('todos');
   const [selectedPagamento, setSelectedPagamento] = useState<string>('todos');
   const [viewMode, setViewMode] = useState<'graficos' | 'tabela'>('graficos');
+  // Filtros para fiados e troca/grátis
+  const [incluirFiados, setIncluirFiados] = useState(false);
+  const [incluirTroca, setIncluirTroca] = useState(false);
+  // Dados extras da API
+  const [totaisExtras, setTotaisExtras] = useState<{
+    faturamento: number;
+    faturamentoSemFiados: number;
+    pagamentosFiado: number;
+    fiadosPendentes: number;
+    trocaGratisQtd: number;
+  } | null>(null);
 
   useEffect(() => {
     loadColaboradores();
@@ -35,7 +46,7 @@ export default function RelatoriosPage() {
     if (colaboradores.length > 0) {
       loadLancamentos();
     }
-  }, [periodo, selectedDate, dataInicio, dataFim, selectedColaborador, selectedPagamento, colaboradores]);
+  }, [periodo, selectedDate, dataInicio, dataFim, selectedColaborador, selectedPagamento, colaboradores, incluirFiados, incluirTroca]);
 
   const loadColaboradores = async () => {
     try {
@@ -83,6 +94,8 @@ export default function RelatoriosPage() {
         endDateAnterior: endDateAnterior.toISOString(),
         colaboradorId: selectedColaborador.toString(),
         pagamento: selectedPagamento,
+        incluirFiados: incluirFiados.toString(),
+        incluirTroca: incluirTroca.toString(),
       });
 
       const response = await fetch(`/api/relatorios?${params.toString()}`);
@@ -90,6 +103,7 @@ export default function RelatoriosPage() {
 
       if (result.lancamentos) setLancamentos(result.lancamentos);
       if (result.lancamentosAnterior) setLancamentosAnterior(result.lancamentosAnterior);
+      if (result.totais) setTotaisExtras(result.totais);
     } catch (error) {
       console.error('Erro ao carregar lançamentos:', error);
     }
@@ -316,6 +330,52 @@ export default function RelatoriosPage() {
                 <option value="pix">PIX</option>
               </select>
             </div>
+          </div>
+
+          {/* Filtros de Fiados e Troca/Grátis */}
+          <div className="mt-4 pt-4 border-t border-purple-100">
+            <p className="text-sm font-medium text-gray-700 mb-3">Incluir nos relatórios:</p>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={incluirFiados}
+                  onChange={(e) => setIncluirFiados(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                />
+                <span className="text-sm text-gray-600">Fiados (pendentes)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={incluirTroca}
+                  onChange={(e) => setIncluirTroca(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-sm text-gray-600">Troca / Grátis</span>
+              </label>
+            </div>
+
+            {/* Resumo de fiados e troca se houver dados */}
+            {totaisExtras && (totaisExtras.fiadosPendentes > 0 || totaisExtras.trocaGratisQtd > 0) && (
+              <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                {totaisExtras.fiadosPendentes > 0 && (
+                  <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full">
+                    Fiados pendentes: R$ {totaisExtras.fiadosPendentes.toFixed(2)}
+                  </span>
+                )}
+                {totaisExtras.pagamentosFiado > 0 && (
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full">
+                    Fiados pagos no período: R$ {totaisExtras.pagamentosFiado.toFixed(2)}
+                  </span>
+                )}
+                {totaisExtras.trocaGratisQtd > 0 && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full">
+                    Trocas/Grátis: {totaisExtras.trocaGratisQtd}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

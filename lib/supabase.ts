@@ -50,6 +50,7 @@ export type Agendamento = {
   valor_estimado?: number; // Valor estimado dos serviços
   lancamento_id?: number; // Vínculo com lançamento
   status?: 'pendente' | 'executando' | 'concluido' | 'cancelado';
+  colaboradores_ids?: number[]; // IDs dos colaboradores (para serviços compartilhados)
   cliente?: Cliente;
   colaborador?: Colaborador;
   lancamento?: Lancamento;
@@ -71,7 +72,27 @@ export type Lancamento = {
   status?: 'pendente' | 'concluido' | 'cancelado';
   observacoes?: string;
   data_pagamento?: string;
+  // Campos para Fiado e Troca/Grátis
+  is_fiado?: boolean;
+  is_troca_gratis?: boolean;
+  valor_referencia?: number; // Valor de referência para troca/grátis
+  // Relacionamentos
   colaborador?: Colaborador;
   cliente?: Cliente;
   servicos?: Servico[];
+  pagamento_fiado?: PagamentoFiado;
+};
+
+export type PagamentoFiado = {
+  id: number;
+  lancamento_id: number;
+  valor_pago: number;
+  forma_pagamento: string;
+  data_pagamento: string;
+  created_at: string;
+  registrado_por?: string;
+  registrado_por_nome?: string;
+  observacoes?: string;
+  comissao_colaborador?: number;
+  comissao_salao?: number;
 };

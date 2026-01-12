@@ -7,8 +7,13 @@ import { supabase } from '@/lib/supabase';
 // 4 horas em milissegundos
 const INACTIVITY_TIMEOUT = 4 * 60 * 60 * 1000;
 
-// Chave do localStorage para última atividade
-const LAST_ACTIVITY_KEY = 'navi_belle_last_activity';
+// Prefixo da chave do localStorage (será completado com userId)
+const LAST_ACTIVITY_KEY_PREFIX = 'navi_belle_last_activity_';
+
+// Helper para obter a chave completa do localStorage
+function getActivityKey(userId?: string): string {
+  return userId ? `${LAST_ACTIVITY_KEY_PREFIX}${userId}` : `${LAST_ACTIVITY_KEY_PREFIX}anonymous`;
+}
 
 /**
  * Hook para rastrear atividade do usuário e fazer logout por inatividade
@@ -18,11 +23,13 @@ const LAST_ACTIVITY_KEY = 'navi_belle_last_activity';
  * - Verifica inatividade a cada minuto
  * - Faz logout automático após 4 horas sem atividade
  * - Verifica ao voltar de outra aba/janela
+ * - Usa chave específica por usuário para evitar conflito entre admins
  */
-export function useActivityTracker() {
+export function useActivityTracker(userId?: string) {
   const router = useRouter();
   const lastActivityRef = useRef<number>(Date.now());
   const isLoggingOutRef = useRef<boolean>(false);
+  const activityKey = getActivityKey(userId);
 
   // Função para fazer logout por inatividade
   const logoutByInactivity = useCallback(async () => {
@@ -31,8 +38,8 @@ export function useActivityTracker() {
     isLoggingOutRef.current = true;
 
     try {
-      // Limpar localStorage
-      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      // Limpar localStorage do usuário atual
+      localStorage.removeItem(activityKey);
 
       // Fazer logout no Supabase
       await supabase.auth.signOut();
@@ -44,7 +51,7 @@ export function useActivityTracker() {
       // Mesmo com erro, redirecionar
       router.push('/login');
     }
-  }, [router]);
+  }, [router, activityKey]);
 
   // Atualizar última atividade
   const updateActivity = useCallback(() => {
@@ -52,17 +59,17 @@ export function useActivityTracker() {
     lastActivityRef.current = now;
 
     try {
-      localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+      localStorage.setItem(activityKey, now.toString());
     } catch (error) {
       // localStorage pode falhar em modo privado
       console.warn('Não foi possível salvar última atividade:', error);
     }
-  }, []);
+  }, [activityKey]);
 
   // Verificar inatividade
   const checkInactivity = useCallback(() => {
     try {
-      const lastActivityStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const lastActivityStr = localStorage.getItem(activityKey);
 
       if (!lastActivityStr) {
         // Se não tem registro, inicializar
@@ -80,7 +87,7 @@ export function useActivityTracker() {
     } catch (error) {
       console.warn('Erro ao verificar inatividade:', error);
     }
-  }, [logoutByInactivity, updateActivity]);
+  }, [logoutByInactivity, updateActivity, activityKey]);
 
   useEffect(() => {
     // Inicializar última atividade
@@ -152,10 +159,12 @@ export function useActivityTracker() {
 /**
  * Inicializa a última atividade no login
  * Deve ser chamado após login bem-sucedido
+ * @param userId - ID do usuário logado
  */
-export function initializeActivity() {
+export function initializeActivity(userId?: string) {
   try {
-    localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+    const key = getActivityKey(userId);
+    localStorage.setItem(key, Date.now().toString());
   } catch (error) {
     console.warn('Não foi possível inicializar última atividade:', error);
   }
@@ -164,10 +173,12 @@ export function initializeActivity() {
 /**
  * Limpa o registro de atividade no logout
  * Deve ser chamado antes do logout
+ * @param userId - ID do usuário a limpar
  */
-export function clearActivity() {
+export function clearActivity(userId?: string) {
   try {
-    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    const key = getActivityKey(userId);
+    localStorage.removeItem(key);
   } catch (error) {
     console.warn('Não foi possível limpar última atividade:', error);
   }

@@ -278,6 +278,19 @@ export default function AdminPage() {
           />
 
           <AdminCard
+            href="/admin/fiados"
+            title="Controle de Fiados"
+            description="Gerenciar pagamentos pendentes"
+            icon={
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            gradient="from-orange-400 to-red-600"
+            delay={265}
+          />
+
+          <AdminCard
             href="/agenda"
             title="Agenda Geral"
             description="Ver todos os agendamentos"
@@ -371,6 +384,19 @@ export default function AdminPage() {
                 }
                 gradient="from-amber-400 to-amber-600"
                 delay={560}
+              />
+
+              <AdminCard
+                href="/admin/logs"
+                title="Logs de Auditoria"
+                description="Histórico completo de operações"
+                icon={
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                }
+                gradient="from-indigo-400 to-indigo-600"
+                delay={570}
               />
             </>
           )}

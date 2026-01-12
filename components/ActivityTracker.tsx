@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -8,17 +8,23 @@ import { supabase } from '@/lib/supabase';
 // 4 horas em milissegundos
 const INACTIVITY_TIMEOUT = 4 * 60 * 60 * 1000;
 
-// Chave do localStorage para última atividade
-const LAST_ACTIVITY_KEY = 'navi_belle_last_activity';
+// Prefixo da chave do localStorage (será completado com userId)
+const LAST_ACTIVITY_KEY_PREFIX = 'navi_belle_last_activity_';
 
 /**
  * Componente que rastreia atividade do usuário
  * Faz logout automático após 4 horas de inatividade
+ * Usa chave específica por usuário para evitar conflitos entre múltiplos admins
  */
 export default function ActivityTracker() {
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const router = useRouter();
   const isLoggingOutRef = useRef<boolean>(false);
+
+  // Chave específica por usuário
+  const activityKey = useMemo(() => {
+    return user?.id ? `${LAST_ACTIVITY_KEY_PREFIX}${user.id}` : `${LAST_ACTIVITY_KEY_PREFIX}anonymous`;
+  }, [user?.id]);
 
   // Função para fazer logout por inatividade
   const logoutByInactivity = useCallback(async () => {
@@ -26,32 +32,32 @@ export default function ActivityTracker() {
     isLoggingOutRef.current = true;
 
     try {
-      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      localStorage.removeItem(activityKey);
       await supabase.auth.signOut();
       router.push('/login?expired=true');
     } catch (error) {
       console.error('Erro ao fazer logout por inatividade:', error);
       router.push('/login');
     }
-  }, [router]);
+  }, [router, activityKey]);
 
   // Atualizar última atividade
   const updateActivity = useCallback(() => {
     if (!isAuthenticated) return;
 
     try {
-      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+      localStorage.setItem(activityKey, Date.now().toString());
     } catch (error) {
       // localStorage pode falhar em modo privado
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activityKey]);
 
   // Verificar inatividade
   const checkInactivity = useCallback(() => {
     if (!isAuthenticated) return;
 
     try {
-      const lastActivityStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const lastActivityStr = localStorage.getItem(activityKey);
 
       if (!lastActivityStr) {
         updateActivity();
@@ -68,7 +74,7 @@ export default function ActivityTracker() {
     } catch (error) {
       console.warn('Erro ao verificar inatividade:', error);
     }
-  }, [isAuthenticated, logoutByInactivity, updateActivity]);
+  }, [isAuthenticated, logoutByInactivity, updateActivity, activityKey]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

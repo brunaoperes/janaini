@@ -84,14 +84,15 @@ export async function GET(request: Request) {
     const formasPagamento = formasRes.data || [];
 
     // FILTRO DE SERVIÇOS: usuário não-admin só vê serviços do seu colaborador
-    // Admin ou usuário sem perfil (fallback) vê todos os serviços
-    console.log('[API/lancamentos] Filtro serviços - isAdmin:', isAdmin, 'colaboradorId:', userColaboradorId, 'total serviços:', servicos.length);
-
     if (!isAdmin && userColaboradorId) {
-      servicos = servicos.filter((s: any) =>
-        s.colaboradores_ids && Array.isArray(s.colaboradores_ids) && s.colaboradores_ids.includes(userColaboradorId)
-      );
-      console.log('[API/lancamentos] Serviços filtrados:', servicos.length);
+      const colabId = Number(userColaboradorId);
+      servicos = servicos.filter((s: any) => {
+        if (!s.colaboradores_ids || !Array.isArray(s.colaboradores_ids)) {
+          return false;
+        }
+        const idsAsNumbers = s.colaboradores_ids.map((id: any) => Number(id));
+        return idsAsNumbers.includes(colabId);
+      });
     }
 
     // Carregar lançamentos
@@ -141,27 +142,67 @@ export async function GET(request: Request) {
       console.error('[API/lancamentos] Erro:', lancError);
     }
 
-    // Filtrar comissões baseado nas permissões
+    // Buscar divisões para lançamentos compartilhados
+    const lancamentosIds = (lancamentos || []).map((l: any) => l.id);
+    let divisoesMap: Record<number, any[]> = {};
+
+    if (lancamentosIds.length > 0) {
+      const { data: divisoes } = await supabase
+        .from('lancamento_divisoes')
+        .select(`
+          lancamento_id,
+          colaborador_id,
+          valor,
+          comissao_calculada,
+          colaborador:colaboradores(id, nome, porcentagem_comissao)
+        `)
+        .in('lancamento_id', lancamentosIds);
+
+      // Agrupar divisões por lançamento
+      (divisoes || []).forEach((div: any) => {
+        if (!divisoesMap[div.lancamento_id]) {
+          divisoesMap[div.lancamento_id] = [];
+        }
+        divisoesMap[div.lancamento_id].push(div);
+      });
+    }
+
+    // Filtrar comissões baseado nas permissões e adicionar divisões
     let lancamentosFiltrados = lancamentos || [];
     if (!isAdmin && userColaboradorId) {
-      lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => ({
-        ...lanc,
-        comissao_colaborador: lanc.colaborador_id === userColaboradorId ? lanc.comissao_colaborador : null,
-        comissao_salao: lanc.colaborador_id === userColaboradorId ? lanc.comissao_salao : null,
-        _canViewComissao: lanc.colaborador_id === userColaboradorId,
-      }));
+      lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => {
+        const divisoes = divisoesMap[lanc.id] || [];
+        // Para usuário comum, filtrar divisões para mostrar apenas onde ele participa
+        const divisoesFiltradas = divisoes.filter((d: any) => d.colaborador_id === userColaboradorId);
+        return {
+          ...lanc,
+          comissao_colaborador: lanc.colaborador_id === userColaboradorId ? lanc.comissao_colaborador : null,
+          comissao_salao: lanc.colaborador_id === userColaboradorId ? lanc.comissao_salao : null,
+          _canViewComissao: lanc.colaborador_id === userColaboradorId,
+          compartilhado: divisoes.length > 0,
+          divisoes: divisoesFiltradas,
+        };
+      });
     } else if (!isAdmin && !userColaboradorId) {
       lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => ({
         ...lanc,
         comissao_colaborador: null,
         comissao_salao: null,
         _canViewComissao: false,
+        compartilhado: false,
+        divisoes: [],
       }));
     } else {
-      lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => ({
-        ...lanc,
-        _canViewComissao: true,
-      }));
+      // Admin vê tudo
+      lancamentosFiltrados = lancamentosFiltrados.map((lanc: any) => {
+        const divisoes = divisoesMap[lanc.id] || [];
+        return {
+          ...lanc,
+          _canViewComissao: true,
+          compartilhado: divisoes.length > 0,
+          divisoes: divisoes,
+        };
+      });
     }
 
     return NextResponse.json({
