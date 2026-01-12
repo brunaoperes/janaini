@@ -34,6 +34,173 @@ const ACOES = ['todos', 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'ACCESS
 const MODULOS = ['todos', 'Agenda', 'Lancamentos', 'Usuarios', 'Servicos', 'Clientes', 'Comissoes', 'Auth', 'Sistema'];
 const RESULTADOS = ['todos', 'success', 'error', 'denied'];
 
+// Mapeamento de campos para nomes legíveis em português
+const FIELD_LABELS: Record<string, string> = {
+  id: 'ID',
+  status: 'Status',
+  data_hora: 'Data e Hora',
+  data: 'Data',
+  cliente_id: 'Cliente',
+  colaborador_id: 'Colaboradora',
+  created_at: 'Criado em',
+  updated_at: 'Atualizado em',
+  observacoes: 'Observações',
+  lancamento_id: 'Lançamento',
+  valor_estimado: 'Valor Estimado',
+  valor_total: 'Valor Total',
+  valor_pago: 'Valor Pago',
+  duracao_minutos: 'Duração',
+  colaboradores_ids: 'Colaboradoras',
+  descricao_servico: 'Serviço',
+  servicos_nomes: 'Serviços',
+  forma_pagamento: 'Forma de Pagamento',
+  comissao_colaborador: 'Comissão Colaboradora',
+  comissao_salao: 'Comissão Salão',
+  taxa_pagamento: 'Taxa',
+  is_fiado: 'Fiado',
+  is_troca_gratis: 'Troca/Grátis',
+  valor_referencia: 'Valor de Referência',
+  data_pagamento: 'Data Pagamento',
+  hora_inicio: 'Hora Início',
+  hora_fim: 'Hora Fim',
+  nome: 'Nome',
+  email: 'Email',
+  telefone: 'Telefone',
+  endereco: 'Endereço',
+  porcentagem_comissao: 'Comissão (%)',
+  ativo: 'Ativo',
+  role: 'Função',
+  valor: 'Valor',
+  duracao: 'Duração',
+  categoria: 'Categoria',
+  periodo_inicio: 'Período Início',
+  periodo_fim: 'Período Fim',
+  valor_bruto: 'Valor Bruto',
+  valor_liquido: 'Valor Líquido',
+  total_descontos: 'Total Descontos',
+  pago_por: 'Pago por',
+  lancamentos_ids: 'Lançamentos',
+};
+
+// Mapeamento de status para português
+const STATUS_LABELS: Record<string, string> = {
+  pendente: '🟡 Pendente',
+  concluido: '✅ Concluído',
+  cancelado: '❌ Cancelado',
+  executando: '🔄 Em Execução',
+};
+
+// Mapeamento de formas de pagamento
+const PAYMENT_LABELS: Record<string, string> = {
+  pix: '📱 PIX',
+  dinheiro: '💵 Dinheiro',
+  cartao_debito: '💳 Cartão Débito',
+  cartao_credito: '💳 Cartão Crédito',
+  fiado: '📝 Fiado',
+  troca_gratis: '🎁 Troca/Grátis',
+};
+
+// Formatar valor para exibição
+const formatValue = (key: string, value: any): string => {
+  if (value === null || value === undefined) return '-';
+  if (value === true) return '✅ Sim';
+  if (value === false) return '❌ Não';
+
+  // Arrays vazios
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '-';
+    return value.join(', ');
+  }
+
+  // Campos de valor monetário
+  if (['valor_estimado', 'valor_total', 'valor_pago', 'comissao_colaborador', 'comissao_salao',
+       'taxa_pagamento', 'valor_referencia', 'valor_bruto', 'valor_liquido', 'total_descontos', 'valor'].includes(key)) {
+    return `R$ ${Number(value).toFixed(2)}`;
+  }
+
+  // Campos de duração
+  if (key === 'duracao_minutos' || key === 'duracao') {
+    const mins = Number(value);
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return m > 0 ? `${h}h ${m}min` : `${h}h`;
+    }
+    return `${mins} min`;
+  }
+
+  // Campos de porcentagem
+  if (key === 'porcentagem_comissao') {
+    return `${value}%`;
+  }
+
+  // Status
+  if (key === 'status') {
+    return STATUS_LABELS[value] || value;
+  }
+
+  // Forma de pagamento
+  if (key === 'forma_pagamento') {
+    return PAYMENT_LABELS[value] || value;
+  }
+
+  // Datas ISO
+  if (key.includes('data') || key === 'created_at' || key === 'updated_at') {
+    try {
+      const date = parseISO(String(value));
+      if (key === 'data_hora') {
+        return format(date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      }
+      if (key === 'created_at' || key === 'updated_at') {
+        return format(date, "dd/MM/yyyy HH:mm:ss", { locale: ptBR });
+      }
+      return format(date, "dd/MM/yyyy", { locale: ptBR });
+    } catch {
+      return String(value);
+    }
+  }
+
+  // Role
+  if (key === 'role') {
+    return value === 'admin' ? '👑 Administrador' : value === 'colaborador' ? '👤 Colaborador' : value;
+  }
+
+  return String(value);
+};
+
+// Campos a ignorar na exibição (metadados técnicos)
+const IGNORE_FIELDS = ['user_id', 'id', 'created_at', 'updated_at', 'lancamento_id', 'cliente_id', 'colaborador_id', 'colaboradores_ids', 'lancamentos_ids', 'pago_por'];
+
+// Componente para renderizar dados de forma legível
+const ReadableData = ({ data, title, colorClass }: { data: Record<string, any>; title: string; colorClass: string }) => {
+  if (!data) return null;
+
+  // Filtrar campos relevantes
+  const entries = Object.entries(data).filter(([key]) => !IGNORE_FIELDS.includes(key));
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className={`${colorClass} p-4 rounded-xl`}>
+      <label className={`text-xs font-semibold uppercase ${colorClass.includes('green') ? 'text-green-600' : colorClass.includes('red') ? 'text-red-600' : 'text-gray-600'}`}>
+        {title}
+      </label>
+      <div className="mt-3 space-y-2">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex items-start gap-3 py-2 border-b border-white/50 last:border-0">
+            <span className="text-sm font-medium text-gray-600 min-w-[140px]">
+              {FIELD_LABELS[key] || key}:
+            </span>
+            <span className="text-sm text-gray-900 flex-1">
+              {formatValue(key, value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function LogsAuditoriaPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -419,22 +586,20 @@ export default function LogsAuditoriaPage() {
 
               {/* Dados Anteriores */}
               {selectedLog.dados_anterior && (
-                <div className="bg-red-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-red-600 uppercase">Dados Anteriores</label>
-                  <pre className="mt-2 text-xs text-gray-800 bg-white p-3 rounded-lg overflow-x-auto">
-                    {JSON.stringify(selectedLog.dados_anterior, null, 2)}
-                  </pre>
-                </div>
+                <ReadableData
+                  data={selectedLog.dados_anterior}
+                  title="Dados Anteriores"
+                  colorClass="bg-red-50"
+                />
               )}
 
               {/* Dados Novos */}
               {selectedLog.dados_novo && (
-                <div className="bg-green-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-green-600 uppercase">Dados Novos</label>
-                  <pre className="mt-2 text-xs text-gray-800 bg-white p-3 rounded-lg overflow-x-auto">
-                    {JSON.stringify(selectedLog.dados_novo, null, 2)}
-                  </pre>
-                </div>
+                <ReadableData
+                  data={selectedLog.dados_novo}
+                  title={selectedLog.acao === 'CREATE' ? 'Dados do Registro' : 'Dados Novos'}
+                  colorClass="bg-green-50"
+                />
               )}
 
               {/* Erro */}
