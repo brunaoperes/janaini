@@ -8,14 +8,9 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Button from '@/components/Button';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
+import { Cliente } from '@/lib/supabase';
 
 // Interfaces
-interface Cliente {
-  id: number;
-  nome: string;
-  telefone: string;
-}
-
 interface Colaborador {
   id: number;
   nome: string;
