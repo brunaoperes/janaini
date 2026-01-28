@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import FaturamentoChart from '@/components/FaturamentoChart';
 import Header from '@/components/Header';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Lancamento {
   id: number;
@@ -15,6 +15,11 @@ interface Lancamento {
   data: string;
   clientes: { nome: string } | null;
   colaboradores: { nome: string } | null;
+}
+
+interface Colaborador {
+  id: number;
+  nome: string;
 }
 
 interface DashboardData {
@@ -29,6 +34,11 @@ interface DashboardData {
   lancamentosHoje: Lancamento[];
   lancamentosMes: Lancamento[];
   totalPeriodoGrafico: number;
+  // Info de permissões
+  isAdmin: boolean;
+  colaboradorId: string | null;
+  colaboradorIdFiltro: string | null;
+  colaboradores: Colaborador[];
 }
 
 type PeriodoGrafico = '7' | '30' | '90' | 'personalizado' | 'todos';
@@ -41,6 +51,8 @@ interface ClienteDetalhes {
 }
 
 export default function Dashboard() {
+  const { profile, isAdmin, loading: authLoading } = useAuth();
+
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +66,9 @@ export default function Dashboard() {
   const [dataInicioGrafico, setDataInicioGrafico] = useState('');
   const [dataFimGrafico, setDataFimGrafico] = useState('');
   const [loadingGrafico, setLoadingGrafico] = useState(false);
+
+  // Filtro por colaborador (apenas para admin)
+  const [colaboradorFiltro, setColaboradorFiltro] = useState<string>('');
 
   // Função para buscar detalhes do cliente
   const buscarDetalhesCliente = async (clienteId: number) => {
@@ -117,7 +132,7 @@ export default function Dashboard() {
   };
 
   // Função para carregar dados do dashboard
-  const loadData = async (dias?: string, dataInicio?: string, dataFim?: string) => {
+  const loadData = useCallback(async (dias?: string, dataInicio?: string, dataFim?: string, colaboradorId?: string) => {
     try {
       let url = '/api/dashboard';
       const params = new URLSearchParams();
@@ -127,6 +142,11 @@ export default function Dashboard() {
         params.append('dataFim', dataFim);
       } else if (dias) {
         params.append('dias', dias);
+      }
+
+      // Filtro por colaborador (apenas admin pode usar)
+      if (colaboradorId) {
+        params.append('colaboradorId', colaboradorId);
       }
 
       if (params.toString()) {
@@ -143,10 +163,10 @@ export default function Dashboard() {
       console.error('Erro ao carregar dashboard:', err);
       setError(err.message);
     }
-  };
+  }, []);
 
   // Função para atualizar o gráfico com novo período
-  const atualizarGrafico = async () => {
+  const atualizarGrafico = useCallback(async () => {
     setLoadingGrafico(true);
     try {
       if (periodoGrafico === 'personalizado') {
@@ -154,34 +174,44 @@ export default function Dashboard() {
           alert('Selecione as datas de início e fim');
           return;
         }
-        await loadData(undefined, dataInicioGrafico, dataFimGrafico);
+        await loadData(undefined, dataInicioGrafico, dataFimGrafico, colaboradorFiltro || undefined);
       } else if (periodoGrafico === 'todos') {
-        await loadData('3650'); // ~10 anos para pegar todo o período
+        await loadData('3650', undefined, undefined, colaboradorFiltro || undefined); // ~10 anos para pegar todo o período
       } else {
-        await loadData(periodoGrafico);
+        await loadData(periodoGrafico, undefined, undefined, colaboradorFiltro || undefined);
       }
     } finally {
       setLoadingGrafico(false);
     }
-  };
+  }, [periodoGrafico, dataInicioGrafico, dataFimGrafico, colaboradorFiltro, loadData]);
 
-  // Carregar dados iniciais
+  // Carregar dados iniciais (aguardar auth)
   useEffect(() => {
     async function init() {
-      await loadData('30');
+      // Esperar auth carregar
+      if (authLoading) return;
+
+      await loadData('30', undefined, undefined, colaboradorFiltro || undefined);
       setLoading(false);
     }
     init();
-  }, []);
+  }, [authLoading, loadData, colaboradorFiltro]);
+
+  // Atualizar quando filtro de colaborador mudar (apenas admin)
+  useEffect(() => {
+    if (!loading && !authLoading && isAdmin) {
+      loadData(periodoGrafico === 'todos' ? '3650' : periodoGrafico, undefined, undefined, colaboradorFiltro || undefined);
+    }
+  }, [colaboradorFiltro]);
 
   // Atualizar gráfico quando período mudar (exceto personalizado)
   useEffect(() => {
-    if (periodoGrafico !== 'personalizado' && !loading) {
+    if (periodoGrafico !== 'personalizado' && !loading && !authLoading) {
       atualizarGrafico();
     }
-  }, [periodoGrafico]);
+  }, [periodoGrafico, atualizarGrafico, loading, authLoading]);
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <>
         <Header />
@@ -216,16 +246,44 @@ export default function Dashboard() {
         <div className="container-main">
         {/* Header */}
         <div className="page-header">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold mb-2">
-                <span className="text-gradient">Dashboard</span>
+                <span className="text-gradient">
+                  {data?.isAdmin ? 'Dashboard' : 'Meus Resultados'}
+                </span>
               </h1>
               <p className="text-gray-600 text-lg">
-                Visão geral do seu negócio
+                {data?.isAdmin
+                  ? (colaboradorFiltro ? `Filtrando por colaborador` : 'Visão geral do salão')
+                  : `Olá, ${profile?.nome || 'Colaborador'}!`
+                }
               </p>
             </div>
-            <div className="text-6xl animate-float">📊</div>
+
+            <div className="flex items-center gap-4">
+              {/* Filtro por colaborador - apenas para admin */}
+              {data?.isAdmin && data.colaboradores && data.colaboradores.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-600 whitespace-nowrap">
+                    Colaborador:
+                  </label>
+                  <select
+                    value={colaboradorFiltro}
+                    onChange={(e) => setColaboradorFiltro(e.target.value)}
+                    className="px-3 py-2 border border-purple-200 rounded-xl bg-white/80 backdrop-blur text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400 min-w-[180px]"
+                  >
+                    <option value="">Todos</option>
+                    {data.colaboradores.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="text-6xl animate-float">📊</div>
+            </div>
           </div>
           <div className="divider-gradient"></div>
         </div>
@@ -412,45 +470,47 @@ export default function Dashboard() {
         </div>
 
         {/* Grid com Rankings e Agendamentos */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Top 5 Colaboradoras */}
-          <div className="card-elevated">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="text-2xl">🏆</span>
-              Top Colaboradoras
-            </h3>
-            <div className="space-y-3">
-              {data.topColaboradoras.length > 0 ? (
-                data.topColaboradoras.map((colab, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`
-                        w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm
-                        ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-500' : 'bg-purple-400'}
-                      `}>
-                        {index + 1}
+        <div className={`grid grid-cols-1 ${data?.isAdmin && !colaboradorFiltro ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-6 mb-8`}>
+          {/* Top 5 Colaboradoras - Apenas para admin sem filtro */}
+          {data?.isAdmin && !colaboradorFiltro && (
+            <div className="card-elevated">
+              <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <span className="text-2xl">🏆</span>
+                Top Colaboradoras
+              </h3>
+              <div className="space-y-3">
+                {data.topColaboradoras.length > 0 ? (
+                  data.topColaboradoras.map((colab, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`
+                          w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm
+                          ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-500' : 'bg-purple-400'}
+                        `}>
+                          {index + 1}
+                        </div>
+                        <span className="font-medium text-gray-800">{colab.nome}</span>
                       </div>
-                      <span className="font-medium text-gray-800">{colab.nome}</span>
+                      <span className="font-bold text-purple-600">
+                        R$ {colab.total.toFixed(2)}
+                      </span>
                     </div>
-                    <span className="font-bold text-purple-600">
-                      R$ {colab.total.toFixed(2)}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-center py-8">Nenhum dado disponível</p>
-              )}
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-8">Nenhum dado disponível</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Top 10 Clientes */}
           <div className="card-elevated">
             <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
               <span className="text-2xl">💎</span>
-              Top Clientes
+              {data?.isAdmin && !colaboradorFiltro ? 'Top Clientes' : 'Meus Top Clientes'}
             </h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {data.topClientes.length > 0 ? (
@@ -487,7 +547,7 @@ export default function Dashboard() {
           <div className="card-elevated">
             <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
               <span className="text-2xl">⏰</span>
-              Próximos Agendamentos
+              {data?.isAdmin && !colaboradorFiltro ? 'Próximos Agendamentos' : 'Meus Próximos Agendamentos'}
             </h3>
             <div className="space-y-3">
               {data.proximosAgendamentos.length > 0 ? (
@@ -517,28 +577,33 @@ export default function Dashboard() {
         </div>
 
         {/* Links Rápidos */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className={`grid ${data?.isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
           <Link
             href="/lancamentos"
             className="card-elevated card-highlight text-center group hover:scale-105 transition-transform"
           >
             <div className="text-4xl mb-3">💰</div>
             <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-gradient">
-              Lançamentos
+              {data?.isAdmin ? 'Lançamentos' : 'Meus Lançamentos'}
             </h3>
-            <p className="text-gray-600 text-sm">Ver todos os lançamentos</p>
+            <p className="text-gray-600 text-sm">
+              {data?.isAdmin ? 'Ver todos os lançamentos' : 'Ver meus lançamentos'}
+            </p>
           </Link>
 
-          <Link
-            href="/admin"
-            className="card-elevated card-highlight text-center group hover:scale-105 transition-transform"
-          >
-            <div className="text-4xl mb-3">⚙️</div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-gradient">
-              Administração
-            </h3>
-            <p className="text-gray-600 text-sm">Gerenciar sistema</p>
-          </Link>
+          {/* Administração - apenas para admin */}
+          {data?.isAdmin && (
+            <Link
+              href="/admin"
+              className="card-elevated card-highlight text-center group hover:scale-105 transition-transform"
+            >
+              <div className="text-4xl mb-3">⚙️</div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-gradient">
+                Administração
+              </h3>
+              <p className="text-gray-600 text-sm">Gerenciar sistema</p>
+            </Link>
+          )}
 
           <Link
             href="/agenda"
@@ -546,9 +611,11 @@ export default function Dashboard() {
           >
             <div className="text-4xl mb-3">📅</div>
             <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-gradient">
-              Agenda
+              {data?.isAdmin ? 'Agenda' : 'Minha Agenda'}
             </h3>
-            <p className="text-gray-600 text-sm">Ver agenda completa</p>
+            <p className="text-gray-600 text-sm">
+              {data?.isAdmin ? 'Ver agenda completa' : 'Ver minha agenda'}
+            </p>
           </Link>
         </div>
         </div>
