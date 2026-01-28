@@ -11,7 +11,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const dynamic = 'force-dynamic';
 
-async function getAuthUser(supabase: ReturnType<typeof createClient>) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getAuthUser(supabase: any) {
   try {
     const cookieStore = await cookies();
     const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
