@@ -131,6 +131,7 @@ export default function PacotesAdminPage() {
   });
 
   const [salvando, setSalvando] = useState(false);
+  const [selectedClienteNovo, setSelectedClienteNovo] = useState<Cliente | null>(null);
 
   // Carregar dados
   const loadPacotes = useCallback(async () => {
@@ -203,7 +204,7 @@ export default function PacotesAdminPage() {
 
   // Criar novo pacote
   const handleCriarPacote = async () => {
-    if (!formNovo.cliente_id || !formNovo.servico_id || !formNovo.colaborador_vendedor_id || !formNovo.forma_pagamento) {
+    if (!selectedClienteNovo || !formNovo.servico_id || !formNovo.colaborador_vendedor_id || !formNovo.forma_pagamento) {
       toast.error('Preencha todos os campos obrigatórios');
       return;
     }
@@ -213,7 +214,7 @@ export default function PacotesAdminPage() {
       const response = await fetch('/api/pacotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formNovo),
+        body: JSON.stringify({ ...formNovo, cliente_id: selectedClienteNovo.id }),
       });
 
       const data = await response.json();
@@ -225,6 +226,7 @@ export default function PacotesAdminPage() {
 
       toast.success('Pacote criado com sucesso!');
       setShowNovoModal(false);
+      setSelectedClienteNovo(null);
       setFormNovo({
         cliente_id: 0,
         servico_id: 0,
@@ -611,9 +613,8 @@ export default function PacotesAdminPage() {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Cliente *</label>
                 <ClienteAutocomplete
-                  clientes={clientes}
-                  value={formNovo.cliente_id}
-                  onChange={(id) => setFormNovo(prev => ({ ...prev, cliente_id: id }))}
+                  selectedCliente={selectedClienteNovo}
+                  onSelect={(cliente) => setSelectedClienteNovo(cliente)}
                 />
               </div>
 
