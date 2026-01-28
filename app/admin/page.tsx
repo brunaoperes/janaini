@@ -291,6 +291,19 @@ export default function AdminPage() {
           />
 
           <AdminCard
+            href="/admin/pacotes"
+            title="Pacotes de Sessões"
+            description="Vender e gerenciar pacotes pré-pagos"
+            icon={
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            }
+            gradient="from-teal-400 to-cyan-600"
+            delay={267}
+          />
+
+          <AdminCard
             href="/agenda"
             title="Agenda Geral"
             description="Ver todos os agendamentos"

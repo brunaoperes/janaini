@@ -76,6 +76,9 @@ export type Lancamento = {
   is_fiado?: boolean;
   is_troca_gratis?: boolean;
   valor_referencia?: number; // Valor de referência para troca/grátis
+  // Campos para Pacotes
+  tipo_lancamento?: 'servico' | 'pacote_venda' | 'pacote_reembolso';
+  pacote_id?: number;
   // Relacionamentos
   colaborador?: Colaborador;
   cliente?: Cliente;
@@ -95,4 +98,58 @@ export type PagamentoFiado = {
   observacoes?: string;
   comissao_colaborador?: number;
   comissao_salao?: number;
+};
+
+// ============================================================================
+// TIPOS PARA PACOTES PRÉ-PAGOS
+// ============================================================================
+
+export type PacoteStatus = 'ativo' | 'expirado' | 'concluido' | 'cancelado';
+
+export type Pacote = {
+  id: number;
+  cliente_id: number;
+  servico_id: number;
+  colaborador_vendedor_id: number;
+  lancamento_venda_id?: number;
+  nome: string;
+  quantidade_total: number;
+  quantidade_usada: number;
+  valor_total: number;
+  valor_por_sessao: number;
+  desconto_percentual?: number;
+  comissao_vendedor: number;
+  comissao_salao: number;
+  data_venda: string;
+  data_validade?: string;
+  data_cancelamento?: string;
+  status: PacoteStatus;
+  motivo_cancelamento?: string;
+  valor_reembolso?: number;
+  lancamento_reembolso_id?: number;
+  forma_pagamento?: string;
+  observacoes?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Relacionamentos
+  cliente?: Cliente;
+  servico?: Servico;
+  colaborador_vendedor?: Colaborador;
+};
+
+export type PacoteUso = {
+  id: number;
+  pacote_id: number;
+  colaborador_executor_id: number;
+  agendamento_id?: number;
+  data_uso: string;
+  hora_inicio?: string;
+  hora_fim?: string;
+  observacoes?: string;
+  registrado_por?: string;
+  registrado_por_nome?: string;
+  created_at?: string;
+  // Relacionamentos
+  pacote?: Pacote;
+  colaborador_executor?: Colaborador;
 };

@@ -123,3 +123,66 @@ export function formatZodErrors(errors: z.ZodError | undefined | null): string {
   }
   return errors.issues.map(err => err.message).join('\n');
 }
+
+// ============================================================================
+// SCHEMAS PARA PACOTES PRÉ-PAGOS
+// ============================================================================
+
+// Schema para criar Pacote (venda)
+export const pacoteCreateSchema = z.object({
+  cliente_id: z.number({ message: 'Selecione um cliente' })
+    .positive('Selecione um cliente válido'),
+  servico_id: z.number({ message: 'Selecione um serviço' })
+    .positive('Selecione um serviço válido'),
+  colaborador_vendedor_id: z.number({ message: 'Selecione a vendedora' })
+    .positive('Selecione uma vendedora válida'),
+  quantidade_total: z.number({ message: 'Informe a quantidade de sessões' })
+    .min(1, 'Quantidade mínima é 1 sessão')
+    .max(100, 'Quantidade máxima é 100 sessões'),
+  valor_total: z.number({ message: 'Informe o valor total' })
+    .min(0, 'Valor não pode ser negativo'),
+  desconto_percentual: z.number()
+    .min(0, 'Desconto não pode ser negativo')
+    .max(100, 'Desconto máximo é 100%')
+    .optional(),
+  data_validade: z.string()
+    .optional()
+    .refine((date) => {
+      if (!date) return true;
+      const parsedDate = new Date(date);
+      return !isNaN(parsedDate.getTime()) && parsedDate > new Date();
+    }, 'Data de validade deve ser futura'),
+  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
+    .min(1, 'Selecione uma forma de pagamento'),
+  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
+});
+
+export type PacoteCreateFormData = z.infer<typeof pacoteCreateSchema>;
+
+// Schema para usar sessão do Pacote
+export const pacoteUsoSchema = z.object({
+  pacote_id: z.number({ message: 'Selecione um pacote' })
+    .positive('Selecione um pacote válido'),
+  colaborador_executor_id: z.number({ message: 'Selecione a colaboradora que realizou' })
+    .positive('Selecione uma colaboradora válida'),
+  data_uso: z.string({ message: 'Informe a data do uso' })
+    .min(1, 'Informe a data'),
+  hora_inicio: z.string().optional(),
+  hora_fim: z.string().optional(),
+  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
+});
+
+export type PacoteUsoFormData = z.infer<typeof pacoteUsoSchema>;
+
+// Schema para cancelar Pacote
+export const pacoteCancelSchema = z.object({
+  pacote_id: z.number().positive(),
+  motivo_cancelamento: z.string()
+    .min(5, 'Motivo deve ter pelo menos 5 caracteres')
+    .max(500, 'Motivo deve ter no máximo 500 caracteres'),
+  valor_reembolso: z.number()
+    .min(0, 'Valor de reembolso não pode ser negativo'),
+  forma_reembolso: z.string().optional(),
+});
+
+export type PacoteCancelFormData = z.infer<typeof pacoteCancelSchema>;

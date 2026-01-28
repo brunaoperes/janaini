@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase, Servico, Colaborador, Cliente } from '@/lib/supabase';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link';
 import { lancamentoSchema, formatZodErrors } from '@/lib/validations';
@@ -11,20 +11,15 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 
 // Função para parsear data/hora sem conversão de timezone
-// PostgreSQL retorna: "2025-01-06T17:30:00+00:00"
-// Queremos interpretar: 17:30 como horário local (não UTC)
 const parseAsLocalTime = (dataHora: string): Date => {
-  // Remover timezone (+00:00, Z, etc) da string
   const semTimezone = dataHora.replace(/([+-]\d{2}:\d{2}|Z)$/, '');
-
-  // Parsear como local (formato: YYYY-MM-DDTHH:MM:SS ou YYYY-MM-DD HH:MM:SS)
   const partes = semTimezone.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
 
   if (partes) {
     const [_, ano, mes, dia, hora, minuto, segundo = '0'] = partes;
     return new Date(
       parseInt(ano),
-      parseInt(mes) - 1, // Mês é 0-indexed
+      parseInt(mes) - 1,
       parseInt(dia),
       parseInt(hora),
       parseInt(minuto),
@@ -32,14 +27,12 @@ const parseAsLocalTime = (dataHora: string): Date => {
     );
   }
 
-  // Fallback para formato só data (YYYY-MM-DD)
   const partesData = semTimezone.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (partesData) {
     const [_, ano, mes, dia] = partesData;
     return new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), 12, 0, 0);
   }
 
-  // Último fallback
   return new Date(dataHora);
 };
 
@@ -61,7 +54,7 @@ interface LancamentoComRelacoes {
   forma_pagamento: string | null;
   comissao_colaborador: number | null;
   comissao_salao: number | null;
-  valor_comissao?: number | null; // Campo retornado pela API (filtrado por permissão)
+  valor_comissao?: number | null;
   data: string;
   hora_inicio: string | null;
   hora_fim: string | null;
@@ -74,20 +67,14 @@ interface LancamentoComRelacoes {
   _canViewComissao?: boolean;
   compartilhado?: boolean;
   divisoes?: DivisaoColaborador[];
+  is_fiado?: boolean;
+  is_troca_gratis?: boolean;
 }
 
 interface UserProfile {
   isAdmin: boolean;
   colaboradorId: number | null;
 }
-
-const FORMAS_PAGAMENTO = [
-  { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-  { value: 'pix', label: 'PIX', icon: '📱' },
-  { value: 'cartao_debito', label: 'Débito', icon: '💳' },
-  { value: 'cartao_credito', label: 'Crédito', icon: '💳' },
-];
-
 
 interface FormaPagamentoDB {
   id: number;
@@ -97,6 +84,8 @@ interface FormaPagamentoDB {
   taxa_percentual: number;
   ativo: boolean;
 }
+
+type TabType = 'hoje' | 'pendentes' | 'finalizados' | 'futuros';
 
 export default function LancamentosPage() {
   const [lancamentos, setLancamentos] = useState<LancamentoComRelacoes[]>([]);
@@ -108,13 +97,16 @@ export default function LancamentosPage() {
   const [showModal, setShowModal] = useState(false);
   const [formErrors, setFormErrors] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<'todos' | 'hoje' | 'pendentes'>('hoje');
+
+  // Nova estrutura de filtros
+  const [activeTab, setActiveTab] = useState<TabType>('hoje');
+  const [filtroColaborador, setFiltroColaborador] = useState<number | 'todos'>('todos');
+
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
     isOpen: false,
     id: null,
   });
 
-  // Estado do formulário unificado
   const [formData, setFormData] = useState({
     colaborador_id: '',
     cliente_id: '',
@@ -136,20 +128,93 @@ export default function LancamentosPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [filtroServico, setFiltroServico] = useState('');
-
-  // Estado para serviço compartilhado
   const [compartilhado, setCompartilhado] = useState(false);
   const [divisoes, setDivisoes] = useState<{ colaborador_id: number; valor: string }[]>([]);
 
   useEffect(() => {
     loadData();
-  }, [selectedFilter]);
+  }, []);
+
+  // Filtrar lançamentos por aba e colaborador
+  const lancamentosFiltrados = useMemo(() => {
+    const hoje = startOfDay(new Date());
+    const fimHoje = endOfDay(new Date());
+
+    let filtered = lancamentos;
+
+    // Filtro por colaborador
+    if (filtroColaborador !== 'todos') {
+      filtered = filtered.filter(l => l.colaborador_id === filtroColaborador);
+    }
+
+    // Filtro por aba
+    switch (activeTab) {
+      case 'hoje':
+        // Lançamentos do dia atual (qualquer status)
+        filtered = filtered.filter(l => {
+          const dataLanc = parseAsLocalTime(l.data);
+          return dataLanc >= hoje && dataLanc <= fimHoje;
+        });
+        break;
+
+      case 'pendentes':
+        // Lançamentos com data <= hoje E status = pendente
+        filtered = filtered.filter(l => {
+          const dataLanc = parseAsLocalTime(l.data);
+          return dataLanc <= fimHoje && l.status === 'pendente';
+        });
+        break;
+
+      case 'finalizados':
+        // Lançamentos concluídos (qualquer data)
+        filtered = filtered.filter(l => l.status === 'concluido');
+        break;
+
+      case 'futuros':
+        // Lançamentos com data > hoje (agendamentos futuros)
+        filtered = filtered.filter(l => {
+          const dataLanc = parseAsLocalTime(l.data);
+          return dataLanc > fimHoje;
+        });
+        break;
+    }
+
+    return filtered;
+  }, [lancamentos, activeTab, filtroColaborador]);
+
+  // Contadores para cada aba
+  const contadores = useMemo(() => {
+    const hoje = startOfDay(new Date());
+    const fimHoje = endOfDay(new Date());
+
+    let filtered = lancamentos;
+    if (filtroColaborador !== 'todos') {
+      filtered = filtered.filter(l => l.colaborador_id === filtroColaborador);
+    }
+
+    return {
+      hoje: filtered.filter(l => {
+        const dataLanc = parseAsLocalTime(l.data);
+        return dataLanc >= hoje && dataLanc <= fimHoje;
+      }).length,
+      pendentes: filtered.filter(l => {
+        const dataLanc = parseAsLocalTime(l.data);
+        return dataLanc <= fimHoje && l.status === 'pendente';
+      }).length,
+      finalizados: filtered.filter(l => l.status === 'concluido').length,
+      futuros: filtered.filter(l => {
+        const dataLanc = parseAsLocalTime(l.data);
+        return dataLanc > fimHoje;
+      }).length,
+    };
+  }, [lancamentos, filtroColaborador]);
 
   async function loadData(retryCount = 0) {
     setLoading(true);
 
     try {
-      const url = `/api/lancamentos?filtro=${selectedFilter}&_t=${Date.now()}`;
+      // Carregar todos os lançamentos (sem filtro de data na API)
+      const url = `/api/lancamentos?filtro=todos&_t=${Date.now()}`;
 
       const response = await fetch(url, {
         cache: 'no-store',
@@ -181,7 +246,6 @@ export default function LancamentosPage() {
       if (data._userProfile) {
         setUserProfile(data._userProfile);
 
-        // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId e não estiver editando)
         if (data._userProfile.colaboradorId) {
           const colaboradorDoUsuario = colaboradoresData.find(
             (c: Colaborador) => c.id === data._userProfile.colaboradorId
@@ -203,7 +267,6 @@ export default function LancamentosPage() {
     }
   }
 
-  // Calcular valor total baseado nos serviços selecionados
   function calcularValorTotal(servicosIds: number[]): number {
     return servicosIds.reduce((total, id) => {
       const servico = servicos.find(s => s.id === id);
@@ -211,24 +274,6 @@ export default function LancamentosPage() {
     }, 0);
   }
 
-  // Calcular hora fim baseada na duração dos serviços
-  function calcularHoraFim(horaInicio: string, servicosIds: number[]): string {
-    const duracaoTotal = servicosIds.reduce((total, id) => {
-      const servico = servicos.find(s => s.id === id);
-      return total + (servico?.duracao_minutos || 60);
-    }, 0);
-
-    const [h, m] = horaInicio.split(':').map(Number);
-    const minutosInicio = h * 60 + m;
-    const minutosFim = minutosInicio + duracaoTotal;
-
-    const horaFim = Math.floor(minutosFim / 60);
-    const minFim = minutosFim % 60;
-
-    return `${horaFim.toString().padStart(2, '0')}:${minFim.toString().padStart(2, '0')}`;
-  }
-
-  // Atualizar serviços selecionados (apenas valor, não altera horário)
   function handleServicoToggle(servicoId: number) {
     const novosServicos = formData.servicos_ids.includes(servicoId)
       ? formData.servicos_ids.filter(id => id !== servicoId)
@@ -243,33 +288,28 @@ export default function LancamentosPage() {
     }));
   }
 
-  // Selecionar colaboradora
   function handleColaboradorChange(colaboradorId: string) {
     const colab = colaboradores.find(c => c.id === Number(colaboradorId));
     setSelectedColaborador(colab || null);
     setFormData(prev => ({ ...prev, colaborador_id: colaboradorId }));
   }
 
-  // Salvar lançamento (e criar agendamento automaticamente)
   async function handleSubmit() {
     setFormErrors('');
     setIsSubmitting(true);
 
     try {
-      // Preparar dados para validação
       const servicosNomes = formData.servicos_ids
         .map(id => servicos.find(s => s.id === id)?.nome)
         .filter(Boolean)
         .join(' + ');
 
-      // Validar forma de pagamento se já realizado (não precisa para fiado/troca)
       if (jaRealizado && !formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
         setFormErrors('Selecione uma forma de pagamento');
         setIsSubmitting(false);
         return;
       }
 
-      // Validar serviço compartilhado
       if (compartilhado) {
         if (divisoes.length < 2) {
           setFormErrors('Serviço compartilhado precisa de pelo menos 2 colaboradores');
@@ -303,15 +343,11 @@ export default function LancamentosPage() {
         }
       }
 
-      // Status final:
-      // - Fiado: sempre pendente (até ser pago)
-      // - Troca/Grátis: sempre concluído
-      // - Normal: concluído se já realizado, pendente se não
       let statusFinal = 'pendente';
       if (formData.is_fiado) {
-        statusFinal = 'pendente'; // Fiado sempre fica pendente
+        statusFinal = 'pendente';
       } else if (formData.is_troca_gratis) {
-        statusFinal = 'concluido'; // Troca/grátis já está finalizado
+        statusFinal = 'concluido';
       } else if (jaRealizado) {
         statusFinal = 'concluido';
       }
@@ -330,7 +366,6 @@ export default function LancamentosPage() {
         forma_pagamento: jaRealizado ? formData.forma_pagamento as 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' : undefined,
       };
 
-      // Validar com Zod
       const validation = lancamentoSchema.safeParse(validationData);
       if (!validation.success) {
         setFormErrors(formatZodErrors(validation.error));
@@ -338,7 +373,6 @@ export default function LancamentosPage() {
         return;
       }
 
-      // Buscar taxa da forma de pagamento (apenas para pagamentos normais, não para fiado/troca)
       let taxaPercentual = 0;
       let valorTaxa = 0;
       if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
@@ -352,49 +386,39 @@ export default function LancamentosPage() {
         valorTaxa = (validationData.valor_total * taxaPercentual) / 100;
       }
 
-      // Calcular comissões
       let comissaoColaborador = 0;
       let comissaoSalao = 0;
 
       if (formData.is_troca_gratis) {
-        // Troca/Grátis: comissões são zero
         comissaoColaborador = 0;
         comissaoSalao = 0;
       } else if (formData.is_fiado) {
-        // Fiado: comissões são calculadas, mas só serão "confirmadas" quando pago
         const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
         const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
         comissaoColaborador = comissaoBruta;
         comissaoSalao = validationData.valor_total - comissaoBruta;
       } else {
-        // Normal: comissões com desconto de taxa
         const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
         const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
         comissaoColaborador = comissaoBruta - valorTaxa;
         comissaoSalao = validationData.valor_total - comissaoBruta;
       }
 
-      // Montar data/hora completa (garantir formato HH:MM:SS)
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
       const dataCompleta = `${formData.data}T${horaInicioFormatada}`;
 
-      // Determinar valor_total (para troca/grátis é sempre 0)
       const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
 
-      // Determinar forma_pagamento e data_pagamento
       let formaPagamentoFinal = null;
       let dataPagamentoFinal = null;
 
       if (formData.is_fiado) {
-        // Fiado: sem forma de pagamento ainda, sem data de pagamento
         formaPagamentoFinal = 'fiado';
         dataPagamentoFinal = null;
       } else if (formData.is_troca_gratis) {
-        // Troca/Grátis: marca como troca_gratis
         formaPagamentoFinal = 'troca_gratis';
         dataPagamentoFinal = new Date().toISOString();
       } else if (jaRealizado && formData.forma_pagamento) {
-        // Normal concluído
         formaPagamentoFinal = formData.forma_pagamento;
         dataPagamentoFinal = new Date().toISOString();
       }
@@ -416,7 +440,6 @@ export default function LancamentosPage() {
         forma_pagamento: formaPagamentoFinal,
         data_pagamento: dataPagamentoFinal,
         compartilhado: compartilhado,
-        // Campos especiais para fiado e troca/grátis
         is_fiado: formData.is_fiado || false,
         is_troca_gratis: formData.is_troca_gratis || false,
         valor_referencia: formData.is_troca_gratis && formData.valor_referencia
@@ -428,7 +451,6 @@ export default function LancamentosPage() {
       let lancError;
 
       if (editingId) {
-        // ATUALIZAR lançamento existente
         const result = await supabase
           .from('lancamentos')
           .update(lancamentoData)
@@ -438,7 +460,6 @@ export default function LancamentosPage() {
         lancamento = result.data;
         lancError = result.error;
       } else {
-        // INSERIR novo lançamento
         const result = await supabase
           .from('lancamentos')
           .insert(lancamentoData)
@@ -455,9 +476,7 @@ export default function LancamentosPage() {
         return;
       }
 
-      // Salvar divisões se for serviço compartilhado
       if (compartilhado && divisoes.length > 0) {
-        // Primeiro, deletar divisões antigas (se editando)
         if (editingId) {
           await supabase
             .from('lancamento_divisoes')
@@ -465,7 +484,6 @@ export default function LancamentosPage() {
             .eq('lancamento_id', editingId);
         }
 
-        // Inserir novas divisões
         const divisoesParaSalvar = divisoes.map(d => {
           const colab = colaboradores.find(c => c.id === d.colaborador_id);
           const porcentagemColab = colab?.porcentagem_comissao || 50;
@@ -488,25 +506,21 @@ export default function LancamentosPage() {
           console.error('Erro ao salvar divisões:', divError);
         }
       } else if (editingId) {
-        // Se não é mais compartilhado, deletar divisões existentes
         await supabase
           .from('lancamento_divisoes')
           .delete()
           .eq('lancamento_id', editingId);
       }
 
-      // Calcular duração real baseada nos horários definidos pelo usuário
       const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
       const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
       const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
 
-      // Preparar colaboradores_ids para agendamento (se compartilhado)
       const colaboradoresIdsAgenda = compartilhado
         ? divisoes.map(d => d.colaborador_id)
         : [validationData.colaborador_id];
 
       if (editingId) {
-        // Atualizar agendamento vinculado
         const { error: agendError } = await supabase
           .from('agendamentos')
           .update({
@@ -525,7 +539,6 @@ export default function LancamentosPage() {
           console.error('Erro ao atualizar agendamento:', agendError);
         }
       } else {
-        // Criar novo agendamento vinculado
         const { error: agendError } = await supabase
           .from('agendamentos')
           .insert({
@@ -567,7 +580,6 @@ export default function LancamentosPage() {
   }
 
   function resetForm() {
-    // Manter colaborador pré-selecionado para usuários não-admin
     let preSelectedColaboradorId = '';
     let preSelectedColaborador: Colaborador | null = null;
 
@@ -603,9 +615,7 @@ export default function LancamentosPage() {
     setDivisoes([]);
   }
 
-  // Função para editar um lançamento - BUSCA DADOS FRESCOS DO BANCO
   async function handleEdit(lanc: LancamentoComRelacoes) {
-    // Buscar dados atualizados do banco
     const { data: lancFresh, error } = await supabase
       .from('lancamentos')
       .select('*')
@@ -621,17 +631,12 @@ export default function LancamentosPage() {
     const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
     const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
 
-    // Extrair a data do campo data (que pode ter horário)
     const dataStr = lancFresh.data.split('T')[0];
-
-    // Extrair apenas HH:MM do horário (pode vir como HH:MM:SS do banco)
     const horaInicio = lancFresh.hora_inicio ? lancFresh.hora_inicio.substring(0, 5) : '09:00';
     const horaFim = lancFresh.hora_fim ? lancFresh.hora_fim.substring(0, 5) : '10:00';
 
-    // Se não tem servicos_ids mas tem servicos_nomes, tentar parsear
     let servicosIds = lancFresh.servicos_ids || [];
     if (servicosIds.length === 0 && lancFresh.servicos_nomes) {
-      // Parsear "Corte + Escova + Manicure" para encontrar os IDs
       const nomesServicos = lancFresh.servicos_nomes.split(' + ').map((s: string) => s.trim());
       servicosIds = nomesServicos
         .map((nome: string) => {
@@ -658,11 +663,9 @@ export default function LancamentosPage() {
 
     setSelectedCliente(cliente || null);
     setSelectedColaborador(colaborador || null);
-    // Determinar jaRealizado: true se concluído OU se é fiado OU se é troca/grátis
     setJaRealizado(lancFresh.status === 'concluido' || lancFresh.is_fiado || lancFresh.is_troca_gratis);
     setEditingId(lancFresh.id);
 
-    // Buscar divisões se existir
     const { data: divisoesData } = await supabase
       .from('lancamento_divisoes')
       .select('colaborador_id, valor')
@@ -670,7 +673,7 @@ export default function LancamentosPage() {
 
     if (divisoesData && divisoesData.length > 0) {
       setCompartilhado(true);
-      setDivisoes(divisoesData.map((d: any) => ({
+      setDivisoes(divisoesData.map((d: { colaborador_id: number; valor: number }) => ({
         colaborador_id: d.colaborador_id,
         valor: d.valor.toFixed(2),
       })));
@@ -684,7 +687,6 @@ export default function LancamentosPage() {
 
   async function handleDelete(id: number) {
     try {
-      // Usar API para deletar (bypass RLS)
       const response = await fetch(`/api/lancamentos/${id}`, {
         method: 'DELETE',
       });
@@ -704,7 +706,13 @@ export default function LancamentosPage() {
     setDeleteConfirm({ isOpen: false, id: null });
   }
 
-  function getStatusBadge(status: string) {
+  function getStatusBadge(status: string, lanc: LancamentoComRelacoes) {
+    if (lanc.is_fiado) {
+      return <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">Fiado</span>;
+    }
+    if (lanc.is_troca_gratis) {
+      return <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">Troca/Grátis</span>;
+    }
     switch (status) {
       case 'pendente':
         return <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">Pendente</span>;
@@ -717,11 +725,18 @@ export default function LancamentosPage() {
     }
   }
 
+  const tabs: { key: TabType; label: string; color: string }[] = [
+    { key: 'hoje', label: 'Hoje', color: 'blue' },
+    { key: 'pendentes', label: 'Pendentes', color: 'yellow' },
+    { key: 'finalizados', label: 'Finalizados', color: 'green' },
+    { key: 'futuros', label: 'Futuros', color: 'purple' },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-white">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
             <Link href="/" className="text-purple-600 hover:text-purple-800 text-sm mb-2 inline-block">
               ← Voltar ao Dashboard
@@ -739,30 +754,87 @@ export default function LancamentosPage() {
           </button>
         </div>
 
-        {/* Filtros */}
-        <div className="flex gap-2 mb-6">
-          {(['hoje', 'pendentes', 'todos'] as const).map(filter => (
-            <button
-              key={filter}
-              onClick={() => setSelectedFilter(filter)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                selectedFilter === filter
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white text-gray-600 hover:bg-purple-100'
-              }`}
-            >
-              {filter === 'hoje' ? 'Hoje' : filter === 'pendentes' ? 'Pendentes' : 'Todos'}
-            </button>
-          ))}
+        {/* Filtro por Colaborador */}
+        <div className="bg-white rounded-2xl shadow-lg p-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="font-medium text-gray-700">Filtrar por colaborador:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setFiltroColaborador('todos')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  filtroColaborador === 'todos'
+                    ? 'bg-purple-500 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-purple-100'
+                }`}
+              >
+                Todos
+              </button>
+              {colaboradores.map(colab => (
+                <button
+                  key={colab.id}
+                  onClick={() => setFiltroColaborador(colab.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    filtroColaborador === colab.id
+                      ? 'bg-purple-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-purple-100'
+                  }`}
+                >
+                  {colab.nome}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Lista de Lançamentos */}
+        {/* Abas de Status */}
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="border-b border-gray-200">
+            <div className="flex flex-wrap">
+              {tabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex-1 min-w-[120px] px-4 py-4 text-sm font-medium transition-all relative ${
+                    activeTab === tab.key
+                      ? 'text-purple-600 bg-purple-50'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <span>{tab.label}</span>
+                    <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${
+                      activeTab === tab.key
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {contadores[tab.key]}
+                    </span>
+                  </div>
+                  {activeTab === tab.key && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Lista de Lançamentos */}
           {loading ? (
             <div className="p-8 text-center text-gray-500">Carregando...</div>
-          ) : lancamentos.length === 0 ? (
+          ) : lancamentosFiltrados.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              Nenhum lançamento encontrado
+              <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p>Nenhum lançamento encontrado</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {filtroColaborador !== 'todos' && 'Tente remover o filtro de colaborador'}
+              </p>
             </div>
           ) : (
             <>
@@ -783,7 +855,7 @@ export default function LancamentosPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {lancamentos.map(lanc => (
+                    {lancamentosFiltrados.map(lanc => (
                       <tr key={lanc.id} className="hover:bg-purple-50 transition-colors">
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium text-gray-800">
@@ -815,22 +887,12 @@ export default function LancamentosPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {getStatusBadge(lanc.status)}
+                          {getStatusBadge(lanc.status, lanc)}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          {(lanc as any).is_fiado ? (
-                            <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
-                              Fiado
-                            </span>
-                          ) : (lanc as any).is_troca_gratis ? (
-                            <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
-                              Troca/Grátis
-                            </span>
-                          ) : lanc.forma_pagamento ? (
+                          {lanc.forma_pagamento && !lanc.is_fiado && !lanc.is_troca_gratis ? (
                             <span className="text-gray-700">
-                              {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome ||
-                               FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label ||
-                               lanc.forma_pagamento}
+                              {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome || lanc.forma_pagamento}
                             </span>
                           ) : (
                             <span className="text-gray-400">-</span>
@@ -840,17 +902,21 @@ export default function LancamentosPage() {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => handleEdit(lanc)}
-                              className="text-blue-500 hover:text-blue-700 transition-colors"
+                              className="text-blue-500 hover:text-blue-700 transition-colors p-1"
                               title="Editar"
                             >
-                              ✏️
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
                             </button>
                             <button
                               onClick={() => setDeleteConfirm({ isOpen: true, id: lanc.id })}
-                              className="text-red-500 hover:text-red-700 transition-colors"
+                              className="text-red-500 hover:text-red-700 transition-colors p-1"
                               title="Excluir"
                             >
-                              🗑️
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
                             </button>
                           </div>
                         </td>
@@ -862,7 +928,7 @@ export default function LancamentosPage() {
 
               {/* Cards para Mobile */}
               <div className="md:hidden divide-y divide-gray-100">
-                {lancamentos.map(lanc => (
+                {lancamentosFiltrados.map(lanc => (
                   <div key={lanc.id} className="p-4 hover:bg-purple-50 transition-colors">
                     <div className="flex items-start justify-between mb-3">
                       <div>
@@ -877,7 +943,7 @@ export default function LancamentosPage() {
                         <div className="text-lg font-bold text-green-600">
                           R$ {lanc.valor_total.toFixed(2)}
                         </div>
-                        {getStatusBadge(lanc.status)}
+                        {getStatusBadge(lanc.status, lanc)}
                       </div>
                     </div>
 
@@ -898,27 +964,6 @@ export default function LancamentosPage() {
                       </div>
                     )}
 
-                    {((lanc as any).is_fiado || (lanc as any).is_troca_gratis || lanc.forma_pagamento) && (
-                      <div className="text-sm mb-3">
-                        <span className="font-medium text-gray-600">Pagamento: </span>
-                        {(lanc as any).is_fiado ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
-                            Fiado
-                          </span>
-                        ) : (lanc as any).is_troca_gratis ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
-                            Troca/Grátis
-                          </span>
-                        ) : (
-                          <span className="text-gray-700">
-                            {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome ||
-                             FORMAS_PAGAMENTO.find(f => f.value === lanc.forma_pagamento)?.label ||
-                             lanc.forma_pagamento}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
                     {lanc._canViewComissao && lanc.comissao_colaborador && (
                       <div className="text-sm text-purple-600 mb-3">
                         <span className="font-medium">Comissão:</span> R$ {lanc.comissao_colaborador.toFixed(2)}
@@ -928,15 +973,20 @@ export default function LancamentosPage() {
                     <div className="flex gap-2 pt-2 border-t border-gray-100">
                       <button
                         onClick={() => handleEdit(lanc)}
-                        className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors"
+                        className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors flex items-center justify-center gap-1"
                       >
-                        ✏️ Editar
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Editar
                       </button>
                       <button
                         onClick={() => setDeleteConfirm({ isOpen: true, id: lanc.id })}
                         className="px-3 py-2 text-sm bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors"
                       >
-                        🗑️
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   </div>
@@ -978,7 +1028,6 @@ export default function LancamentosPage() {
                   >
                     <option value="">Selecione...</option>
                     {colaboradores.map(c => {
-                      // Mostrar % comissão apenas para admin ou próprio colaborador
                       const showComissao = userProfile?.isAdmin || userProfile?.colaboradorId === c.id;
                       return (
                         <option key={c.id} value={c.id}>
@@ -1112,7 +1161,6 @@ export default function LancamentosPage() {
                       onChange={(e) => {
                         setJaRealizado(e.target.checked);
                         if (!e.target.checked) {
-                          // Limpar forma de pagamento e flags especiais
                           setFormData(prev => ({
                             ...prev,
                             forma_pagamento: '',
@@ -1131,7 +1179,6 @@ export default function LancamentosPage() {
                     <div className="mt-4 space-y-3">
                       <p className="text-sm text-gray-600">Como foi recebido o pagamento?</p>
                       <div className="flex flex-wrap gap-2">
-                        {/* Formas de pagamento normais (do banco, excluindo fiado e troca) */}
                         {formasPagamentoDB
                           .filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis')
                           .map(forma => (
@@ -1162,7 +1209,6 @@ export default function LancamentosPage() {
                           ))
                         }
 
-                        {/* Botão FIADO */}
                         <button
                           type="button"
                           onClick={() => setFormData(prev => ({
@@ -1182,7 +1228,6 @@ export default function LancamentosPage() {
                           <span>Fiado</span>
                         </button>
 
-                        {/* Botão TROCA/GRÁTIS */}
                         <button
                           type="button"
                           onClick={() => setFormData(prev => ({
@@ -1203,7 +1248,6 @@ export default function LancamentosPage() {
                         </button>
                       </div>
 
-                      {/* Info sobre FIADO */}
                       {formData.is_fiado && (
                         <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
                           <p className="text-orange-800 font-medium flex items-center gap-2">
@@ -1217,7 +1261,6 @@ export default function LancamentosPage() {
                         </div>
                       )}
 
-                      {/* Campo de valor de referência para TROCA/GRÁTIS */}
                       {formData.is_troca_gratis && (
                         <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                           <p className="text-purple-800 font-medium flex items-center gap-2 mb-2">
@@ -1248,8 +1291,6 @@ export default function LancamentosPage() {
                         </div>
                       )}
 
-                      {/* Preview da taxa quando selecionada uma forma com taxa */}
-                      {/* Só mostra se for admin ou o próprio colaborador */}
                       {formData.forma_pagamento && formData.valor_total && selectedColaborador &&
                        !formData.is_fiado && !formData.is_troca_gratis &&
                        (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (() => {
@@ -1284,7 +1325,6 @@ export default function LancamentosPage() {
                       onChange={(e) => {
                         setCompartilhado(e.target.checked);
                         if (e.target.checked && divisoes.length === 0) {
-                          // Inicializar com o colaborador principal
                           const valorTotal = parseFloat(formData.valor_total) || 0;
                           const valorMetade = valorTotal / 2;
                           setDivisoes([
@@ -1302,7 +1342,6 @@ export default function LancamentosPage() {
                     <div className="mt-4 space-y-4">
                       <p className="text-sm text-gray-600">Divida o valor entre os colaboradores:</p>
 
-                      {/* Lista de divisões */}
                       <div className="space-y-3">
                         {divisoes.map((div, index) => {
                           const colab = colaboradores.find(c => c.id === div.colaborador_id);
@@ -1373,7 +1412,6 @@ export default function LancamentosPage() {
                         })}
                       </div>
 
-                      {/* Adicionar colaborador */}
                       <button
                         type="button"
                         onClick={() => {
@@ -1387,7 +1425,6 @@ export default function LancamentosPage() {
                         Adicionar colaborador
                       </button>
 
-                      {/* Resumo da divisão */}
                       {(() => {
                         const valorTotal = parseFloat(formData.valor_total) || 0;
                         const somaDivisoes = divisoes.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);

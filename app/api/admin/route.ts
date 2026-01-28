@@ -26,6 +26,8 @@ const tabelaParaModulo: Record<string, ModuloAudit> = {
   usuarios: 'Usuarios',
   lancamentos: 'Lancamentos',
   agendamentos: 'Agenda',
+  pacotes: 'Lancamentos',
+  pacote_usos: 'Lancamentos',
 };
 
 // Helper para obter dados do usuário autenticado
@@ -70,7 +72,7 @@ export async function GET(request: Request) {
     }
 
     // Validar tabelas permitidas
-    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos'];
+    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos', 'pacotes', 'pacote_usos'];
     if (!tabelasPermitidas.includes(tabela)) {
       return errorResponse('Tabela não permitida', 403);
     }
@@ -113,7 +115,7 @@ export async function POST(request: Request) {
       return errorResponse('Tabela e dados são obrigatórios', 400);
     }
 
-    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos'];
+    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos', 'pacotes', 'pacote_usos'];
     if (!tabelasPermitidas.includes(tabela)) {
       return errorResponse('Tabela não permitida', 403);
     }
@@ -159,7 +161,7 @@ export async function PUT(request: Request) {
       return errorResponse('Tabela, id e dados são obrigatórios', 400);
     }
 
-    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos'];
+    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos', 'pacotes', 'pacote_usos'];
     if (!tabelasPermitidas.includes(tabela)) {
       return errorResponse('Tabela não permitida', 403);
     }
@@ -215,7 +217,7 @@ export async function DELETE(request: Request) {
       return errorResponse('Tabela e id são obrigatórios', 400);
     }
 
-    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos'];
+    const tabelasPermitidas = ['clientes', 'colaboradores', 'servicos', 'formas_pagamento', 'usuarios', 'lancamentos', 'agendamentos', 'pacotes', 'pacote_usos'];
     if (!tabelasPermitidas.includes(tabela)) {
       return errorResponse('Tabela não permitida', 403);
     }
