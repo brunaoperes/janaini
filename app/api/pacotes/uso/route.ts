@@ -36,6 +36,7 @@ async function getAuthUser(supabase: any) {
       userEmail: user.email || undefined,
       userName: profile?.nome,
       userRole: profile?.role,
+      isAdmin: profile?.role === 'admin',
     };
   } catch {
     return null;

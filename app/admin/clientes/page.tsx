@@ -20,6 +20,13 @@ export default function ClientesAdminPage() {
     telefone: '',
     aniversario: '',
   });
+  // Estados para pacotes
+  const [showPacotesModal, setShowPacotesModal] = useState(false);
+  const [clientePacotes, setClientePacotes] = useState<Cliente | null>(null);
+  const [pacotesData, setPacotesData] = useState<any>({ pacotes: [], total: 0 });
+  const [loadingPacotes, setLoadingPacotes] = useState(false);
+  const [pacotesHistorico, setPacotesHistorico] = useState<any[]>([]);
+  const [pacoteSelecionado, setPacoteSelecionado] = useState<number | null>(null);
 
   useEffect(() => {
     loadClientes();
@@ -173,6 +180,47 @@ export default function ClientesAdminPage() {
     const hoje = new Date();
     const dataNiver = new Date(aniversario);
     return dataNiver.getMonth() === hoje.getMonth();
+  };
+
+  // Função para abrir modal de pacotes do cliente
+  const openPacotesModal = async (cliente: Cliente) => {
+    setClientePacotes(cliente);
+    setShowPacotesModal(true);
+    setLoadingPacotes(true);
+    setPacoteSelecionado(null);
+    setPacotesHistorico([]);
+
+    try {
+      // Buscar todos os pacotes (ativos e inativos)
+      const response = await fetch(`/api/pacotes/cliente/${cliente.id}?apenasAtivos=false`);
+      const data = await response.json();
+      setPacotesData(data);
+    } catch (error) {
+      console.error('Erro ao carregar pacotes:', error);
+    } finally {
+      setLoadingPacotes(false);
+    }
+  };
+
+  // Função para buscar histórico de usos de um pacote
+  const loadHistoricoPacote = async (pacoteId: number) => {
+    setPacoteSelecionado(pacoteId);
+    try {
+      const response = await fetch(`/api/pacotes/uso?pacoteId=${pacoteId}`);
+      const data = await response.json();
+      setPacotesHistorico(data.usos || []);
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+      setPacotesHistorico([]);
+    }
+  };
+
+  const closePacotesModal = () => {
+    setShowPacotesModal(false);
+    setClientePacotes(null);
+    setPacotesData({ pacotes: [], total: 0 });
+    setPacoteSelecionado(null);
+    setPacotesHistorico([]);
   };
 
   const diasSemVisitar = (ultimoAtendimento: string | null) => {
@@ -415,6 +463,15 @@ export default function ClientesAdminPage() {
                 {/* Ações */}
                 <div className="flex gap-2 pt-4 border-t border-purple-100">
                   <button
+                    onClick={() => openPacotesModal(cliente)}
+                    className="flex-1 px-4 py-2 bg-purple-100 text-purple-700 rounded-xl font-medium hover:bg-purple-200 transition-colors text-sm flex items-center justify-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    Pacotes
+                  </button>
+                  <button
                     onClick={() => openModal(cliente)}
                     className="flex-1 px-4 py-2 bg-blue-100 text-blue-700 rounded-xl font-medium hover:bg-blue-200 transition-colors text-sm"
                   >
@@ -550,6 +607,276 @@ export default function ClientesAdminPage() {
                   {editingCliente ? 'Salvar Alterações' : 'Cadastrar'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pacotes do Cliente */}
+      {showPacotesModal && clientePacotes && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              closePacotesModal();
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-modal-in"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {/* Header do Modal */}
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-5 rounded-t-3xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold text-white">
+                    {clientePacotes.nome.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">
+                      Pacotes de {clientePacotes.nome}
+                    </h3>
+                    <p className="text-purple-100 text-sm">Controle de frequência e uso</p>
+                  </div>
+                </div>
+                <button
+                  onClick={closePacotesModal}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {loadingPacotes ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : pacotesData.pacotes.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-10 h-10 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-600 text-lg mb-2">Nenhum pacote encontrado</p>
+                  <p className="text-gray-500 text-sm">Este cliente ainda não possui pacotes registrados.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Pacotes Ativos */}
+                  {pacotesData.pacotes.filter((p: any) => p.status === 'ativo').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                        Pacotes Ativos
+                      </h4>
+                      <div className="space-y-4">
+                        {pacotesData.pacotes
+                          .filter((p: any) => p.status === 'ativo')
+                          .map((pacote: any) => (
+                            <div
+                              key={pacote.id}
+                              className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200"
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div>
+                                  <h5 className="font-bold text-gray-800">{pacote.nome || pacote.servico?.nome || 'Pacote'}</h5>
+                                  {pacote.servico?.nome && pacote.nome !== pacote.servico.nome && (
+                                    <p className="text-sm text-gray-600">{pacote.servico.nome}</p>
+                                  )}
+                                </div>
+                                <span className="px-2 py-1 bg-green-200 text-green-700 text-xs font-medium rounded-full">
+                                  Ativo
+                                </span>
+                              </div>
+
+                              {/* Barra de Progresso */}
+                              <div className="mb-3">
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span className="text-gray-600">Progresso</span>
+                                  <span className="font-bold text-gray-800">
+                                    {pacote.quantidade_usada}/{pacote.quantidade_total} sessões
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                  <div
+                                    className="bg-gradient-to-r from-green-500 to-emerald-500 h-3 rounded-full transition-all"
+                                    style={{ width: `${pacote.progresso_percentual || 0}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <span className="text-gray-500">Sessões restantes:</span>
+                                  <span className="font-bold text-green-600 ml-2">{pacote.sessoes_disponiveis}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Validade:</span>
+                                  <span className="font-medium text-gray-800 ml-2">{pacote.validade_formatada}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Valor total:</span>
+                                  <span className="font-medium text-gray-800 ml-2">R$ {(pacote.valor_total || 0).toFixed(2)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Por sessão:</span>
+                                  <span className="font-medium text-gray-800 ml-2">R$ {(pacote.valor_por_sessao || 0).toFixed(2)}</span>
+                                </div>
+                              </div>
+
+                              {/* Botão Ver Histórico */}
+                              <button
+                                onClick={() => loadHistoricoPacote(pacote.id)}
+                                className="mt-4 w-full px-4 py-2 bg-white text-green-700 rounded-lg font-medium hover:bg-green-100 transition-colors text-sm border border-green-200"
+                              >
+                                {pacoteSelecionado === pacote.id ? 'Histórico abaixo' : 'Ver Histórico de Usos'}
+                              </button>
+
+                              {/* Histórico de Usos */}
+                              {pacoteSelecionado === pacote.id && (
+                                <div className="mt-4 bg-white rounded-lg p-4 border border-green-200">
+                                  <h6 className="font-medium text-gray-800 mb-3">Histórico de Usos</h6>
+                                  {pacotesHistorico.length === 0 ? (
+                                    <p className="text-gray-500 text-sm">Nenhum uso registrado ainda.</p>
+                                  ) : (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                      {pacotesHistorico.map((uso: any, idx: number) => (
+                                        <div key={idx} className="flex items-center justify-between text-sm py-2 border-b border-gray-100 last:border-0">
+                                          <div>
+                                            <span className="text-gray-600">
+                                              {format(new Date(uso.data_uso), 'dd/MM/yyyy HH:mm')}
+                                            </span>
+                                            {uso.observacoes && (
+                                              <p className="text-xs text-gray-500">{uso.observacoes}</p>
+                                            )}
+                                          </div>
+                                          <span className="font-medium text-green-600">Uso #{uso.numero_uso || idx + 1}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pacotes Inativos/Expirados */}
+                  {pacotesData.pacotes.filter((p: any) => p.status !== 'ativo').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <span className="w-3 h-3 bg-gray-400 rounded-full"></span>
+                        Pacotes Concluídos/Expirados
+                      </h4>
+                      <div className="space-y-4">
+                        {pacotesData.pacotes
+                          .filter((p: any) => p.status !== 'ativo')
+                          .map((pacote: any) => (
+                            <div
+                              key={pacote.id}
+                              className="bg-gray-50 rounded-xl p-4 border border-gray-200 opacity-75"
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div>
+                                  <h5 className="font-bold text-gray-700">{pacote.nome || pacote.servico?.nome || 'Pacote'}</h5>
+                                  {pacote.servico?.nome && pacote.nome !== pacote.servico.nome && (
+                                    <p className="text-sm text-gray-500">{pacote.servico.nome}</p>
+                                  )}
+                                </div>
+                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                  pacote.status === 'concluido'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : pacote.status === 'expirado'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-gray-200 text-gray-700'
+                                }`}>
+                                  {pacote.status === 'concluido' ? 'Concluído' :
+                                   pacote.status === 'expirado' ? 'Expirado' :
+                                   pacote.status === 'cancelado' ? 'Cancelado' : pacote.status}
+                                </span>
+                              </div>
+
+                              {/* Barra de Progresso */}
+                              <div className="mb-3">
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span className="text-gray-500">Progresso</span>
+                                  <span className="font-medium text-gray-600">
+                                    {pacote.quantidade_usada}/{pacote.quantidade_total} sessões
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-300 rounded-full h-2">
+                                  <div
+                                    className="bg-gray-500 h-2 rounded-full"
+                                    style={{ width: `${pacote.progresso_percentual || 0}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                                <div>
+                                  <span>Validade:</span>
+                                  <span className="font-medium ml-2">{pacote.validade_formatada}</span>
+                                </div>
+                                <div>
+                                  <span>Valor total:</span>
+                                  <span className="font-medium ml-2">R$ {(pacote.valor_total || 0).toFixed(2)}</span>
+                                </div>
+                              </div>
+
+                              {/* Botão Ver Histórico */}
+                              <button
+                                onClick={() => loadHistoricoPacote(pacote.id)}
+                                className="mt-3 w-full px-4 py-2 bg-white text-gray-600 rounded-lg font-medium hover:bg-gray-100 transition-colors text-sm border border-gray-200"
+                              >
+                                {pacoteSelecionado === pacote.id ? 'Histórico abaixo' : 'Ver Histórico'}
+                              </button>
+
+                              {/* Histórico de Usos */}
+                              {pacoteSelecionado === pacote.id && (
+                                <div className="mt-3 bg-white rounded-lg p-3 border border-gray-200">
+                                  <h6 className="font-medium text-gray-700 mb-2 text-sm">Histórico</h6>
+                                  {pacotesHistorico.length === 0 ? (
+                                    <p className="text-gray-500 text-xs">Nenhum uso registrado.</p>
+                                  ) : (
+                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                      {pacotesHistorico.map((uso: any, idx: number) => (
+                                        <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+                                          <span className="text-gray-500">
+                                            {format(new Date(uso.data_uso), 'dd/MM/yyyy')}
+                                          </span>
+                                          <span className="text-gray-600">Uso #{uso.numero_uso || idx + 1}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer do Modal */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-3xl">
+              <button
+                onClick={closePacotesModal}
+                className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

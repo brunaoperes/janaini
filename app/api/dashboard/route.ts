@@ -459,6 +459,59 @@ export async function GET(request: Request) {
     const totalPagamentosFiadoPeriodo = pagamentosFiadoPeriodo?.reduce((sum, p) => sum + (p.valor_pago || 0), 0) || 0;
     const totalPeriodoGrafico = totalLancamentosNormais + totalPagamentosFiadoPeriodo;
 
+    // Comissão realizada do período do gráfico
+    let queryComissaoPeriodo = supabase
+      .from('lancamentos')
+      .select('comissao_colaborador, colaborador_id')
+      .gte('data', `${chartDataInicio}T00:00:00`)
+      .lte('data', `${chartDataFim}T23:59:59`)
+      .eq('status', 'concluido')
+      .eq('is_fiado', false)
+      .eq('is_troca_gratis', false);
+
+    if (colaboradorIdFiltro) {
+      queryComissaoPeriodo = queryComissaoPeriodo.eq('colaborador_id', colaboradorIdFiltro);
+    }
+
+    const { data: comissoesPeriodo } = await queryComissaoPeriodo;
+    const comissaoRealizadaPeriodo = (comissoesPeriodo || []).reduce((sum, l) => sum + (l.comissao_colaborador || 0), 0);
+    const faturamentoLiquidoPeriodo = totalPeriodoGrafico - comissaoRealizadaPeriodo;
+
+    // Projeção para o mesmo número de dias à frente
+    const diasPeriodo = Math.ceil((new Date(chartDataFim).getTime() - new Date(chartDataInicio).getTime()) / (1000 * 60 * 60 * 24));
+
+    // Calcular % média de comissão dos colaboradores (usado em várias projeções)
+    const { data: colaboradoresComissao } = await supabase
+      .from('colaboradores')
+      .select('porcentagem_comissao');
+
+    const mediaComissao = colaboradoresComissao && colaboradoresComissao.length > 0
+      ? colaboradoresComissao.reduce((sum, c) => sum + (c.porcentagem_comissao || 0), 0) / colaboradoresComissao.length
+      : 50;
+
+    // Projeção para o período equivalente no futuro
+    const inicioProjecaoPeriodo = new Date();
+    inicioProjecaoPeriodo.setDate(inicioProjecaoPeriodo.getDate() + 1);
+    const fimProjecaoPeriodo = new Date();
+    fimProjecaoPeriodo.setDate(fimProjecaoPeriodo.getDate() + diasPeriodo);
+
+    let queryProjecaoPeriodo = supabase
+      .from('agendamentos')
+      .select('valor_estimado, colaborador_id')
+      .gte('data_hora', `${formatDate(inicioProjecaoPeriodo)}T00:00:00`)
+      .lte('data_hora', `${formatDate(fimProjecaoPeriodo)}T23:59:59`)
+      .neq('status', 'concluido')
+      .neq('status', 'cancelado');
+
+    if (colaboradorIdFiltro) {
+      queryProjecaoPeriodo = queryProjecaoPeriodo.eq('colaborador_id', colaboradorIdFiltro);
+    }
+
+    const { data: agendamentosFuturosPeriodo } = await queryProjecaoPeriodo;
+    const projecaoFaturamentoPeriodo = (agendamentosFuturosPeriodo || []).reduce((sum, a) => sum + (a.valor_estimado || 0), 0);
+    const projecaoComissaoPeriodo = (projecaoFaturamentoPeriodo * mediaComissao) / 100;
+    const projecaoLiquidoPeriodo = projecaoFaturamentoPeriodo - projecaoComissaoPeriodo;
+
     // Buscar lista de colaboradores (para filtro do admin)
     let colaboradoresLista: { id: number; nome: string }[] = [];
     if (isAdmin) {
@@ -468,6 +521,58 @@ export async function GET(request: Request) {
         .order('nome');
       colaboradoresLista = colabs || [];
     }
+
+    // ========== NOVOS CAMPOS FINANCEIROS ==========
+
+    // Comissão Realizada do Mês (soma de comissao_colaborador de lançamentos concluídos)
+    let queryComissaoMes = supabase
+      .from('lancamentos')
+      .select('comissao_colaborador, colaborador_id')
+      .gte('data', `${inicioMesStr}T00:00:00`)
+      .lte('data', `${fimMesStr}T23:59:59`)
+      .eq('status', 'concluido')
+      .eq('is_fiado', false)
+      .eq('is_troca_gratis', false);
+
+    if (colaboradorIdFiltro) {
+      queryComissaoMes = queryComissaoMes.eq('colaborador_id', colaboradorIdFiltro);
+    }
+
+    const { data: comissoesMes } = await queryComissaoMes;
+    const comissaoRealizadaMes = (comissoesMes || []).reduce((sum, l) => sum + (l.comissao_colaborador || 0), 0);
+
+    // Faturamento Líquido (totalMes - comissaoRealizadaMes)
+    const faturamentoLiquidoMes = totalMes - comissaoRealizadaMes;
+
+    // ========== PROJEÇÃO FUTURA ==========
+
+    // Buscar agendamentos futuros (data > hoje, status != concluido)
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    const amanhaStr = formatDate(amanha);
+
+    // Projeção para próximos 30 dias
+    const fimProjecao = new Date();
+    fimProjecao.setDate(fimProjecao.getDate() + 30);
+    const fimProjecaoStr = formatDate(fimProjecao);
+
+    let queryProjecao = supabase
+      .from('agendamentos')
+      .select('valor_estimado, colaborador_id')
+      .gte('data_hora', `${amanhaStr}T00:00:00`)
+      .lte('data_hora', `${fimProjecaoStr}T23:59:59`)
+      .neq('status', 'concluido')
+      .neq('status', 'cancelado');
+
+    if (colaboradorIdFiltro) {
+      queryProjecao = queryProjecao.eq('colaborador_id', colaboradorIdFiltro);
+    }
+
+    const { data: agendamentosFuturos } = await queryProjecao;
+    const projecaoFaturamento = (agendamentosFuturos || []).reduce((sum, a) => sum + (a.valor_estimado || 0), 0);
+
+    // Projeção de comissão (baseada na média calculada anteriormente)
+    const projecaoComissao = (projecaoFaturamento * mediaComissao) / 100;
 
     return jsonResponse({
       totalDia,
@@ -486,6 +591,19 @@ export async function GET(request: Request) {
       colaboradorId: profile.colaborador_id,
       colaboradorIdFiltro,
       colaboradores: colaboradoresLista,
+      // NOVOS CAMPOS FINANCEIROS
+      comissaoRealizadaMes,
+      faturamentoLiquidoMes,
+      // PROJEÇÃO
+      projecaoFaturamento,
+      projecaoComissao,
+      // TOTAIS DO PERÍODO DO GRÁFICO (para bloco abaixo do gráfico)
+      comissaoRealizadaPeriodo,
+      faturamentoLiquidoPeriodo,
+      projecaoFaturamentoPeriodo,
+      projecaoComissaoPeriodo,
+      projecaoLiquidoPeriodo,
+      diasPeriodo,
     });
   } catch (error: any) {
     console.error('Erro no dashboard API:', error);

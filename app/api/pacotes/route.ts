@@ -28,7 +28,7 @@ async function getAuthUser(supabase: any) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('nome, role')
+      .select('nome, role, colaborador_id')
       .eq('id', user.id)
       .single();
 
@@ -37,6 +37,8 @@ async function getAuthUser(supabase: any) {
       userEmail: user.email || undefined,
       userName: profile?.nome,
       userRole: profile?.role,
+      colaboradorId: profile?.colaborador_id,
+      isAdmin: profile?.role === 'admin',
     };
   } catch {
     return null;
@@ -50,10 +52,20 @@ export async function GET(request: Request) {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
+    // Verificar permissões do usuário
+    const authUser = await getAuthUser(supabase);
+    const isAdmin = authUser?.isAdmin || false;
+    const userColaboradorId = authUser?.colaboradorId;
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const clienteId = searchParams.get('clienteId');
-    const colaboradorId = searchParams.get('colaboradorId');
+    let colaboradorId = searchParams.get('colaboradorId');
+
+    // PERMISSÃO: Se não for admin, forçar filtro pelo seu colaborador_id
+    if (!isAdmin && userColaboradorId) {
+      colaboradorId = userColaboradorId.toString();
+    }
 
     // Verificar pacotes expirados antes de buscar
     await supabase.rpc('verificar_pacotes_expirados');
@@ -111,6 +123,10 @@ export async function GET(request: Request) {
       colaboradores: colaboradoresRes.data || [],
       servicos: servicosRes.data || [],
       formasPagamento: formasRes.data || [],
+      _userProfile: {
+        isAdmin,
+        colaboradorId: userColaboradorId,
+      },
     }, {
       headers: { 'Cache-Control': 'no-store' }
     });

@@ -39,6 +39,19 @@ interface DashboardData {
   colaboradorId: string | null;
   colaboradorIdFiltro: string | null;
   colaboradores: Colaborador[];
+  // Novos campos financeiros
+  comissaoRealizadaMes: number;
+  faturamentoLiquidoMes: number;
+  // Projeção
+  projecaoFaturamento: number;
+  projecaoComissao: number;
+  // Totais do período do gráfico
+  comissaoRealizadaPeriodo: number;
+  faturamentoLiquidoPeriodo: number;
+  projecaoFaturamentoPeriodo: number;
+  projecaoComissaoPeriodo: number;
+  projecaoLiquidoPeriodo: number;
+  diasPeriodo: number;
 }
 
 type PeriodoGrafico = '7' | '30' | '90' | 'personalizado' | 'todos';
@@ -363,6 +376,112 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        {/* Cards de Indicadores Financeiros */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Faturamento Bruto */}
+          <div className="card-elevated bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-600 text-sm font-medium mb-1">Faturamento Bruto</p>
+                <p className="text-xs text-emerald-500 mb-1">(Realizado)</p>
+                <p className="text-2xl font-bold text-emerald-700">
+                  R$ {data.totalMes.toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                💵
+              </div>
+            </div>
+          </div>
+
+          {/* Comissão Realizada */}
+          <div className="card-elevated bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-pink-600 text-sm font-medium mb-1">Comissão Realizada</p>
+                <p className="text-xs text-pink-500 mb-1">(Este Mês)</p>
+                <p className="text-2xl font-bold text-pink-700">
+                  R$ {(data.comissaoRealizadaMes || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-pink-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                👩‍💼
+              </div>
+            </div>
+          </div>
+
+          {/* Faturamento Líquido */}
+          <div className="card-elevated bg-gradient-to-br from-cyan-50 to-sky-50 border-cyan-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-cyan-600 text-sm font-medium mb-1">Faturamento Líquido</p>
+                <p className="text-xs text-cyan-500 mb-1">(Bruto - Comissão)</p>
+                <p className="text-2xl font-bold text-cyan-700">
+                  R$ {(data.faturamentoLiquidoMes || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-cyan-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                📊
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Cards de Projeção Futura */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Projeção Faturamento */}
+          <div className="card-elevated bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 relative">
+            <div className="absolute top-3 right-3">
+              <span className="px-2 py-1 bg-amber-200 text-amber-700 text-xs font-medium rounded-full">
+                Estimativa
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-amber-600 text-sm font-medium mb-1">Projeção Faturamento</p>
+                <p className="text-xs text-amber-500 mb-1">(Agenda Futura - 30 dias)</p>
+                <p className="text-2xl font-bold text-amber-700">
+                  R$ {(data.projecaoFaturamento || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                📈
+              </div>
+            </div>
+          </div>
+
+          {/* Comissão Estimada */}
+          <div className="card-elevated bg-gradient-to-br from-violet-50 to-indigo-50 border-violet-200 relative">
+            <div className="absolute top-3 right-3">
+              <span className="px-2 py-1 bg-violet-200 text-violet-700 text-xs font-medium rounded-full">
+                Estimativa
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-violet-600 text-sm font-medium mb-1">Comissão Estimada</p>
+                <p className="text-xs text-violet-500 mb-1">(Baseada na média)</p>
+                <p className="text-2xl font-bold text-violet-700">
+                  R$ {(data.projecaoComissao || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-violet-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                💎
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Aviso de Projeção */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
+          <p className="text-amber-700 text-sm flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Estimativas baseadas na agenda. Comissão só é gerada após realização e pagamento do serviço.</span>
+          </p>
+        </div>
+
         {/* Gráfico de Faturamento */}
         <div className="card-elevated mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -467,6 +586,64 @@ export default function Dashboard() {
           ) : (
             <FaturamentoChart data={data.chartData} />
           )}
+
+          {/* Bloco de Totais - Realizado vs Projeção */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Bloco Realizado */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200">
+                <h4 className="text-green-700 font-bold mb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  REALIZADO ({data.diasPeriodo || 0} dias)
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Faturamento:</span>
+                    <span className="font-bold text-green-700">R$ {data.totalPeriodoGrafico.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Comissão:</span>
+                    <span className="font-bold text-pink-600">R$ {(data.comissaoRealizadaPeriodo || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-green-200">
+                    <span className="text-gray-700 font-medium">Líquido:</span>
+                    <span className="font-bold text-lg text-green-800">R$ {(data.faturamentoLiquidoPeriodo || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloco Projeção */}
+              <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl p-5 border border-amber-200 relative">
+                <div className="absolute top-3 right-3">
+                  <span className="px-2 py-1 bg-amber-200 text-amber-700 text-xs font-medium rounded-full">
+                    Estimativa
+                  </span>
+                </div>
+                <h4 className="text-amber-700 font-bold mb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                  PROJEÇÃO (próx. {data.diasPeriodo || 0} dias)
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Faturamento:</span>
+                    <span className="font-bold text-amber-700">R$ {(data.projecaoFaturamentoPeriodo || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Comissão:</span>
+                    <span className="font-bold text-violet-600">R$ {(data.projecaoComissaoPeriodo || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-amber-200">
+                    <span className="text-gray-700 font-medium">Líquido:</span>
+                    <span className="font-bold text-lg text-amber-800">R$ {(data.projecaoLiquidoPeriodo || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Grid com Rankings e Agendamentos */}

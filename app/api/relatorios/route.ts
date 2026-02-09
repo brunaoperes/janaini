@@ -80,11 +80,32 @@ export async function GET(request: Request) {
     // Novo filtro: incluir/excluir fiados e troca/grátis
     const incluirFiados = searchParams.get('incluirFiados') === 'true';
     const incluirTroca = searchParams.get('incluirTroca') === 'true';
+    const incluirProjecao = searchParams.get('incluirProjecao') === 'true';
+
+    // Verificar se é apenas para verificar permissões
+    const verificarPermissao = searchParams.get('verificarPermissao') === 'true';
 
     // Obter perfil do usuário para filtrar comissões
     const userProfile = await getUserProfile();
     const isAdmin = userProfile?.role === 'admin';
     const userColaboradorId = userProfile?.colaborador_id;
+
+    // Se é apenas para verificar permissão, retornar logo
+    if (verificarPermissao) {
+      return jsonResponse({
+        _userProfile: {
+          isAdmin,
+          colaboradorId: userColaboradorId,
+        },
+      });
+    }
+
+    // Determinar colaborador_id efetivo para filtrar
+    // Se não for admin, sempre usa o colaborador_id do próprio usuário
+    let colaboradorIdEfetivo = colaboradorId;
+    if (!isAdmin && userColaboradorId) {
+      colaboradorIdEfetivo = userColaboradorId.toString();
+    }
 
     // Carregar colaboradores
     const { data: colaboradores } = await supabase
@@ -104,8 +125,8 @@ export async function GET(request: Request) {
       .lte('data', endDate)
       .order('data', { ascending: false });
 
-    if (colaboradorId && colaboradorId !== 'todos') {
-      query = query.eq('colaborador_id', parseInt(colaboradorId, 10));
+    if (colaboradorIdEfetivo && colaboradorIdEfetivo !== 'todos') {
+      query = query.eq('colaborador_id', parseInt(colaboradorIdEfetivo, 10));
     }
 
     if (pagamento && pagamento !== 'todos') {
@@ -167,8 +188,8 @@ export async function GET(request: Request) {
       .lte('data', endDateAnterior)
       .order('data', { ascending: false });
 
-    if (colaboradorId && colaboradorId !== 'todos') {
-      queryAnterior = queryAnterior.eq('colaborador_id', parseInt(colaboradorId, 10));
+    if (colaboradorIdEfetivo && colaboradorIdEfetivo !== 'todos') {
+      queryAnterior = queryAnterior.eq('colaborador_id', parseInt(colaboradorIdEfetivo, 10));
     }
 
     if (pagamento && pagamento !== 'todos') {
@@ -207,6 +228,56 @@ export async function GET(request: Request) {
       .filter((l: any) => l.is_troca_gratis)
       .length;
 
+    // Calcular comissão realizada do período (apenas concluídos)
+    const comissaoRealizada = lancamentosFinal
+      .filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis)
+      .reduce((sum: number, l: any) => sum + (l.comissao_colaborador || 0), 0);
+
+    // Faturamento líquido
+    const faturamentoLiquido = totalFaturamento + totalPagamentosFiado - comissaoRealizada;
+
+    // ========== PROJEÇÃO FUTURA ==========
+    let projecaoFaturamento = 0;
+    let projecaoComissao = 0;
+    let projecaoLiquido = 0;
+
+    if (incluirProjecao) {
+      // Buscar agendamentos futuros (próximos 30 dias)
+      const hoje = new Date();
+      const hojeStr = hoje.toISOString().split('T')[0];
+      const futuro = new Date();
+      futuro.setDate(futuro.getDate() + 30);
+      const futuroStr = futuro.toISOString().split('T')[0];
+
+      let queryProjecao = supabase
+        .from('agendamentos')
+        .select('valor_estimado, colaborador_id')
+        .gte('data_hora', `${hojeStr}T00:00:00`)
+        .lte('data_hora', `${futuroStr}T23:59:59`)
+        .neq('status', 'concluido')
+        .neq('status', 'cancelado');
+
+      if (colaboradorIdEfetivo && colaboradorIdEfetivo !== 'todos') {
+        queryProjecao = queryProjecao.eq('colaborador_id', parseInt(colaboradorIdEfetivo, 10));
+      }
+
+      const { data: agendamentosFuturos } = await queryProjecao;
+
+      projecaoFaturamento = (agendamentosFuturos || []).reduce((sum, a) => sum + (a.valor_estimado || 0), 0);
+
+      // Calcular % média de comissão dos colaboradores
+      const { data: colaboradoresComissao } = await supabase
+        .from('colaboradores')
+        .select('porcentagem_comissao');
+
+      const mediaComissao = colaboradoresComissao && colaboradoresComissao.length > 0
+        ? colaboradoresComissao.reduce((sum, c) => sum + (c.porcentagem_comissao || 0), 0) / colaboradoresComissao.length
+        : 50;
+
+      projecaoComissao = (projecaoFaturamento * mediaComissao) / 100;
+      projecaoLiquido = projecaoFaturamento - projecaoComissao;
+    }
+
     return jsonResponse({
       lancamentos: lancamentosFiltrados,
       lancamentosAnterior: lancamentosAnteriorFiltrados,
@@ -218,6 +289,11 @@ export async function GET(request: Request) {
         pagamentosFiado: totalPagamentosFiado,
         fiadosPendentes: totalFiadosPendentes,
         trocaGratisQtd: totalTrocaGratis,
+        comissaoRealizada,
+        faturamentoLiquido,
+        projecaoFaturamento,
+        projecaoComissao,
+        projecaoLiquido,
       },
       _userProfile: {
         isAdmin,
