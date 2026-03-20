@@ -90,6 +90,12 @@ export default function AgendaPage() {
   // Estados para serviço compartilhado na finalização
   const [compartilhadoFinal, setCompartilhadoFinal] = useState(false);
   const [divisoesFinal, setDivisoesFinal] = useState<{ colaborador_id: number; valor: string }[]>([]);
+
+  // Estados para edição de forma de pagamento (atendimentos concluídos)
+  const [formasPagamentoDB, setFormasPagamentoDB] = useState<{ id: number; nome: string; codigo: string; icone: string; taxa_percentual: number; ativo: boolean }[]>([]);
+  const [selectedColaboradorEdit, setSelectedColaboradorEdit] = useState<Colaborador | null>(null);
+  const [editIsCompleted, setEditIsCompleted] = useState(false);
+
   const [editData, setEditData] = useState({
     colaborador_id: '',
     cliente_id: '',
@@ -98,6 +104,11 @@ export default function AgendaPage() {
     hora_fim: '',
     descricao_servico: '',
     observacoes: '',
+    valor_total: '',
+    forma_pagamento: '',
+    is_fiado: false,
+    is_troca_gratis: false,
+    valor_referencia: '',
   });
 
   // Estado do formulário de novo agendamento
@@ -199,6 +210,7 @@ export default function AgendaPage() {
       setClientes(data.clientes || []);
       setServicos(servicosData);
       setAgendamentos(data.agendamentos || []);
+      setFormasPagamentoDB(data.formasPagamento || []);
 
       // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId)
       if (data._userProfile?.colaboradorId) {
@@ -652,7 +664,7 @@ export default function AgendaPage() {
   // ============== FUNÇÕES DO DRAWER ==============
 
   // Ativar modo edição
-  const ativarEdicao = () => {
+  const ativarEdicao = async () => {
     if (!selectedAgendamento) return;
 
     const dataHora = parseAsLocalTime(selectedAgendamento.data_hora);
@@ -669,6 +681,35 @@ export default function AgendaPage() {
       ? selectedAgendamento.descricao_servico.split(' + ').map(s => s.trim())
       : [];
 
+    const isConcluido = selectedAgendamento.status === 'concluido';
+    let valorTotal = '';
+    let formaPagamento = '';
+    let isFiado = false;
+    let isTrocaGratis = false;
+    let valorReferencia = '';
+
+    // Se concluído e tem lançamento, buscar dados financeiros
+    if (isConcluido && selectedAgendamento.lancamento_id) {
+      const { data: lancFresh, error } = await supabase
+        .from('lancamentos')
+        .select('*')
+        .eq('id', selectedAgendamento.lancamento_id)
+        .single();
+
+      if (!error && lancFresh) {
+        valorTotal = lancFresh.valor_total?.toFixed(2) || '';
+        formaPagamento = lancFresh.forma_pagamento || '';
+        isFiado = lancFresh.is_fiado || false;
+        isTrocaGratis = lancFresh.is_troca_gratis || false;
+        valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
+      }
+    }
+
+    // Setar colaborador selecionado para cálculo de comissão
+    const colaboradorAtual = colaboradores.find(c => c.id === selectedAgendamento.colaborador_id);
+    setSelectedColaboradorEdit(colaboradorAtual || null);
+    setEditIsCompleted(isConcluido);
+
     setEditData({
       colaborador_id: selectedAgendamento.colaborador_id.toString(),
       cliente_id: selectedAgendamento.cliente_id.toString(),
@@ -677,6 +718,11 @@ export default function AgendaPage() {
       hora_fim: horaFim,
       descricao_servico: selectedAgendamento.descricao_servico || '',
       observacoes: (selectedAgendamento as any).observacoes || '',
+      valor_total: valorTotal,
+      forma_pagamento: formaPagamento,
+      is_fiado: isFiado,
+      is_troca_gratis: isTrocaGratis,
+      valor_referencia: valorReferencia,
     });
     setServicosSelecionadosEdit(servicosExistentes);
     setIsEditMode(true);
@@ -733,16 +779,112 @@ export default function AgendaPage() {
 
     // 2. Atualizar lançamento vinculado (se existir)
     if (selectedAgendamento.lancamento_id) {
+      const lancamentoUpdate: Record<string, any> = {
+        colaborador_id: Number(editData.colaborador_id),
+        cliente_id: Number(editData.cliente_id),
+        data: novoDataHora,
+        hora_inicio: editData.hora_inicio,
+        hora_fim: editData.hora_fim,
+        servicos_nomes: descricaoServicos,
+      };
+
+      // Se é atendimento concluído, atualizar também dados financeiros
+      if (editIsCompleted) {
+        // Validar forma de pagamento
+        if (!editData.forma_pagamento && !editData.is_fiado && !editData.is_troca_gratis) {
+          alert('⚠️ Selecione uma forma de pagamento!');
+          return;
+        }
+
+        const valorTotal = editData.is_troca_gratis ? 0 : parseFloat(editData.valor_total) || 0;
+
+        if (!editData.is_fiado && !editData.is_troca_gratis && valorTotal <= 0) {
+          alert('⚠️ O valor total deve ser maior que zero!');
+          return;
+        }
+
+        // Buscar taxa da forma de pagamento
+        let taxaPercentual = 0;
+        let valorTaxa = 0;
+        if (!editData.is_fiado && !editData.is_troca_gratis && editData.forma_pagamento) {
+          const { data: formaPagamento } = await supabase
+            .from('formas_pagamento')
+            .select('taxa_percentual')
+            .eq('codigo', editData.forma_pagamento)
+            .single();
+
+          taxaPercentual = formaPagamento?.taxa_percentual || 0;
+          valorTaxa = (valorTotal * taxaPercentual) / 100;
+        }
+
+        // Calcular comissões
+        let comissaoColaborador = 0;
+        let comissaoSalao = 0;
+
+        if (editData.is_troca_gratis) {
+          comissaoColaborador = 0;
+          comissaoSalao = 0;
+        } else if (editData.is_fiado) {
+          const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
+          const comissaoBruta = (valorTotal * porcentagem) / 100;
+          comissaoColaborador = comissaoBruta;
+          comissaoSalao = valorTotal - comissaoBruta;
+        } else {
+          const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
+          const comissaoBruta = (valorTotal * porcentagem) / 100;
+          comissaoColaborador = comissaoBruta - valorTaxa;
+          comissaoSalao = valorTotal - comissaoBruta;
+        }
+
+        // Determinar forma_pagamento_final, data_pagamento, status
+        let formaPagamentoFinal = null;
+        let dataPagamentoFinal = null;
+        let statusFinal = 'concluido';
+
+        if (editData.is_fiado) {
+          formaPagamentoFinal = 'fiado';
+          dataPagamentoFinal = null;
+          statusFinal = 'pendente';
+        } else if (editData.is_troca_gratis) {
+          formaPagamentoFinal = 'troca_gratis';
+          dataPagamentoFinal = new Date().toISOString();
+          statusFinal = 'concluido';
+        } else {
+          formaPagamentoFinal = editData.forma_pagamento;
+          dataPagamentoFinal = new Date().toISOString();
+          statusFinal = 'concluido';
+        }
+
+        lancamentoUpdate.valor_total = valorTotal;
+        lancamentoUpdate.comissao_colaborador = comissaoColaborador;
+        lancamentoUpdate.comissao_salao = comissaoSalao;
+        lancamentoUpdate.taxa_pagamento = valorTaxa;
+        lancamentoUpdate.forma_pagamento = formaPagamentoFinal;
+        lancamentoUpdate.data_pagamento = dataPagamentoFinal;
+        lancamentoUpdate.status = statusFinal;
+        lancamentoUpdate.is_fiado = editData.is_fiado || false;
+        lancamentoUpdate.is_troca_gratis = editData.is_troca_gratis || false;
+        lancamentoUpdate.valor_referencia = editData.is_troca_gratis && editData.valor_referencia
+          ? parseFloat(editData.valor_referencia)
+          : null;
+
+        // Atualizar status do agendamento se mudou (ex: fiado → pendente)
+        if (editData.is_fiado) {
+          await supabase
+            .from('agendamentos')
+            .update({ status: 'pendente' })
+            .eq('id', selectedAgendamento.id);
+        } else {
+          await supabase
+            .from('agendamentos')
+            .update({ status: 'concluido' })
+            .eq('id', selectedAgendamento.id);
+        }
+      }
+
       const { error: lancError } = await supabase
         .from('lancamentos')
-        .update({
-          colaborador_id: Number(editData.colaborador_id),
-          cliente_id: Number(editData.cliente_id),
-          data: novoDataHora,
-          hora_inicio: editData.hora_inicio,
-          hora_fim: editData.hora_fim,
-          servicos_nomes: descricaoServicos,
-        })
+        .update(lancamentoUpdate)
         .eq('id', selectedAgendamento.lancamento_id);
 
       if (lancError) {
@@ -752,6 +894,8 @@ export default function AgendaPage() {
 
     alert('✅ Agendamento atualizado com sucesso!');
     setIsEditMode(false);
+    setEditIsCompleted(false);
+    setSelectedColaboradorEdit(null);
     setSelectedAgendamento(null);
     setFiltroServico('');
     // Se mudou a data, atualizar selectedDate
@@ -2129,6 +2273,8 @@ export default function AgendaPage() {
             onClick={() => {
               setSelectedAgendamento(null);
               setIsEditMode(false);
+              setEditIsCompleted(false);
+              setSelectedColaboradorEdit(null);
               setFiltroServico('');
             }}
           />
@@ -2150,6 +2296,8 @@ export default function AgendaPage() {
                   onClick={() => {
                     setSelectedAgendamento(null);
                     setIsEditMode(false);
+                    setEditIsCompleted(false);
+                    setSelectedColaboradorEdit(null);
                     setFiltroServico('');
                   }}
                   className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:scale-110"
@@ -2666,7 +2814,11 @@ export default function AgendaPage() {
                       </label>
                       <select
                         value={editData.colaborador_id}
-                        onChange={(e) => setEditData({ ...editData, colaborador_id: e.target.value })}
+                        onChange={(e) => {
+                          setEditData({ ...editData, colaborador_id: e.target.value });
+                          const colab = colaboradores.find(c => c.id === Number(e.target.value));
+                          setSelectedColaboradorEdit(colab || null);
+                        }}
                         className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors bg-white"
                         required
                       >
@@ -2872,6 +3024,171 @@ export default function AgendaPage() {
                         className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors resize-none"
                       />
                     </div>
+
+                    {/* Seção de Pagamento - apenas para atendimentos concluídos */}
+                    {editIsCompleted && selectedAgendamento?.lancamento_id && (
+                      <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                        <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                          Pagamento
+                        </h4>
+
+                        {/* Valor Total */}
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Valor Total</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editData.valor_total}
+                              onChange={(e) => setEditData(prev => ({ ...prev, valor_total: e.target.value }))}
+                              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Formas de Pagamento */}
+                        <p className="text-sm text-gray-600 mb-2">Forma de pagamento:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {formasPagamentoDB
+                            .filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis')
+                            .map(forma => (
+                              <button
+                                key={forma.codigo}
+                                type="button"
+                                onClick={() => setEditData(prev => ({
+                                  ...prev,
+                                  forma_pagamento: forma.codigo,
+                                  is_fiado: false,
+                                  is_troca_gratis: false,
+                                  valor_referencia: '',
+                                }))}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                                  editData.forma_pagamento === forma.codigo && !editData.is_fiado && !editData.is_troca_gratis
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
+                                }`}
+                              >
+                                <span>{forma.icone}</span>
+                                <span>{forma.nome}</span>
+                                {forma.taxa_percentual > 0 && (
+                                  <span className={`text-xs ${editData.forma_pagamento === forma.codigo ? 'text-green-200' : 'text-red-500'}`}>
+                                    ({forma.taxa_percentual}%)
+                                  </span>
+                                )}
+                              </button>
+                            ))
+                          }
+
+                          <button
+                            type="button"
+                            onClick={() => setEditData(prev => ({
+                              ...prev,
+                              forma_pagamento: 'fiado',
+                              is_fiado: true,
+                              is_troca_gratis: false,
+                              valor_referencia: '',
+                            }))}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                              editData.is_fiado
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white border border-gray-200 text-gray-700 hover:border-orange-300'
+                            }`}
+                          >
+                            <span>📝</span>
+                            <span>Fiado</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setEditData(prev => ({
+                              ...prev,
+                              forma_pagamento: 'troca_gratis',
+                              is_fiado: false,
+                              is_troca_gratis: true,
+                              valor_total: '0',
+                            }))}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                              editData.is_troca_gratis
+                                ? 'bg-purple-500 text-white'
+                                : 'bg-white border border-gray-200 text-gray-700 hover:border-purple-300'
+                            }`}
+                          >
+                            <span>🎁</span>
+                            <span>Troca / Grátis</span>
+                          </button>
+                        </div>
+
+                        {editData.is_fiado && (
+                          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+                            <p className="text-orange-800 font-medium flex items-center gap-2">
+                              <span>📝</span> Fiado selecionado
+                            </p>
+                            <ul className="text-orange-700 mt-2 space-y-1 list-disc list-inside">
+                              <li>O serviço será marcado como <strong>pendente</strong></li>
+                              <li>Não entrará no faturamento até ser pago</li>
+                              <li>Você poderá receber o pagamento em Controle de Fiados</li>
+                            </ul>
+                          </div>
+                        )}
+
+                        {editData.is_troca_gratis && (
+                          <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                            <p className="text-purple-800 font-medium flex items-center gap-2 mb-2">
+                              <span>🎁</span> Troca / Grátis selecionado
+                            </p>
+                            <p className="text-purple-700 text-sm mb-3">
+                              O valor será R$ 0,00 (sem faturamento e sem comissão).
+                            </p>
+                            <div>
+                              <label className="block text-sm font-medium text-purple-700 mb-1">
+                                Valor de referência (opcional)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editData.valor_referencia}
+                                  onChange={(e) => setEditData(prev => ({ ...prev, valor_referencia: e.target.value }))}
+                                  className="w-full pl-10 pr-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <p className="text-xs text-purple-600 mt-1">
+                                Apenas para referência/histórico. Não entra em relatórios.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Preview de comissão em tempo real */}
+                        {editData.forma_pagamento && editData.valor_total && selectedColaboradorEdit &&
+                         !editData.is_fiado && !editData.is_troca_gratis && (() => {
+                          const formaSelecionada = formasPagamentoDB.find(f => f.codigo === editData.forma_pagamento);
+                          const taxa = formaSelecionada?.taxa_percentual || 0;
+                          if (taxa <= 0) return null;
+                          const valorTotal = parseFloat(editData.valor_total);
+                          const valorTaxa = (valorTotal * taxa) / 100;
+                          const comissaoBruta = (valorTotal * selectedColaboradorEdit.porcentagem_comissao) / 100;
+                          const comissaoLiquida = comissaoBruta - valorTaxa;
+                          return (
+                            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                              <p className="text-yellow-800 font-medium">Taxa de {formaSelecionada?.nome}: {taxa}%</p>
+                              <ul className="text-yellow-700 mt-1 space-y-1">
+                                <li>Comissão bruta: R$ {comissaoBruta.toFixed(2)}</li>
+                                <li>Taxa descontada: -R$ {valorTaxa.toFixed(2)}</li>
+                                <li className="font-bold">Comissão líquida: R$ {comissaoLiquida.toFixed(2)}</li>
+                              </ul>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   {/* Botões de Edição */}
@@ -2887,7 +3204,7 @@ export default function AgendaPage() {
                     </button>
 
                     <button
-                      onClick={() => { setIsEditMode(false); setFiltroServico(''); }}
+                      onClick={() => { setIsEditMode(false); setEditIsCompleted(false); setSelectedColaboradorEdit(null); setFiltroServico(''); }}
                       className="w-full px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
