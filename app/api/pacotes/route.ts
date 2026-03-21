@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { auditCreate } from '@/lib/audit';
-import { pacoteCreateSchema, formatZodErrors } from '@/lib/validations';
+import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
+import { pacoteCreateSchema, pacoteUpdateSchema, formatZodErrors } from '@/lib/validations';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -281,7 +281,219 @@ export async function POST(request: Request) {
     });
 
   } catch (error: unknown) {
-    console.error('[API/pacotes] Erro fatal:', error);
+    console.error('[API/pacotes] Erro fatal POST:', error);
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// PUT - Editar pacote
+export async function PUT(request: Request) {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Verificar permissões
+    const authUser = await getAuthUser(supabase);
+    if (!authUser?.isAdmin) {
+      return NextResponse.json({ error: 'Acesso negado. Apenas administradores podem editar pacotes.' }, { status: 403 });
+    }
+
+    const body = await request.json();
+
+    // Validar com Zod
+    const validation = pacoteUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: formatZodErrors(validation.error) },
+        { status: 400 }
+      );
+    }
+
+    const data = validation.data;
+
+    // Buscar pacote atual
+    const { data: pacoteAtual, error: fetchError } = await supabase
+      .from('pacotes')
+      .select('*')
+      .eq('id', data.pacote_id)
+      .single();
+
+    if (fetchError || !pacoteAtual) {
+      return NextResponse.json({ error: 'Pacote não encontrado' }, { status: 404 });
+    }
+
+    // Validar que quantidade_total >= quantidade_usada
+    if (data.quantidade_total < pacoteAtual.quantidade_usada) {
+      return NextResponse.json(
+        { error: `Quantidade total não pode ser menor que as sessões já usadas (${pacoteAtual.quantidade_usada})` },
+        { status: 400 }
+      );
+    }
+
+    // Buscar dados do serviço, colaborador e forma de pagamento
+    const [servicoRes, colaboradorRes, formaPgtoRes] = await Promise.all([
+      supabase.from('servicos').select('nome, valor').eq('id', data.servico_id).single(),
+      supabase.from('colaboradores').select('nome, porcentagem_comissao').eq('id', data.colaborador_vendedor_id).single(),
+      supabase.from('formas_pagamento').select('taxa_percentual').eq('codigo', data.forma_pagamento).single(),
+    ]);
+
+    const servico = servicoRes.data;
+    const colaborador = colaboradorRes.data;
+    const taxaPercentual = formaPgtoRes.data?.taxa_percentual || 0;
+
+    if (!servico || !colaborador) {
+      return NextResponse.json({ error: 'Serviço ou colaborador não encontrado' }, { status: 404 });
+    }
+
+    // Recalcular valores
+    const valorPorSessao = data.valor_total / data.quantidade_total;
+    const porcentagemComissao = colaborador.porcentagem_comissao || 50;
+    const comissaoBruta = (data.valor_total * porcentagemComissao) / 100;
+    const valorTaxa = (comissaoBruta * taxaPercentual) / 100;
+    const comissaoVendedor = comissaoBruta - valorTaxa;
+    const comissaoSalao = data.valor_total - comissaoVendedor;
+
+    // Gerar nome
+    const nomePacote = `Pacote ${data.quantidade_total} Sessões - ${servico.nome}`;
+
+    // Atualizar pacote
+    const { data: pacoteAtualizado, error: updateError } = await supabase
+      .from('pacotes')
+      .update({
+        cliente_id: data.cliente_id,
+        servico_id: data.servico_id,
+        colaborador_vendedor_id: data.colaborador_vendedor_id,
+        nome: nomePacote,
+        quantidade_total: data.quantidade_total,
+        valor_total: data.valor_total,
+        valor_por_sessao: valorPorSessao,
+        desconto_percentual: data.desconto_percentual || 0,
+        comissao_vendedor: comissaoVendedor,
+        comissao_salao: comissaoSalao,
+        data_validade: data.data_validade || null,
+        forma_pagamento: data.forma_pagamento,
+        observacoes: data.observacoes || null,
+      })
+      .eq('id', data.pacote_id)
+      .select(`
+        *,
+        cliente:clientes(id, nome),
+        servico:servicos(id, nome),
+        colaborador_vendedor:colaboradores!pacotes_colaborador_vendedor_id_fkey(id, nome)
+      `)
+      .single();
+
+    if (updateError) {
+      console.error('[API/pacotes] Erro ao atualizar pacote:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // Atualizar lançamento vinculado se existir
+    if (pacoteAtual.lancamento_venda_id) {
+      await supabase
+        .from('lancamentos')
+        .update({
+          colaborador_id: data.colaborador_vendedor_id,
+          cliente_id: data.cliente_id,
+          valor_total: data.valor_total,
+          comissao_colaborador: comissaoVendedor,
+          comissao_salao: comissaoSalao,
+          taxa_pagamento: valorTaxa,
+          servicos_nomes: `Venda Pacote: ${servico.nome} (${data.quantidade_total} sessões)`,
+          forma_pagamento: data.forma_pagamento,
+        })
+        .eq('id', pacoteAtual.lancamento_venda_id);
+    }
+
+    // Registrar auditoria
+    await auditUpdate({
+      ...authUser,
+      modulo: 'Lancamentos',
+      tabela: 'pacotes',
+      registroId: data.pacote_id,
+      dadosAnterior: pacoteAtual,
+      dadosNovo: pacoteAtualizado,
+      metodo: 'PUT',
+      endpoint: '/api/pacotes',
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Pacote atualizado com sucesso!',
+      pacote: pacoteAtualizado,
+    });
+
+  } catch (error: unknown) {
+    console.error('[API/pacotes] Erro fatal PUT:', error);
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// DELETE - Excluir pacote
+export async function DELETE(request: Request) {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Verificar permissões
+    const authUser = await getAuthUser(supabase);
+    if (!authUser?.isAdmin) {
+      return NextResponse.json({ error: 'Acesso negado. Apenas administradores podem excluir pacotes.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID do pacote é obrigatório' }, { status: 400 });
+    }
+
+    const pacoteId = parseInt(id);
+
+    // Buscar pacote para auditoria
+    const { data: pacoteAtual, error: fetchError } = await supabase
+      .from('pacotes')
+      .select('*')
+      .eq('id', pacoteId)
+      .single();
+
+    if (fetchError || !pacoteAtual) {
+      return NextResponse.json({ error: 'Pacote não encontrado' }, { status: 404 });
+    }
+
+    // Deletar pacote (pacote_usos CASCADE, lancamentos.pacote_id SET NULL)
+    const { error: deleteError } = await supabase
+      .from('pacotes')
+      .delete()
+      .eq('id', pacoteId);
+
+    if (deleteError) {
+      console.error('[API/pacotes] Erro ao excluir pacote:', deleteError);
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    // Registrar auditoria
+    await auditDelete({
+      ...authUser,
+      modulo: 'Lancamentos',
+      tabela: 'pacotes',
+      registroId: pacoteId,
+      dadosAnterior: pacoteAtual,
+      metodo: 'DELETE',
+      endpoint: '/api/pacotes',
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Pacote excluído com sucesso!',
+    });
+
+  } catch (error: unknown) {
+    console.error('[API/pacotes] Erro fatal DELETE:', error);
     const message = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.json({ error: message }, { status: 500 });
   }

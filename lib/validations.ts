@@ -159,6 +159,33 @@ export const pacoteCreateSchema = z.object({
 
 export type PacoteCreateFormData = z.infer<typeof pacoteCreateSchema>;
 
+// Schema para atualizar Pacote (edição)
+export const pacoteUpdateSchema = z.object({
+  pacote_id: z.number({ message: 'ID do pacote é obrigatório' })
+    .positive('ID do pacote inválido'),
+  cliente_id: z.number({ message: 'Selecione um cliente' })
+    .positive('Selecione um cliente válido'),
+  servico_id: z.number({ message: 'Selecione um serviço' })
+    .positive('Selecione um serviço válido'),
+  colaborador_vendedor_id: z.number({ message: 'Selecione a vendedora' })
+    .positive('Selecione uma vendedora válida'),
+  quantidade_total: z.number({ message: 'Informe a quantidade de sessões' })
+    .min(1, 'Quantidade mínima é 1 sessão')
+    .max(100, 'Quantidade máxima é 100 sessões'),
+  valor_total: z.number({ message: 'Informe o valor total' })
+    .min(0, 'Valor não pode ser negativo'),
+  desconto_percentual: z.number()
+    .min(0, 'Desconto não pode ser negativo')
+    .max(100, 'Desconto máximo é 100%')
+    .optional(),
+  data_validade: z.string().optional(),
+  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
+    .min(1, 'Selecione uma forma de pagamento'),
+  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
+});
+
+export type PacoteUpdateFormData = z.infer<typeof pacoteUpdateSchema>;
+
 // Schema para usar sessão do Pacote
 export const pacoteUsoSchema = z.object({
   pacote_id: z.number({ message: 'Selecione um pacote' })

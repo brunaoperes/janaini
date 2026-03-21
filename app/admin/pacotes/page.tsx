@@ -92,6 +92,8 @@ export default function PacotesAdminPage() {
   const [showUsoModal, setShowUsoModal] = useState(false);
   const [showCancelarModal, setShowCancelarModal] = useState(false);
   const [showDetalhesModal, setShowDetalhesModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pacoteSelecionado, setPacoteSelecionado] = useState<Pacote | null>(null);
   const [usosPacote, setUsosPacote] = useState<PacoteUso[]>([]);
   const [loadingUsos, setLoadingUsos] = useState(false);
@@ -124,6 +126,21 @@ export default function PacotesAdminPage() {
     valor_reembolso: 0,
     forma_reembolso: '',
   });
+
+  // Formulário edição
+  const [formEdit, setFormEdit] = useState({
+    pacote_id: 0,
+    cliente_id: 0,
+    servico_id: 0,
+    colaborador_vendedor_id: 0,
+    quantidade_total: 1,
+    valor_total: 0,
+    desconto_percentual: 0,
+    data_validade: '',
+    forma_pagamento: '',
+    observacoes: '',
+  });
+  const [selectedClienteEdit, setSelectedClienteEdit] = useState<Cliente | null>(null);
 
   const [salvando, setSalvando] = useState(false);
   const [selectedClienteNovo, setSelectedClienteNovo] = useState<Cliente | null>(null);
@@ -196,6 +213,18 @@ export default function PacotesAdminPage() {
       setFormNovo(prev => ({ ...prev, valor_total: valorSugerido }));
     }
   }, [formNovo.servico_id, formNovo.quantidade_total, formNovo.desconto_percentual, servicos]);
+
+  // Atualizar valor quando serviço ou quantidade muda (edição)
+  useEffect(() => {
+    if (showEditModal && formEdit.servico_id && formEdit.quantidade_total) {
+      const valorSugerido = calcularValorSugerido(
+        formEdit.servico_id,
+        formEdit.quantidade_total,
+        formEdit.desconto_percentual
+      );
+      setFormEdit(prev => ({ ...prev, valor_total: valorSugerido }));
+    }
+  }, [formEdit.servico_id, formEdit.quantidade_total, formEdit.desconto_percentual, showEditModal, servicos]);
 
   // Criar novo pacote
   const handleCriarPacote = async () => {
@@ -347,6 +376,91 @@ export default function PacotesAdminPage() {
       forma_reembolso: pacote.forma_pagamento || '',
     });
     setShowCancelarModal(true);
+  };
+
+  // Abrir modal de edição
+  const abrirEdicao = (pacote: Pacote) => {
+    setPacoteSelecionado(pacote);
+    setFormEdit({
+      pacote_id: pacote.id,
+      cliente_id: pacote.cliente_id,
+      servico_id: pacote.servico_id,
+      colaborador_vendedor_id: pacote.colaborador_vendedor_id,
+      quantidade_total: pacote.quantidade_total,
+      valor_total: pacote.valor_total,
+      desconto_percentual: pacote.desconto_percentual || 0,
+      data_validade: pacote.data_validade || '',
+      forma_pagamento: pacote.forma_pagamento || '',
+      observacoes: pacote.observacoes || '',
+    });
+    setSelectedClienteEdit(pacote.cliente || null);
+    setShowEditModal(true);
+  };
+
+  // Salvar edição
+  const handleEditarPacote = async () => {
+    if (!selectedClienteEdit || !formEdit.servico_id || !formEdit.colaborador_vendedor_id || !formEdit.forma_pagamento) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      const response = await fetch('/api/pacotes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formEdit, cliente_id: selectedClienteEdit.id }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      toast.success('Pacote atualizado com sucesso!');
+      setShowEditModal(false);
+      loadPacotes();
+    } catch {
+      toast.error('Erro ao atualizar pacote');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Abrir confirmação de exclusão
+  const abrirExclusao = (pacote: Pacote) => {
+    setPacoteSelecionado(pacote);
+    setShowDeleteConfirm(true);
+  };
+
+  // Confirmar exclusão
+  const handleDeletarPacote = async () => {
+    if (!pacoteSelecionado) return;
+
+    try {
+      setSalvando(true);
+      const response = await fetch(`/api/pacotes?id=${pacoteSelecionado.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      toast.success('Pacote excluído com sucesso!');
+      setShowDeleteConfirm(false);
+      setPacoteSelecionado(null);
+      loadPacotes();
+    } catch {
+      toast.error('Erro ao excluir pacote');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   // Helper para cor do status
@@ -541,6 +655,26 @@ export default function PacotesAdminPage() {
 
                       {/* Ações */}
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => abrirEdicao(pacote)}
+                          className="p-2 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
+                          title="Editar pacote"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+
+                        <button
+                          onClick={() => abrirExclusao(pacote)}
+                          className="p-2 rounded-xl bg-orange-100 text-orange-600 hover:bg-orange-200 transition-colors"
+                          title="Excluir pacote"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+
                         <button
                           onClick={() => abrirDetalhes(pacote)}
                           className="p-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
@@ -926,6 +1060,227 @@ export default function PacotesAdminPage() {
                 </Button>
                 <Button variant="danger" onClick={handleCancelarPacote} isLoading={salvando} fullWidth>
                   Confirmar Cancelamento
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Pacote */}
+      {showEditModal && pacoteSelecionado && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-5 rounded-t-3xl sticky top-0">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Editar Pacote</h3>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Cliente */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Cliente *</label>
+                <ClienteAutocomplete
+                  selectedCliente={selectedClienteEdit}
+                  onSelect={(cliente) => setSelectedClienteEdit(cliente)}
+                />
+              </div>
+
+              {/* Serviço */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Serviço *</label>
+                <select
+                  value={formEdit.servico_id}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, servico_id: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">Selecione um serviço</option>
+                  {servicos.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome} - R$ {s.valor.toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Colaborador vendedor */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Vendedora *</label>
+                <select
+                  value={formEdit.colaborador_vendedor_id}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, colaborador_vendedor_id: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">Selecione a vendedora</option>
+                  {colaboradores.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome} ({c.porcentagem_comissao}%)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantidade e Desconto */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Qtd. Sessões *</label>
+                  <input
+                    type="number"
+                    min={pacoteSelecionado.quantidade_usada || 1}
+                    max={100}
+                    value={formEdit.quantidade_total}
+                    onChange={(e) => setFormEdit(prev => ({ ...prev, quantidade_total: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  {pacoteSelecionado.quantidade_usada > 0 && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      Mínimo: {pacoteSelecionado.quantidade_usada} (sessões já usadas)
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Desconto %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formEdit.desconto_percentual}
+                    onChange={(e) => setFormEdit(prev => ({ ...prev, desconto_percentual: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+              </div>
+
+              {/* Valor total */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Valor Total *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formEdit.valor_total}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, valor_total: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                {formEdit.valor_total > 0 && formEdit.quantidade_total > 0 && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    R$ {(formEdit.valor_total / formEdit.quantidade_total).toFixed(2)} por sessão
+                  </p>
+                )}
+              </div>
+
+              {/* Data de validade */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Data de Validade</label>
+                <input
+                  type="date"
+                  value={formEdit.data_validade}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, data_validade: e.target.value }))}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <p className="text-xs text-gray-500 mt-1">Deixe em branco para sem validade</p>
+              </div>
+
+              {/* Forma de pagamento */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Forma de Pagamento *</label>
+                <select
+                  value={formEdit.forma_pagamento}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, forma_pagamento: e.target.value }))}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">Selecione</option>
+                  {formasPagamento.map(f => (
+                    <option key={f.codigo} value={f.codigo}>{f.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Observações</label>
+                <textarea
+                  value={formEdit.observacoes}
+                  onChange={(e) => setFormEdit(prev => ({ ...prev, observacoes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                />
+              </div>
+
+              {/* Botões */}
+              <div className="flex gap-3 pt-4">
+                <Button variant="secondary" onClick={() => setShowEditModal(false)} fullWidth>
+                  Cancelar
+                </Button>
+                <Button onClick={handleEditarPacote} isLoading={salvando} fullWidth>
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmar Exclusão */}
+      {showDeleteConfirm && pacoteSelecionado && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-red-500 to-red-700 px-6 py-5 rounded-t-3xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Excluir Pacote</h3>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Info do pacote */}
+              <div className="bg-red-50 rounded-xl p-4 space-y-1">
+                <p className="font-semibold text-gray-800">{pacoteSelecionado.nome}</p>
+                <p className="text-sm text-gray-600">Cliente: {pacoteSelecionado.cliente?.nome}</p>
+                <p className="text-sm text-gray-600">
+                  Status: {getStatusText(pacoteSelecionado.status)}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Sessões: {pacoteSelecionado.quantidade_usada} / {pacoteSelecionado.quantidade_total}
+                </p>
+                <p className="text-sm font-medium text-purple-600">
+                  Valor: R$ {pacoteSelecionado.valor_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+
+              {/* Avisos */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-yellow-800">Atenção:</p>
+                <ul className="text-sm text-yellow-700 list-disc list-inside space-y-1">
+                  <li>Esta ação é irreversível</li>
+                  <li>Os registros de uso serão removidos junto com o pacote</li>
+                  <li>O lançamento financeiro vinculado será mantido</li>
+                </ul>
+              </div>
+
+              {/* Botões */}
+              <div className="flex gap-3 pt-4">
+                <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)} fullWidth>
+                  Voltar
+                </Button>
+                <Button variant="danger" onClick={handleDeletarPacote} isLoading={salvando} fullWidth>
+                  Confirmar Exclusão
                 </Button>
               </div>
             </div>
