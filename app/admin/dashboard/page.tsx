@@ -56,7 +56,8 @@ export default function DashboardPage() {
     const faturamentoMes = lancamentosMes?.reduce((sum, l) => sum + l.valor_total, 0) || 0;
     const faturamentoMesAnterior = lancamentosMesAnterior?.reduce((sum, l) => sum + l.valor_total, 0) || 0;
     const comissaoTotalMes = lancamentosMes?.reduce((sum, l) => sum + l.comissao_colaborador, 0) || 0;
-    const lucroMes = faturamentoMes - comissaoTotalMes;
+    const totalTaxasMes = lancamentosMes?.reduce((sum, l) => sum + (l.taxa_pagamento || 0), 0) || 0;
+    const lucroMes = faturamentoMes - comissaoTotalMes - totalTaxasMes;
 
     const trendMes = faturamentoMesAnterior > 0
       ? ((faturamentoMes - faturamentoMesAnterior) / faturamentoMesAnterior) * 100

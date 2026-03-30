@@ -3,13 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
-
 // Client para componentes do browser (use client)
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
-// Client para Server Components e Server Actions (usa service role se disponível para bypass de RLS)
-export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey, {
+// Client para Server Components e Server Actions (usa service role para bypass de RLS)
+// Se SUPABASE_SERVICE_ROLE_KEY não estiver definida, lança erro em vez de usar anon key silenciosamente
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!supabaseServiceKey) {
+  console.error('AVISO: SUPABASE_SERVICE_ROLE_KEY não está definida. supabaseServer usará anon key sem bypass de RLS.');
+}
+export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false

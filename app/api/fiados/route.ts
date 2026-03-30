@@ -3,9 +3,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auditCreate, auditUpdate } from '@/lib/audit';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const dynamic = 'force-dynamic';
@@ -44,6 +45,10 @@ async function getAuthUser(supabase: any) {
 // GET - Listar fiados pendentes
 export async function GET(request: Request) {
   try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
@@ -161,6 +166,10 @@ export async function GET(request: Request) {
 // POST - Marcar fiado como pago
 export async function POST(request: Request) {
   try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
     const {
       lancamentoId,
@@ -244,12 +253,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: pagError.message }, { status: 500 });
     }
 
-    // Atualizar lançamento para concluído
+    // Atualizar lançamento para concluído with recalculated commission values
     const { error: updateError } = await supabase
       .from('lancamentos')
       .update({
         status: 'concluido',
         data_pagamento: dataPagamento,
+        forma_pagamento: formaPagamento,
+        comissao_colaborador: comissaoLiquida,
+        comissao_salao: comissaoSalao,
+        taxa_pagamento: taxaPercentual > 0 ? (valorPago * taxaPercentual / 100) : 0,
       })
       .eq('id', lancamentoId);
 

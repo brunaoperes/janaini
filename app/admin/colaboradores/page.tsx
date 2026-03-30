@@ -148,23 +148,34 @@ export default function ColaboradoresAdminPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Tem certeza que deseja excluir esta colaboradora?')) {
-      try {
-        const response = await fetch(`/api/admin?tabela=colaboradores&id=${id}`, {
-          method: 'DELETE',
-        });
+    try {
+      // Check if collaborator has linked lancamentos
+      const { count: lancCount } = await supabase
+        .from('lancamentos')
+        .select('*', { count: 'exact', head: true })
+        .eq('colaborador_id', id);
 
-        if (!response.ok) {
-          console.error('Erro ao excluir colaboradora');
-          toast.error('Erro ao excluir colaboradora');
-        } else {
-          toast.success('Colaboradora excluída com sucesso!');
-          loadColaboradores();
-        }
-      } catch (error) {
-        console.error('Erro ao excluir colaboradora:', error);
-        toast.error('Erro ao excluir colaboradora');
+      if (lancCount && lancCount > 0) {
+        toast.error(`Não é possível excluir esta colaboradora. Existem ${lancCount} lançamento(s) vinculados.`);
+        return;
       }
+
+      if (!confirm('Tem certeza que deseja excluir esta colaboradora?')) return;
+
+      const response = await fetch(`/api/admin?tabela=colaboradores&id=${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        console.error('Erro ao excluir colaboradora');
+        toast.error('Erro ao excluir colaboradora');
+      } else {
+        toast.success('Colaboradora excluída com sucesso!');
+        loadColaboradores();
+      }
+    } catch (error) {
+      console.error('Erro ao excluir colaboradora:', error);
+      toast.error('Erro ao excluir colaboradora');
     }
   };
 

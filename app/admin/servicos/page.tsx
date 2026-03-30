@@ -167,11 +167,23 @@ export default function ServicosAdminPage() {
   }
 
   async function handleExcluir(servico: Servico) {
-    if (!confirm(`Tem certeza que deseja excluir o serviço "${servico.nome}"?`)) {
-      return;
-    }
-
     try {
+      // Check if service is referenced in lancamentos
+      const { data: lancamentos } = await supabase
+        .from('lancamentos')
+        .select('id')
+        .ilike('servicos_nomes', `%${servico.nome}%`)
+        .limit(1);
+
+      if (lancamentos && lancamentos.length > 0) {
+        toast.error(`Não é possível excluir o serviço "${servico.nome}". Ele está referenciado em lançamentos existentes.`);
+        return;
+      }
+
+      if (!confirm(`Tem certeza que deseja excluir o serviço "${servico.nome}"?`)) {
+        return;
+      }
+
       const response = await fetch(`/api/admin?tabela=servicos&id=${servico.id}`, {
         method: 'DELETE',
       });

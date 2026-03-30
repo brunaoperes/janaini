@@ -3,9 +3,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auditDelete } from '@/lib/audit';
+import { requireAdmin, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +47,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Verificar autenticação admin para deletar lançamentos
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     const { id } = await params;
     const lancamentoId = parseInt(id);
 

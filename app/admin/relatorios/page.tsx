@@ -210,12 +210,28 @@ export default function RelatoriosPage() {
   };
 
   const getTop3Servicos = () => {
-    // Simulando dados de serviços (pode ser expandido com campo real no banco)
-    return [
-      { servico: 'Corte + Escova', quantidade: 45, valor: 3500 },
-      { servico: 'Coloração', quantidade: 28, valor: 4200 },
-      { servico: 'Hidratação', quantidade: 35, valor: 2100 },
-    ];
+    const servicosMap: Record<string, { quantidade: number; valor: number }> = {};
+
+    lancamentos.forEach((l: any) => {
+      if (!l.servicos_nomes) return;
+      // Parse servicos_nomes - can be "Serv1 + Serv2" or just "Serv1"
+      const nomes = l.servicos_nomes.split(' + ').map((s: string) => s.trim());
+      const valorPorServico = nomes.length > 0 ? (l.valor_total || 0) / nomes.length : 0;
+
+      nomes.forEach((nome: string) => {
+        if (!nome) return;
+        if (!servicosMap[nome]) {
+          servicosMap[nome] = { quantidade: 0, valor: 0 };
+        }
+        servicosMap[nome].quantidade += 1;
+        servicosMap[nome].valor += valorPorServico;
+      });
+    });
+
+    return Object.entries(servicosMap)
+      .map(([servico, data]) => ({ servico, quantidade: data.quantidade, valor: data.valor }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 3);
   };
 
   const stats = calcularEstatisticas();

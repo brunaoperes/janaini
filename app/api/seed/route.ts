@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin, isAuthError } from '@/lib/api-auth';
 
 // Função para criar cliente Supabase (lazy initialization)
 function getSupabaseClient() {
@@ -78,6 +79,15 @@ const servicos = [
 ];
 
 export async function GET() {
+  // Block seed in production
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Seed não permitido em produção' }, { status: 403 });
+  }
+
+  // Require admin authentication as fallback protection
+  const authResult = await requireAdmin();
+  if (isAuthError(authResult)) return authResult;
+
   const supabase = getSupabaseClient();
 
   const results = {

@@ -3,10 +3,15 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
 import { auditCreate, auditUpdate, auditDelete, type ModuloAudit } from '@/lib/audit';
+import { requireAdmin, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+if (!supabaseServiceKey) {
+  console.error('SUPABASE_SERVICE_ROLE_KEY is not set. Admin API will not function correctly.');
+}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
@@ -63,6 +68,10 @@ async function getAuthUser() {
 
 export async function GET(request: Request) {
   try {
+    // Verificar autenticação admin
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const tabela = searchParams.get('tabela');
     const id = searchParams.get('id');
@@ -108,6 +117,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    // Verificar autenticação admin
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
     const { tabela, dados } = body;
 
@@ -154,6 +167,10 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    // Verificar autenticação admin
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
     const { tabela, id, dados } = body;
 
@@ -209,6 +226,10 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // Verificar autenticação admin
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const tabela = searchParams.get('tabela');
     const id = searchParams.get('id');

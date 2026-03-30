@@ -466,7 +466,7 @@ export async function GET(request: Request) {
       .gte('data', `${chartDataInicio}T00:00:00`)
       .lte('data', `${chartDataFim}T23:59:59`)
       .eq('status', 'concluido')
-      .eq('is_fiado', false)
+      .or('is_fiado.is.null,is_fiado.eq.false')
       .eq('is_troca_gratis', false);
 
     if (colaboradorIdFiltro) {
@@ -531,7 +531,7 @@ export async function GET(request: Request) {
       .gte('data', `${inicioMesStr}T00:00:00`)
       .lte('data', `${fimMesStr}T23:59:59`)
       .eq('status', 'concluido')
-      .eq('is_fiado', false)
+      .or('is_fiado.is.null,is_fiado.eq.false')
       .eq('is_troca_gratis', false);
 
     if (colaboradorIdFiltro) {

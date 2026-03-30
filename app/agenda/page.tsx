@@ -7,6 +7,7 @@ import { format, startOfDay, endOfDay, parseISO, differenceInMinutes, parse } fr
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
+import toast from 'react-hot-toast';
 
 // Paleta de cores para colaboradores
 const COLABORADOR_COLORS = [
@@ -458,9 +459,9 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao atualizar agendamento:', error);
-      alert('Erro ao mover agendamento: ' + error.message);
+      toast.error('Erro ao mover agendamento: ' + error.message);
     } else {
-      alert(`✅ Movido para ${dragPreview.novoHorario.substring(0, 5)}!`);
+      toast.success(`Movido para ${dragPreview.novoHorario.substring(0, 5)}!`);
       // Recarregar dados
       await loadData();
     }
@@ -616,7 +617,7 @@ export default function AgendaPage() {
 
       if (error) {
         console.error('Erro ao atualizar duração:', error);
-        alert('Erro ao ajustar duração: ' + error.message);
+        toast.error('Erro ao ajustar duração: ' + error.message);
       } else {
         // Calcular hora_fim baseado na duração
         // Extrair hora diretamente da string (evitar problemas de timezone)
@@ -646,7 +647,7 @@ export default function AgendaPage() {
           }
         }
 
-        alert(`✅ Duração ajustada para ${duracaoSnap} minutos (${horaInicio} - ${horaFim})`);
+        toast.success(`Duração ajustada para ${duracaoSnap} minutos (${horaInicio} - ${horaFim})`);
         // Recarregar dados para atualizar o card
         await loadData();
       }
@@ -734,7 +735,7 @@ export default function AgendaPage() {
 
     // Validar que pelo menos um serviço foi selecionado
     if (servicosSelecionadosEdit.length === 0) {
-      alert('⚠️ Selecione pelo menos um serviço!');
+      toast.error('Selecione pelo menos um serviço!');
       return;
     }
 
@@ -753,7 +754,7 @@ export default function AgendaPage() {
 
     // Validar duração
     if (duracaoMinutos <= 0) {
-      alert('❌ O horário de fim deve ser maior que o horário de início!');
+      toast.error('O horário de fim deve ser maior que o horário de início!');
       return;
     }
 
@@ -773,7 +774,7 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao atualizar agendamento:', error);
-      alert('Erro ao atualizar: ' + error.message);
+      toast.error('Erro ao atualizar: ' + error.message);
       return;
     }
 
@@ -792,14 +793,14 @@ export default function AgendaPage() {
       if (editIsCompleted) {
         // Validar forma de pagamento
         if (!editData.forma_pagamento && !editData.is_fiado && !editData.is_troca_gratis) {
-          alert('⚠️ Selecione uma forma de pagamento!');
+          toast.error('Selecione uma forma de pagamento!');
           return;
         }
 
         const valorTotal = editData.is_troca_gratis ? 0 : parseFloat(editData.valor_total) || 0;
 
         if (!editData.is_fiado && !editData.is_troca_gratis && valorTotal <= 0) {
-          alert('⚠️ O valor total deve ser maior que zero!');
+          toast.error('O valor total deve ser maior que zero!');
           return;
         }
 
@@ -892,7 +893,7 @@ export default function AgendaPage() {
       }
     }
 
-    alert('✅ Agendamento atualizado com sucesso!');
+    toast.success('Agendamento atualizado com sucesso!');
     setIsEditMode(false);
     setEditIsCompleted(false);
     setSelectedColaboradorEdit(null);
@@ -929,9 +930,9 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao excluir agendamento:', error);
-      alert('❌ Erro ao excluir: ' + error.message);
+      toast.error('Erro ao excluir: ' + error.message);
     } else {
-      alert('✅ Agendamento e lançamento excluídos com sucesso!');
+      toast.success('Agendamento e lançamento excluídos com sucesso!');
       setSelectedAgendamento(null);
       await loadData();
     }
@@ -940,14 +941,14 @@ export default function AgendaPage() {
   // Finalizar agendamento (marcar como concluído)
   const finalizarAgendamento = async () => {
     if (!selectedAgendamento) {
-      alert('❌ Nenhum agendamento selecionado');
+      toast.error('Nenhum agendamento selecionado');
       return;
     }
 
     // Validação: se não é fiado nem troca/grátis, precisa de forma de pagamento e valor
     if (!finalizarData.is_fiado && !finalizarData.is_troca_gratis) {
       if (!finalizarData.forma_pagamento || !finalizarData.valor_pago) {
-        alert('⚠️ Preencha a forma de pagamento e o valor');
+        toast.error('Preencha a forma de pagamento e o valor');
         return;
       }
     }
@@ -956,13 +957,13 @@ export default function AgendaPage() {
     if (compartilhadoFinal && !finalizarData.is_troca_gratis) {
       const colaboradoresValidos = divisoesFinal.filter(d => d.colaborador_id > 0);
       if (colaboradoresValidos.length < 2) {
-        alert('⚠️ Serviço compartilhado precisa de pelo menos 2 colaboradores');
+        toast.error('Serviço compartilhado precisa de pelo menos 2 colaboradores');
         return;
       }
       const valorTotal = parseFloat(finalizarData.valor_pago) || 0;
       const somaDivisoes = divisoesFinal.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
       if (Math.abs(valorTotal - somaDivisoes) > 0.01) {
-        alert('⚠️ A soma das divisões deve ser igual ao valor total');
+        toast.error('A soma das divisões deve ser igual ao valor total');
         return;
       }
     }
@@ -1141,7 +1142,7 @@ export default function AgendaPage() {
         msg += `Serviço concluído com sucesso!${msgTaxa}`;
       }
 
-      alert(msg);
+      toast.success(msg);
       setSelectedAgendamento(null);
       setIsFinalizando(false);
       setFinalizarData({ forma_pagamento: 'pix', valor_pago: '', is_fiado: false, is_troca_gratis: false, valor_referencia: '' });
@@ -1151,7 +1152,7 @@ export default function AgendaPage() {
 
     } catch (error: any) {
       console.error('Erro ao finalizar:', error);
-      alert('❌ Erro ao finalizar: ' + error.message);
+      toast.error('Erro ao finalizar: ' + error.message);
     }
   };
 
@@ -1268,18 +1269,18 @@ export default function AgendaPage() {
 
     // Validar serviços selecionados
     if (servicosSelecionados.length === 0) {
-      alert('⚠️ Selecione pelo menos um serviço!');
+      toast.error('Selecione pelo menos um serviço!');
       return;
     }
 
     // Validar cliente selecionado
     if (!clienteSelecionado) {
-      alert('⚠️ Selecione um cliente!');
+      toast.error('Selecione um cliente!');
       return;
     }
 
     if (!formData.colaborador_id || !formData.data || !formData.hora_inicio) {
-      alert('⚠️ Preencha todos os campos obrigatórios!');
+      toast.error('Preencha todos os campos obrigatórios!');
       return;
     }
 
@@ -1325,11 +1326,11 @@ export default function AgendaPage() {
 
       if (!response.ok) {
         console.error('[Agenda] Erro da API:', result.error);
-        alert(`❌ Erro ao criar agendamento: ${result.error}`);
+        toast.error(`Erro ao criar agendamento: ${result.error}`);
         return;
       }
 
-      alert('✅ Agendamento criado com sucesso!');
+      toast.success('Agendamento criado com sucesso!');
       setShowNovoAgendamento(false);
       setFormData({
         colaborador_id: '',
@@ -1350,7 +1351,7 @@ export default function AgendaPage() {
       setTimeout(() => loadData(), 500);
     } catch (err: any) {
       console.error('[Agenda] Erro de conexão:', err);
-      alert(`❌ Erro de conexão: ${err.message}`);
+      toast.error(`Erro de conexão: ${err.message}`);
     }
   }
 

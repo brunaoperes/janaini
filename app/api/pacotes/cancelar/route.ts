@@ -94,17 +94,31 @@ export async function POST(request: Request) {
 
     // Se houver valor de reembolso, criar lançamento negativo
     if (data.valor_reembolso > 0) {
-      // Calcular comissão proporcional a ser estornada
+      // Fetch the original lancamento to get taxa_pagamento
+      const { data: lancamentoOriginal } = await supabase
+        .from('lancamentos')
+        .select('taxa_pagamento')
+        .eq('pacote_id', pacote.id)
+        .eq('tipo_lancamento', 'pacote_venda')
+        .single();
+
+      const taxaPagamento = lancamentoOriginal?.taxa_pagamento || 0;
+
+      // Calcular comissão proporcional a ser estornada (with same tax logic as original)
       const porcentagem = pacote.colaborador_vendedor?.porcentagem_comissao || 50;
-      const comissaoEstorno = (data.valor_reembolso * porcentagem) / 100;
-      const salaoEstorno = data.valor_reembolso - comissaoEstorno;
+      const comissaoBruta = (data.valor_reembolso * porcentagem) / 100;
+      const descontoTaxa = taxaPagamento > 0 ? (comissaoBruta * taxaPagamento / data.valor_reembolso) : 0;
+      const comissaoEstorno = comissaoBruta - descontoTaxa;
+      const taxaEstorno = taxaPagamento > 0 ? (taxaPagamento * data.valor_reembolso / pacote.valor_total) : 0;
+      const salaoEstorno = data.valor_reembolso - comissaoEstorno - taxaEstorno;
 
       const lancamentoData = {
         colaborador_id: pacote.colaborador_vendedor_id,
         cliente_id: pacote.cliente_id,
-        valor_total: -data.valor_reembolso, // Valor negativo
-        comissao_colaborador: -comissaoEstorno,
-        comissao_salao: -salaoEstorno,
+        valor_total: data.valor_reembolso, // Positive value, tipo_lancamento indicates refund
+        comissao_colaborador: comissaoEstorno,
+        comissao_salao: salaoEstorno,
+        taxa_pagamento: taxaEstorno,
         data: new Date().toISOString().split('T')[0],
         servicos_nomes: `Reembolso Pacote: ${pacote.nome} (${sessoesRestantes} sessões)`,
         status: 'concluido',

@@ -54,7 +54,7 @@ export async function verificarConflitoAgenda(
 
   if (error) {
     console.error('Erro ao verificar conflitos:', error);
-    return { hasConflict: false };
+    throw new Error(`Falha ao verificar conflitos de agenda: ${error.message}`);
   }
 
   if (!agendamentos || agendamentos.length === 0) {

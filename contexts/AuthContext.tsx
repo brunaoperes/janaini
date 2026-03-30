@@ -61,15 +61,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Perfil não existe, criar um básico para usuários antigos
+      // Novos perfis sempre começam como 'user' (colaborador) - admin deve ser atribuído manualmente
       const username = userEmail?.split('@')[0] || `user_${userId.slice(0, 8)}`;
-      const isAdminEmail = userEmail === 'brunoinfoperes@gmail.com';
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .insert({
           id: userId,
           username: username,
           nome: username,
-          role: isAdminEmail ? 'admin' : 'user',
+          role: 'user',
         })
         .select('id, username, nome, role, colaborador_id')
         .single();

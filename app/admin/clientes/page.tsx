@@ -139,18 +139,38 @@ export default function ClientesAdminPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Tem certeza que deseja excluir este cliente?')) {
-      try {
-        const response = await fetch(`/api/admin?tabela=clientes&id=${id}`, {
-          method: 'DELETE',
-        });
+    try {
+      // Check if client has linked lancamentos
+      const { count: lancCount } = await supabase
+        .from('lancamentos')
+        .select('*', { count: 'exact', head: true })
+        .eq('cliente_id', id);
 
-        if (response.ok) {
-          loadClientes();
-        }
-      } catch (error) {
-        console.error('Erro ao excluir cliente:', error);
+      // Check if client has linked agendamentos
+      const { count: agendCount } = await supabase
+        .from('agendamentos')
+        .select('*', { count: 'exact', head: true })
+        .eq('cliente_id', id);
+
+      if ((lancCount && lancCount > 0) || (agendCount && agendCount > 0)) {
+        const msgs = [];
+        if (lancCount && lancCount > 0) msgs.push(`${lancCount} lançamento(s)`);
+        if (agendCount && agendCount > 0) msgs.push(`${agendCount} agendamento(s)`);
+        alert(`Não é possível excluir este cliente. Existem ${msgs.join(' e ')} vinculados.`);
+        return;
       }
+
+      if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+
+      const response = await fetch(`/api/admin?tabela=clientes&id=${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        loadClientes();
+      }
+    } catch (error) {
+      console.error('Erro ao excluir cliente:', error);
     }
   };
 

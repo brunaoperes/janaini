@@ -21,8 +21,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('[Login] Iniciando submit...', { isLogin });
-
     // Validação diferente para login e cadastro
     if (isLogin) {
       if (!emailOrUsername || !password) {
@@ -40,16 +38,13 @@ export default function LoginPage() {
 
     // Timeout de segurança para não ficar travado
     const timeoutId = setTimeout(() => {
-      console.log('[Login] Timeout atingido, resetando loading');
       setLoading(false);
       toast.error('A operação demorou muito. Tente novamente.');
     }, 30000); // 30 segundos
 
     try {
       if (isLogin) {
-        console.log('[Login] Chamando signIn...');
         const { error } = await signIn(emailOrUsername, password);
-        console.log('[Login] signIn retornou:', { error: error?.message });
 
         clearTimeout(timeoutId);
 
@@ -66,7 +61,6 @@ export default function LoginPage() {
           setLoading(false);
         } else {
           toast.success('Login realizado com sucesso!');
-          console.log('[Login] Redirecionando para home...');
           // Aguarda um pouco para o cookie ser setado antes de redirecionar
           // Usar replace para garantir que a página de login não fique no histórico
           await new Promise(resolve => setTimeout(resolve, 300));
@@ -74,8 +68,6 @@ export default function LoginPage() {
           window.location.replace('/');
         }
       } else {
-        console.log('[Login] Iniciando cadastro...');
-
         // Validações do cadastro
         if (!nome.trim()) {
           toast.error('Por favor, informe seu nome');
@@ -108,9 +100,7 @@ export default function LoginPage() {
           return;
         }
 
-        console.log('[Login] Chamando signUp...');
         const { error } = await signUp(email, password, nome, username);
-        console.log('[Login] signUp retornou:', { error: error?.message });
 
         clearTimeout(timeoutId);
 
@@ -134,7 +124,6 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      console.error('[Login] Erro catch:', err);
       clearTimeout(timeoutId);
       toast.error('Erro ao processar solicitação');
       setLoading(false);

@@ -3,9 +3,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auditCreate } from '@/lib/audit';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,10 @@ async function getAuthUser(supabase: any) {
 
 export async function POST(request: Request) {
   try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
     const {
       colaborador_id,
