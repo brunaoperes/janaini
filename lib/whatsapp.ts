@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { toZonedTime } from 'date-fns-tz';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -63,16 +62,24 @@ function getSupabaseClient() {
 // TEMPLATES DE MENSAGEM
 // ============================================================================
 
-const TIMEZONE = 'America/Sao_Paulo';
-
+// O banco armazena horário local (BRT) como UTC (sem conversão).
+// Extraímos direto da string ISO para evitar conversão de timezone.
 function formatarData(dataHora: string): string {
-  const zonedDate = toZonedTime(new Date(dataHora), TIMEZONE);
-  return format(zonedDate, "dd/MM/yyyy", { locale: ptBR });
+  // Extrair YYYY-MM-DD da string e formatar como DD/MM/YYYY
+  const match = dataHora.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1]}`;
+  }
+  return format(new Date(dataHora), "dd/MM/yyyy", { locale: ptBR });
 }
 
 function formatarHorario(dataHora: string): string {
-  const zonedDate = toZonedTime(new Date(dataHora), TIMEZONE);
-  return format(zonedDate, "HH:mm", { locale: ptBR });
+  // Extrair HH:MM direto da string ISO (antes de qualquer conversão de timezone)
+  const match = dataHora.match(/[T ](\d{2}):(\d{2})/);
+  if (match) {
+    return `${match[1]}:${match[2]}`;
+  }
+  return format(new Date(dataHora), "HH:mm", { locale: ptBR });
 }
 
 // Templates fallback (usados se o banco não retornar)
