@@ -225,29 +225,23 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
 
   const mensagemTexto = await gerarMensagem(params.tipo, params.clienteNome, params.colaboradorNome, params.dataHora);
 
-  // Upsert com ON CONFLICT DO NOTHING (a UNIQUE constraint cuida da dedup)
+  // Inserir no banco (ignorar se já existe)
   const { data: mensagem, error } = await supabase
     .from('mensagens_whatsapp')
-    .upsert(
-      {
-        agendamento_id: params.agendamentoId,
-        tipo: params.tipo,
-        cliente_id: params.clienteId,
-        telefone_destino: telefoneNormalizado,
-        mensagem: mensagemTexto,
-        status: 'pendente',
-        data_programada: params.dataProgramada.toISOString(),
-      },
-      {
-        onConflict: 'agendamento_id,tipo',
-        ignoreDuplicates: true,
-      }
-    )
+    .insert({
+      agendamento_id: params.agendamentoId,
+      tipo: params.tipo,
+      cliente_id: params.clienteId,
+      telefone_destino: telefoneNormalizado,
+      mensagem: mensagemTexto,
+      status: 'pendente',
+      data_programada: params.dataProgramada.toISOString(),
+    })
     .select()
     .single();
 
   if (error) {
-    // Se for erro de duplicidade, ignorar silenciosamente
+    // Duplicidade (UNIQUE constraint) — ignorar silenciosamente
     if (error.code === '23505') {
       console.log(`[WhatsApp] Mensagem ${params.tipo} já existe para agendamento ${params.agendamentoId}`);
       return;
