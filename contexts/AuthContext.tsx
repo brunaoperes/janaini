@@ -188,7 +188,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [router, profile?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Função para verificar se é email
   const isEmail = (value: string) => {

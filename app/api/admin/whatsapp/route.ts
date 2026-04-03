@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireAdmin, isAuthError } from '@/lib/api-auth';
+import { enviarMensagemZApi, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -13,16 +14,16 @@ function getSupabase() {
   });
 }
 
-// GET: Retorna templates + histórico de mensagens
+// GET: Templates, histórico, stats e config
 export async function GET(request: Request) {
   const authResult = await requireAdmin();
   if (isAuthError(authResult)) return authResult;
 
   const supabase = getSupabase();
   const { searchParams } = new URL(request.url);
-
   const secao = searchParams.get('secao') || 'templates';
 
+  // TEMPLATES
   if (secao === 'templates') {
     const { data: templates, error } = await supabase
       .from('whatsapp_templates')
@@ -32,11 +33,47 @@ export async function GET(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ templates });
   }
 
-  // Histórico de mensagens
+  // STATS (contadores para o dashboard)
+  if (secao === 'stats') {
+    const [enviados, pendentes, erros, totalGeral] = await Promise.all([
+      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'enviado'),
+      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
+      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'erro'),
+      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }),
+    ]);
+
+    return NextResponse.json({
+      stats: {
+        enviados: enviados.count || 0,
+        pendentes: pendentes.count || 0,
+        erros: erros.count || 0,
+        total: totalGeral.count || 0,
+      },
+    });
+  }
+
+  // CONFIG (credenciais Z-API - mascaradas)
+  if (secao === 'config') {
+    const instanceId = process.env.ZAPI_INSTANCE_ID || '';
+    const token = process.env.ZAPI_TOKEN || '';
+
+    return NextResponse.json({
+      config: {
+        zapi_instance_id: instanceId ? `${instanceId.slice(0, 8)}...${instanceId.slice(-4)}` : 'Não configurado',
+        zapi_token: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : 'Não configurado',
+        zapi_configurado: !!(instanceId && token),
+        cron_schedule: '1x por dia (08:00)',
+        tempo_lembrete: '24 horas antes',
+        tempo_pos_venda: '15 minutos após conclusão',
+        max_tentativas: 3,
+      },
+    });
+  }
+
+  // HISTÓRICO DE MENSAGENS
   const tipo = searchParams.get('tipo');
   const status = searchParams.get('status');
   const dataInicio = searchParams.get('dataInicio');
@@ -111,4 +148,29 @@ export async function PUT(request: Request) {
   }
 
   return NextResponse.json({ template: data });
+}
+
+// POST: Enviar mensagem de teste
+export async function POST(request: Request) {
+  const authResult = await requireAdmin();
+  if (isAuthError(authResult)) return authResult;
+
+  const body = await request.json();
+  const { telefone, mensagem } = body;
+
+  if (!telefone || !mensagem) {
+    return NextResponse.json({ error: 'Telefone e mensagem são obrigatórios' }, { status: 400 });
+  }
+
+  const telefoneNorm = normalizarTelefone(telefone);
+  if (!validarTelefone(telefoneNorm)) {
+    return NextResponse.json({ error: 'Telefone inválido' }, { status: 400 });
+  }
+
+  try {
+    const response = await enviarMensagemZApi(telefoneNorm, mensagem);
+    return NextResponse.json({ success: true, response });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
