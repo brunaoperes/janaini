@@ -1131,6 +1131,19 @@ export default function AgendaPage() {
 
       if (agendError) throw agendError;
 
+      // Disparar mensagem pós-venda (só se não é fiado - fiado ainda não finalizou)
+      if (!finalizarData.is_fiado) {
+        try {
+          await fetch('/api/agendamentos/pos-venda', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agendamentoId: selectedAgendamento.id }),
+          });
+        } catch (whatsappErr) {
+          console.error('[WhatsApp] Erro ao disparar pós-venda:', whatsappErr);
+        }
+      }
+
       // Mensagem de sucesso
       let msg = '✅ ';
       if (finalizarData.is_fiado) {

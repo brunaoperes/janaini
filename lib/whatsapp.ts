@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toZonedTime } from 'date-fns-tz';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -62,12 +63,16 @@ function getSupabaseClient() {
 // TEMPLATES DE MENSAGEM
 // ============================================================================
 
+const TIMEZONE = 'America/Sao_Paulo';
+
 function formatarData(dataHora: string): string {
-  return format(new Date(dataHora), "dd/MM/yyyy", { locale: ptBR });
+  const zonedDate = toZonedTime(new Date(dataHora), TIMEZONE);
+  return format(zonedDate, "dd/MM/yyyy", { locale: ptBR });
 }
 
 function formatarHorario(dataHora: string): string {
-  return format(new Date(dataHora), "HH:mm", { locale: ptBR });
+  const zonedDate = toZonedTime(new Date(dataHora), TIMEZONE);
+  return format(zonedDate, "HH:mm", { locale: ptBR });
 }
 
 // Templates fallback (usados se o banco não retornar)
@@ -115,7 +120,7 @@ function aplicarPlaceholders(template: string, nome: string, profissional: strin
     .replace(/\{horario\}/g, formatarHorario(dataHora));
 }
 
-async function buscarTemplateDoBanco(tipo: TipoMensagem): Promise<string | null> {
+async function buscarTemplateDoBanco(tipo: TipoMensagem): Promise<{ template: string; ativo: boolean } | null> {
   try {
     const supabase = getSupabaseClient();
     const { data } = await supabase
@@ -124,8 +129,8 @@ async function buscarTemplateDoBanco(tipo: TipoMensagem): Promise<string | null>
       .eq('tipo', tipo)
       .single();
 
-    if (data?.ativo && data.template) {
-      return data.template;
+    if (data) {
+      return { template: data.template, ativo: data.ativo };
     }
     return null;
   } catch {
@@ -133,10 +138,16 @@ async function buscarTemplateDoBanco(tipo: TipoMensagem): Promise<string | null>
   }
 }
 
+export async function verificarTemplateAtivo(tipo: TipoMensagem): Promise<boolean> {
+  const result = await buscarTemplateDoBanco(tipo);
+  // Se não encontrou no banco, considera ativo (usa fallback)
+  if (!result) return true;
+  return result.ativo;
+}
+
 export async function gerarMensagem(tipo: TipoMensagem, nome: string, profissional: string, dataHora: string): Promise<string> {
-  // Tentar buscar template do banco
-  const templateDoBanco = await buscarTemplateDoBanco(tipo);
-  const template = templateDoBanco || TEMPLATES_FALLBACK[tipo];
+  const resultado = await buscarTemplateDoBanco(tipo);
+  const template = resultado?.template || TEMPLATES_FALLBACK[tipo];
   return aplicarPlaceholders(template, nome, profissional, dataHora);
 }
 
@@ -262,6 +273,13 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
 
   if (!validarTelefone(telefoneNormalizado)) {
     console.warn(`[WhatsApp] Telefone inválido para cliente ${params.clienteNome}: ${params.clienteTelefone}`);
+    return;
+  }
+
+  // Verificar se template está ativo antes de enviar
+  const templateAtivo = await verificarTemplateAtivo(params.tipo);
+  if (!templateAtivo) {
+    console.log(`[WhatsApp] Template '${params.tipo}' está desativado, mensagem não será enviada`);
     return;
   }
 
