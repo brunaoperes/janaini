@@ -7,6 +7,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 
 const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
 type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda';
 
@@ -152,7 +153,10 @@ export async function enviarMensagemZApi(telefone: string, mensagem: string): Pr
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': ZAPI_CLIENT_TOKEN || '',
+    },
     body: JSON.stringify({
       phone: telefone,
       message: mensagem,
