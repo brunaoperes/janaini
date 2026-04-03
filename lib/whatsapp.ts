@@ -144,6 +144,37 @@ export async function gerarMensagem(tipo: TipoMensagem, nome: string, profission
 // ENVIO VIA Z-API
 // ============================================================================
 
+export async function verificarStatusInstancia(): Promise<{ connected: boolean; status: string; error?: string }> {
+  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
+    return { connected: false, status: 'not_configured', error: 'Z-API não configurada: ZAPI_INSTANCE_ID ou ZAPI_TOKEN ausentes' };
+  }
+
+  try {
+    const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/status`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Client-Token': ZAPI_CLIENT_TOKEN || '',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { connected: false, status: 'error', error: `Z-API erro ${response.status}: ${errorText}` };
+    }
+
+    const data = await response.json();
+    const connected = data.connected === true || data.status === 'connected';
+    return {
+      connected,
+      status: data.status || (connected ? 'connected' : 'disconnected'),
+      error: connected ? undefined : 'Instância Z-API desconectada. Conecte escaneando o QR Code em app.z-api.io',
+    };
+  } catch (err: any) {
+    return { connected: false, status: 'error', error: `Erro ao verificar status: ${err.message}` };
+  }
+}
+
 export async function enviarMensagemZApi(telefone: string, mensagem: string): Promise<ZApiResponse> {
   if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
     throw new Error('Z-API não configurada: ZAPI_INSTANCE_ID ou ZAPI_TOKEN ausentes');
@@ -168,7 +199,14 @@ export async function enviarMensagemZApi(telefone: string, mensagem: string): Pr
     throw new Error(`Z-API erro ${response.status}: ${errorText}`);
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Z-API pode retornar 200 mas com erro no body
+  if (data.error) {
+    throw new Error(`Z-API: ${typeof data.error === 'string' ? data.error : JSON.stringify(data.error)}`);
+  }
+
+  return data;
 }
 
 // ============================================================================

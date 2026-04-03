@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireAdmin, isAuthError } from '@/lib/api-auth';
-import { enviarMensagemZApi, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { enviarMensagemZApi, normalizarTelefone, validarTelefone, verificarStatusInstancia } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -55,16 +55,21 @@ export async function GET(request: Request) {
     });
   }
 
-  // CONFIG (credenciais Z-API - mascaradas)
+  // CONFIG (credenciais Z-API - mascaradas + status real da instância)
   if (secao === 'config') {
     const instanceId = process.env.ZAPI_INSTANCE_ID || '';
     const token = process.env.ZAPI_TOKEN || '';
+
+    const statusInstancia = await verificarStatusInstancia();
 
     return NextResponse.json({
       config: {
         zapi_instance_id: instanceId ? `${instanceId.slice(0, 8)}...${instanceId.slice(-4)}` : 'Não configurado',
         zapi_token: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : 'Não configurado',
         zapi_configurado: !!(instanceId && token),
+        zapi_connected: statusInstancia.connected,
+        zapi_status: statusInstancia.status,
+        zapi_status_error: statusInstancia.error,
         cron_schedule: '1x por dia (08:00)',
         tempo_lembrete: '24 horas antes',
         tempo_pos_venda: '15 minutos após conclusão',
@@ -168,6 +173,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Verificar se instância está conectada antes de enviar
+    const status = await verificarStatusInstancia();
+    if (!status.connected) {
+      return NextResponse.json({
+        error: status.error || 'Instância Z-API desconectada. Conecte escaneando o QR Code em app.z-api.io',
+      }, { status: 503 });
+    }
+
     const response = await enviarMensagemZApi(telefoneNorm, mensagem);
     return NextResponse.json({ success: true, response });
   } catch (error: any) {

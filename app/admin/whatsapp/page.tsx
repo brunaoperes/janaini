@@ -40,6 +40,9 @@ interface Config {
   zapi_instance_id: string;
   zapi_token: string;
   zapi_configurado: boolean;
+  zapi_connected: boolean;
+  zapi_status: string;
+  zapi_status_error?: string;
   cron_schedule: string;
   tempo_lembrete: string;
   tempo_pos_venda: string;
@@ -241,14 +244,18 @@ export default function AdminWhatsAppPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setTesteResultado({ success: true, message: 'Mensagem enviada com sucesso! Verifique o WhatsApp.' });
+        setTesteResultado({ success: true, message: 'Mensagem enviada e entregue com sucesso! Verifique o WhatsApp.' });
         showToast('Mensagem de teste enviada!', 'success');
       } else {
-        setTesteResultado({ success: false, message: data.error || 'Erro ao enviar' });
-        showToast('Erro ao enviar teste', 'error');
+        let errorMsg = data.error || 'Erro ao enviar';
+        if (res.status === 503) {
+          errorMsg = `WhatsApp desconectado: ${data.error}`;
+        }
+        setTesteResultado({ success: false, message: errorMsg });
+        showToast('Falha no envio', 'error');
       }
     } catch (err) {
-      setTesteResultado({ success: false, message: 'Erro de conexao' });
+      setTesteResultado({ success: false, message: 'Erro de conexao com o servidor' });
     } finally {
       setEnviandoTeste(false);
     }
@@ -360,13 +367,19 @@ export default function AdminWhatsAppPage() {
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className={`w-4 h-4 rounded-full ${config?.zapi_configurado ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  <div className={`w-4 h-4 rounded-full ${
+                    config?.zapi_connected ? 'bg-emerald-500 animate-pulse' :
+                    config?.zapi_configurado ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+                  }`} />
                   <div>
                     <p className="font-semibold text-gray-800">
-                      Z-API {config?.zapi_configurado ? 'Conectado' : 'Nao Configurado'}
+                      {config?.zapi_connected ? 'Z-API Conectado' :
+                       config?.zapi_configurado ? 'Z-API Desconectado' : 'Z-API Nao Configurado'}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {config?.zapi_configurado ? 'Pronto para enviar mensagens' : 'Configure as credenciais no Vercel'}
+                      {config?.zapi_connected ? 'Pronto para enviar mensagens' :
+                       config?.zapi_configurado ? (config.zapi_status_error || 'Conecte escaneando o QR Code em app.z-api.io') :
+                       'Configure as credenciais no Vercel'}
                     </p>
                   </div>
                 </div>
