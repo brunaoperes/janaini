@@ -48,6 +48,16 @@ export function validarTelefone(telefoneNormalizado: string): boolean {
 }
 
 // ============================================================================
+// SUPABASE CLIENT
+// ============================================================================
+
+function getSupabaseClient() {
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+// ============================================================================
 // TEMPLATES DE MENSAGEM
 // ============================================================================
 
@@ -59,35 +69,32 @@ function formatarHorario(dataHora: string): string {
   return format(new Date(dataHora), "HH:mm", { locale: ptBR });
 }
 
-function gerarMensagemConfirmacao(nome: string, profissional: string, dataHora: string): string {
-  return `Olá, ${nome}! ✨
+// Templates fallback (usados se o banco não retornar)
+const TEMPLATES_FALLBACK: Record<TipoMensagem, string> = {
+  confirmacao: `Olá, {nome}! ✨
 Seu horário na Naví Belle Studio de Beleza foi agendado com sucesso.
 
-💇‍♀️ Profissional: ${profissional}
-📅 Data: ${formatarData(dataHora)}
-⏰ Horário: ${formatarHorario(dataHora)}
+💇‍♀️ Profissional: {profissional}
+📅 Data: {data}
+⏰ Horário: {horario}
 
 Estamos te esperando para um momento especial 💖
-Não se atrase e até breve!`;
-}
+Não se atrase e até breve!`,
 
-function gerarMensagemLembrete(nome: string, profissional: string, dataHora: string): string {
-  return `Olá, ${nome}! 💬
+  lembrete: `Olá, {nome}! 💬
 Passando para te lembrar do seu horário na Naví Belle Studio de Beleza.
 
-💇‍♀️ Profissional: ${profissional}
-📅 Amanhã, dia ${formatarData(dataHora)}
-⏰ Horário: ${formatarHorario(dataHora)}
+💇‍♀️ Profissional: {profissional}
+📅 Amanhã, dia {data}
+⏰ Horário: {horario}
 
 Já estamos preparando tudo para te atender da melhor forma ✨
-Te esperamos!`;
-}
+Te esperamos!`,
 
-function gerarMensagemPosVenda(nome: string, profissional: string): string {
-  return `Olá, ${nome}! 💖
+  pos_venda: `Olá, {nome}! 💖
 Foi um prazer te atender na Naví Belle Studio de Beleza.
 
-💇‍♀️ Profissional: ${profissional}
+💇‍♀️ Profissional: {profissional}
 
 Esperamos que você tenha amado a experiência ✨
 Sua opinião é muito importante para nós.
@@ -96,18 +103,40 @@ Se puder, deixe sua avaliação no Google 👇
 https://g.page/r/CVNlyTG4OjJLEBM/review
 
 Muito obrigado pela confiança 💫
-Volte sempre!`;
+Volte sempre!`,
+};
+
+function aplicarPlaceholders(template: string, nome: string, profissional: string, dataHora: string): string {
+  return template
+    .replace(/\{nome\}/g, nome)
+    .replace(/\{profissional\}/g, profissional)
+    .replace(/\{data\}/g, formatarData(dataHora))
+    .replace(/\{horario\}/g, formatarHorario(dataHora));
 }
 
-export function gerarMensagem(tipo: TipoMensagem, nome: string, profissional: string, dataHora: string): string {
-  switch (tipo) {
-    case 'confirmacao':
-      return gerarMensagemConfirmacao(nome, profissional, dataHora);
-    case 'lembrete':
-      return gerarMensagemLembrete(nome, profissional, dataHora);
-    case 'pos_venda':
-      return gerarMensagemPosVenda(nome, profissional);
+async function buscarTemplateDoBanco(tipo: TipoMensagem): Promise<string | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from('whatsapp_templates')
+      .select('template, ativo')
+      .eq('tipo', tipo)
+      .single();
+
+    if (data?.ativo && data.template) {
+      return data.template;
+    }
+    return null;
+  } catch {
+    return null;
   }
+}
+
+export async function gerarMensagem(tipo: TipoMensagem, nome: string, profissional: string, dataHora: string): Promise<string> {
+  // Tentar buscar template do banco
+  const templateDoBanco = await buscarTemplateDoBanco(tipo);
+  const template = templateDoBanco || TEMPLATES_FALLBACK[tipo];
+  return aplicarPlaceholders(template, nome, profissional, dataHora);
 }
 
 // ============================================================================
@@ -141,12 +170,6 @@ export async function enviarMensagemZApi(telefone: string, mensagem: string): Pr
 // ============================================================================
 // ORQUESTRAÇÃO
 // ============================================================================
-
-function getSupabaseClient() {
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
 
 export async function processarEnvio(mensagemId: number, telefone: string, mensagemTexto: string): Promise<boolean> {
   const supabase = getSupabaseClient();
@@ -200,7 +223,7 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
     return;
   }
 
-  const mensagemTexto = gerarMensagem(params.tipo, params.clienteNome, params.colaboradorNome, params.dataHora);
+  const mensagemTexto = await gerarMensagem(params.tipo, params.clienteNome, params.colaboradorNome, params.dataHora);
 
   // Upsert com ON CONFLICT DO NOTHING (a UNIQUE constraint cuida da dedup)
   const { data: mensagem, error } = await supabase
