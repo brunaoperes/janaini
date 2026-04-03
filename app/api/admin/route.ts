@@ -6,12 +6,8 @@ import { auditCreate, auditUpdate, auditDelete, type ModuloAudit } from '@/lib/a
 import { requireAdmin, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-if (!supabaseServiceKey) {
-  console.error('SUPABASE_SERVICE_ROLE_KEY is not set. Admin API will not function correctly.');
-}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {

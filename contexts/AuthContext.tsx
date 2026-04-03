@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRef = useRef<Profile | null>(null);
   const router = useRouter();
 
   // Função para carregar o perfil do usuário (ou criar se não existir)
@@ -47,16 +48,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error('Erro ao carregar perfil:', error);
         setProfile(null);
+        profileRef.current = null;
         return;
       }
 
       if (data) {
-        // Garantir que role existe
-        setProfile({
+        const p = {
           ...data,
           role: data.role || 'user',
           colaborador_id: data.colaborador_id || null
-        });
+        };
+        setProfile(p);
+        profileRef.current = p;
         return;
       }
 
@@ -77,20 +80,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (insertError) {
         console.error('Erro ao criar perfil:', insertError);
         setProfile(null);
+        profileRef.current = null;
         return;
       }
 
       if (newProfile) {
-        setProfile({
+        const p = {
           ...newProfile,
           colaborador_id: newProfile.colaborador_id || null
-        });
+        };
+        setProfile(p);
+        profileRef.current = p;
       } else {
         setProfile(null);
+        profileRef.current = null;
       }
     } catch (err) {
       console.error('Erro inesperado ao carregar perfil:', err);
       setProfile(null);
+      profileRef.current = null;
     }
   };
 
@@ -156,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Só carregar perfil em eventos de login real (não no INITIAL_SESSION)
         if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
           // Se perfil já foi carregado e usuário é o mesmo, não recarregar
-          if (profileLoaded && profile?.id === session.user.id) {
+          if (profileLoaded && profileRef.current?.id === session.user.id) {
             console.log('AuthContext: Perfil já carregado, ignorando');
             return;
           }
@@ -171,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } else if (!session) {
           setProfile(null);
+          profileRef.current = null;
           profileLoaded = false;
         }
 
@@ -368,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearActivity(user?.id);
     await supabase.auth.signOut();
     setProfile(null);
+    profileRef.current = null;
     router.push('/login');
   };
 
