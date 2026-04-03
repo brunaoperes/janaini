@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auditCreate } from '@/lib/audit';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { agendarOuEnviarMensagem, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -146,6 +147,60 @@ export async function POST(request: Request) {
         endpoint: '/api/agendamentos',
       });
     }
+
+    // Disparar mensagens WhatsApp (non-blocking)
+    (async () => {
+      try {
+        // Buscar dados do cliente e colaborador para as mensagens
+        const [{ data: clienteData }, { data: colaboradorData }] = await Promise.all([
+          supabase.from('clientes').select('nome, telefone').eq('id', cliente_id).single(),
+          supabase.from('colaboradores').select('nome').eq('id', colaborador_id).single(),
+        ]);
+
+        if (!clienteData?.telefone || !colaboradorData?.nome) {
+          console.warn('[WhatsApp] Cliente sem telefone ou colaborador não encontrado, pulando mensagens');
+          return;
+        }
+
+        const telefoneNorm = normalizarTelefone(clienteData.telefone);
+        if (!validarTelefone(telefoneNorm)) {
+          console.warn(`[WhatsApp] Telefone inválido para cliente ${clienteData.nome}: ${clienteData.telefone}`);
+          return;
+        }
+
+        const paramsBase = {
+          agendamentoId: agendamento.id,
+          clienteId: cliente_id,
+          clienteNome: clienteData.nome,
+          clienteTelefone: clienteData.telefone,
+          colaboradorNome: colaboradorData.nome,
+          dataHora: data_hora,
+        };
+
+        // Confirmação: enviar imediatamente
+        await agendarOuEnviarMensagem({
+          ...paramsBase,
+          tipo: 'confirmacao',
+          dataProgramada: new Date(),
+        });
+
+        // Lembrete: agendar para 24h antes (somente se agendamento é > 24h no futuro)
+        const dataAgendamento = new Date(data_hora);
+        const agora = new Date();
+        const diffHoras = (dataAgendamento.getTime() - agora.getTime()) / (1000 * 60 * 60);
+
+        if (diffHoras > 24) {
+          const dataLembrete = new Date(dataAgendamento.getTime() - 24 * 60 * 60 * 1000);
+          await agendarOuEnviarMensagem({
+            ...paramsBase,
+            tipo: 'lembrete',
+            dataProgramada: dataLembrete,
+          });
+        }
+      } catch (whatsappError) {
+        console.error('[WhatsApp] Erro ao disparar mensagens (não afeta agendamento):', whatsappError);
+      }
+    })();
 
     return NextResponse.json({
       success: true,
