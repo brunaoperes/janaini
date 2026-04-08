@@ -9,7 +9,7 @@ const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
-type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador';
+type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador' | 'agenda_colaborador_vazia';
 
 interface ZApiResponse {
   zapiMessageId?: string;
@@ -125,6 +125,11 @@ Sua agenda para amanha ({data}):
 Total: {total} atendimento(s)
 
 Tenha um otimo dia de trabalho! ✨`,
+
+  agenda_colaborador_vazia: `Ola, {nome}! 📋
+Voce nao tem nenhum agendamento para amanha ({data}).
+
+Aproveite para descansar! 😊`,
 };
 
 function aplicarPlaceholders(template: string, nome: string, profissional: string, dataHora: string): string {
@@ -176,9 +181,14 @@ export async function gerarMensagemAgendaColaborador(
   const template = resultado?.template || TEMPLATES_FALLBACK['agenda_colaborador'];
 
   if (agendamentos.length === 0) {
-    // Sem agendamentos: mensagem simples
-    const mensagem = `Ola, ${nomeColaborador}! 📋\nVoce nao tem nenhum agendamento para amanha (${data}).\n\nAproveite para descansar! 😊`;
-    return { mensagem, ativo };
+    // Sem agendamentos: usar template vazio do banco
+    const resultadoVazio = await buscarTemplateDoBanco('agenda_colaborador_vazia');
+    const ativoVazio = resultadoVazio ? resultadoVazio.ativo : true;
+    const templateVazio = resultadoVazio?.template || TEMPLATES_FALLBACK['agenda_colaborador_vazia'];
+    const mensagem = templateVazio
+      .replace(/\{nome\}/g, nomeColaborador)
+      .replace(/\{data\}/g, data);
+    return { mensagem, ativo: ativoVazio };
   }
 
   // Montar a lista de agendamentos

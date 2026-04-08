@@ -54,6 +54,7 @@ const TIPO_LABELS: Record<string, string> = {
   lembrete: 'Lembrete',
   pos_venda: 'Pos-Venda',
   agenda_colaborador: 'Agenda Colaborador',
+  agenda_colaborador_vazia: 'Agenda Vazia',
 };
 
 const TIPO_ICONS: Record<string, string> = {
@@ -61,6 +62,7 @@ const TIPO_ICONS: Record<string, string> = {
   lembrete: '🔔',
   pos_venda: '💖',
   agenda_colaborador: '📋',
+  agenda_colaborador_vazia: '📭',
 };
 
 const TIPO_GRADIENTS: Record<string, string> = {
@@ -68,6 +70,7 @@ const TIPO_GRADIENTS: Record<string, string> = {
   lembrete: 'from-sky-400 to-sky-600',
   pos_venda: 'from-pink-400 to-rose-500',
   agenda_colaborador: 'from-indigo-400 to-indigo-600',
+  agenda_colaborador_vazia: 'from-gray-400 to-gray-600',
 };
 
 const STATUS_STYLES: Record<string, { bg: string; dot: string }> = {
