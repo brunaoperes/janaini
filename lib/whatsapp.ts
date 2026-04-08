@@ -175,6 +175,12 @@ export async function gerarMensagemAgendaColaborador(
   const ativo = resultado ? resultado.ativo : true;
   const template = resultado?.template || TEMPLATES_FALLBACK['agenda_colaborador'];
 
+  if (agendamentos.length === 0) {
+    // Sem agendamentos: mensagem simples
+    const mensagem = `Ola, ${nomeColaborador}! 📋\nVoce nao tem nenhum agendamento para amanha (${data}).\n\nAproveite para descansar! 😊`;
+    return { mensagem, ativo };
+  }
+
   // Montar a lista de agendamentos
   const agendaTexto = agendamentos
     .map((ag, i) => `${i + 1}. ${ag.horario} - ${ag.cliente}\n   ${ag.servico}`)

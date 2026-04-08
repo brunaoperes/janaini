@@ -225,26 +225,33 @@ export async function GET(request: Request) {
           .neq('status', 'cancelado')
           .order('data_hora', { ascending: true });
 
-        if (!agendamentos || agendamentos.length === 0) {
-          console.log(`[Cron/WhatsApp] ${colab.nome} sem agendamentos para ${diaStr}`);
-          continue;
-        }
-
         // Montar lista de agendamentos
         const dataFormatada = `${diaStr.split('-')[2]}/${diaStr.split('-')[1]}/${diaStr.split('-')[0]}`;
-        const listaAgendamentos = agendamentos.map((ag: any) => {
-          const horarioMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-          return {
-            horario: horarioMatch ? `${horarioMatch[1]}:${horarioMatch[2]}` : '--:--',
-            cliente: ag.clientes?.nome || 'Cliente',
-            servico: ag.descricao_servico || 'Servico',
-          };
-        });
 
-        // Gerar mensagem usando template do banco
-        const { mensagem, ativo } = await gerarMensagemAgendaColaborador(
-          colab.nome, dataFormatada, listaAgendamentos
-        );
+        let mensagem: string;
+        let ativo: boolean;
+
+        if (!agendamentos || agendamentos.length === 0) {
+          // Sem agendamentos: enviar mensagem informando
+          const resultado = await gerarMensagemAgendaColaborador(colab.nome, dataFormatada, []);
+          mensagem = resultado.mensagem;
+          ativo = resultado.ativo;
+        } else {
+          const listaAgendamentos = agendamentos.map((ag: any) => {
+            const horarioMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+            return {
+              horario: horarioMatch ? `${horarioMatch[1]}:${horarioMatch[2]}` : '--:--',
+              cliente: ag.clientes?.nome || 'Cliente',
+              servico: ag.descricao_servico || 'Servico',
+            };
+          });
+
+          const resultado = await gerarMensagemAgendaColaborador(
+            colab.nome, dataFormatada, listaAgendamentos
+          );
+          mensagem = resultado.mensagem;
+          ativo = resultado.ativo;
+        }
 
         if (!ativo) {
           console.log(`[Cron/WhatsApp] Template agenda_colaborador desativado`);
