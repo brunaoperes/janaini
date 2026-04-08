@@ -186,21 +186,37 @@ export async function POST(request: Request) {
               dataProgramada: new Date(),
             });
 
-            if (diffHoras > 24) {
-              const dataLembrete = new Date(dataAgendamento.getTime() - 24 * 60 * 60 * 1000);
-              await agendarOuEnviarMensagem({
-                ...paramsBase,
-                tipo: 'lembrete',
-                dataProgramada: dataLembrete,
-              });
-            } else if (diffHoras > 1) {
-              await agendarOuEnviarMensagem({
-                ...paramsBase,
-                tipo: 'lembrete',
-                dataProgramada: new Date(),
-              });
+            // Lembrete: programar para 21h BRT do dia anterior ao agendamento
+            // Extrair data do agendamento (formato: YYYY-MM-DDTHH:MM)
+            const match = data_hora.match(/(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+              const diaAnterior = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+              diaAnterior.setDate(diaAnterior.getDate() - 1);
+              // 21h BRT = 00h UTC do dia seguinte (que é o dia do agendamento)
+              const dataLembrete = new Date(Date.UTC(
+                diaAnterior.getFullYear(),
+                diaAnterior.getMonth(),
+                diaAnterior.getDate() + 1,
+                0, 0, 0 // 00:00 UTC = 21:00 BRT
+              ));
+
+              if (dataLembrete > new Date()) {
+                // Dia anterior ainda não chegou: agendar
+                await agendarOuEnviarMensagem({
+                  ...paramsBase,
+                  tipo: 'lembrete',
+                  dataProgramada: dataLembrete,
+                });
+              } else if (diffHoras > 1) {
+                // Já passou das 21h do dia anterior mas falta mais de 1h: enviar agora
+                await agendarOuEnviarMensagem({
+                  ...paramsBase,
+                  tipo: 'lembrete',
+                  dataProgramada: new Date(),
+                });
+              }
+              // Se < 1h, não envia lembrete
             }
-            // Se < 1h, não envia lembrete (já vai ser atendido logo)
           }
         } else {
           console.warn(`[WhatsApp] Telefone inválido: ${clienteData.telefone}`);

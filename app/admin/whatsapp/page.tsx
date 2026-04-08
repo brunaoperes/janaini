@@ -432,7 +432,7 @@ export default function AdminWhatsAppPage() {
                     </div>
                     <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Lembrete</h3>
-                      <p className="text-sm text-gray-500">Enviado <span className="font-medium text-sky-600">{config?.tempo_lembrete || '24 horas antes'}</span> do horario agendado</p>
+                      <p className="text-sm text-gray-500">Enviado as <span className="font-medium text-sky-600">21h do dia anterior</span> ao horario agendado</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'lembrete')?.ativo ? 'bg-sky-50 text-sky-700' : 'bg-gray-100 text-gray-500'
                       }`}>
