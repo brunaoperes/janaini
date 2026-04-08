@@ -53,18 +53,21 @@ const TIPO_LABELS: Record<string, string> = {
   confirmacao: 'Confirmacao',
   lembrete: 'Lembrete',
   pos_venda: 'Pos-Venda',
+  agenda_colaborador: 'Agenda Colaborador',
 };
 
 const TIPO_ICONS: Record<string, string> = {
   confirmacao: '✅',
   lembrete: '🔔',
   pos_venda: '💖',
+  agenda_colaborador: '📋',
 };
 
 const TIPO_GRADIENTS: Record<string, string> = {
   confirmacao: 'from-emerald-400 to-emerald-600',
   lembrete: 'from-sky-400 to-sky-600',
   pos_venda: 'from-pink-400 to-rose-500',
+  agenda_colaborador: 'from-indigo-400 to-indigo-600',
 };
 
 const STATUS_STYLES: Record<string, { bg: string; dot: string }> = {
@@ -78,6 +81,8 @@ const PLACEHOLDERS_PREVIEW: Record<string, string> = {
   '{profissional}': 'Ana Paula',
   '{data}': '15/04/2026',
   '{horario}': '14:30',
+  '{agenda}': '1. 09:00 - Ana Paula\n   Corte + Escova\n\n2. 11:00 - Beatriz\n   Coloracao',
+  '{total}': '2',
 };
 
 function aplicarPreview(template: string): string {
@@ -446,8 +451,9 @@ export default function AdminWhatsAppPage() {
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-lg">💖</div>
+                      <div className="w-0.5 h-8 bg-gray-200 my-1" />
                     </div>
-                    <div>
+                    <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Pos-Venda</h3>
                       <p className="text-sm text-gray-500">Enviado <span className="font-medium text-pink-600">{config?.tempo_pos_venda || '15 min apos conclusao'}</span> do atendimento</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -455,6 +461,23 @@ export default function AdminWhatsAppPage() {
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${templates.find(t => t.tipo === 'pos_venda')?.ativo ? 'bg-pink-500' : 'bg-gray-400'}`} />
                         {templates.find(t => t.tipo === 'pos_venda')?.ativo ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-lg">📋</div>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Agenda do Colaborador</h3>
+                      <p className="text-sm text-gray-500">Enviada as <span className="font-medium text-indigo-600">21h do dia anterior</span> com todos os agendamentos do dia seguinte</p>
+                      <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        templates.find(t => t.tipo === 'agenda_colaborador')?.ativo ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${templates.find(t => t.tipo === 'agenda_colaborador')?.ativo ? 'bg-indigo-500' : 'bg-gray-400'}`} />
+                        {templates.find(t => t.tipo === 'agenda_colaborador')?.ativo ? 'Ativo' : 'Inativo'}
                       </span>
                     </div>
                   </div>

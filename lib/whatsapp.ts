@@ -9,7 +9,7 @@ const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
-type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda';
+type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador';
 
 interface ZApiResponse {
   zapiMessageId?: string;
@@ -117,6 +117,14 @@ https://g.page/r/CVNlyTG4OjJLEBM/review
 
 Muito obrigado pela confiança 💫
 Volte sempre!`,
+
+  agenda_colaborador: `Bom dia, {nome}! 📋
+Sua agenda para amanha ({data}):
+
+{agenda}
+Total: {total} atendimento(s)
+
+Tenha um otimo dia de trabalho! ✨`,
 };
 
 function aplicarPlaceholders(template: string, nome: string, profissional: string, dataHora: string): string {
@@ -156,6 +164,29 @@ export async function gerarMensagem(tipo: TipoMensagem, nome: string, profission
   const resultado = await buscarTemplateDoBanco(tipo);
   const template = resultado?.template || TEMPLATES_FALLBACK[tipo];
   return aplicarPlaceholders(template, nome, profissional, dataHora);
+}
+
+export async function gerarMensagemAgendaColaborador(
+  nomeColaborador: string,
+  data: string, // DD/MM/YYYY
+  agendamentos: { horario: string; cliente: string; servico: string }[]
+): Promise<{ mensagem: string; ativo: boolean }> {
+  const resultado = await buscarTemplateDoBanco('agenda_colaborador');
+  const ativo = resultado ? resultado.ativo : true;
+  const template = resultado?.template || TEMPLATES_FALLBACK['agenda_colaborador'];
+
+  // Montar a lista de agendamentos
+  const agendaTexto = agendamentos
+    .map((ag, i) => `${i + 1}. ${ag.horario} - ${ag.cliente}\n   ${ag.servico}`)
+    .join('\n\n');
+
+  const mensagem = template
+    .replace(/\{nome\}/g, nomeColaborador)
+    .replace(/\{data\}/g, data)
+    .replace(/\{agenda\}/g, agendaTexto)
+    .replace(/\{total\}/g, String(agendamentos.length));
+
+  return { mensagem, ativo };
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, gerarMensagemAgendaColaborador, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -230,21 +230,26 @@ export async function GET(request: Request) {
           continue;
         }
 
-        // Montar mensagem
+        // Montar lista de agendamentos
         const dataFormatada = `${diaStr.split('-')[2]}/${diaStr.split('-')[1]}/${diaStr.split('-')[0]}`;
-        let mensagem = `Bom dia, ${colab.nome}! 📋\n`;
-        mensagem += `Sua agenda para amanha (${dataFormatada}):\n\n`;
-
-        agendamentos.forEach((ag: any, i: number) => {
+        const listaAgendamentos = agendamentos.map((ag: any) => {
           const horarioMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-          const horario = horarioMatch ? `${horarioMatch[1]}:${horarioMatch[2]}` : '--:--';
-          const clienteNome = ag.clientes?.nome || 'Cliente';
-          const servico = ag.descricao_servico || 'Servico';
-          mensagem += `${i + 1}. ${horario} - ${clienteNome}\n   ${servico}\n\n`;
+          return {
+            horario: horarioMatch ? `${horarioMatch[1]}:${horarioMatch[2]}` : '--:--',
+            cliente: ag.clientes?.nome || 'Cliente',
+            servico: ag.descricao_servico || 'Servico',
+          };
         });
 
-        mensagem += `Total: ${agendamentos.length} atendimento(s)\n`;
-        mensagem += `\nTenha um otimo dia de trabalho! ✨`;
+        // Gerar mensagem usando template do banco
+        const { mensagem, ativo } = await gerarMensagemAgendaColaborador(
+          colab.nome, dataFormatada, listaAgendamentos
+        );
+
+        if (!ativo) {
+          console.log(`[Cron/WhatsApp] Template agenda_colaborador desativado`);
+          continue;
+        }
 
         try {
           await enviarMensagemZApi(telefoneNorm, mensagem);
