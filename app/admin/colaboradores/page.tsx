@@ -29,6 +29,7 @@ export default function ColaboradoresAdminPage() {
   const [formData, setFormData] = useState({
     nome: '',
     porcentagem_comissao: '50',
+    telefone: '',
   });
 
   useEffect(() => {
@@ -97,6 +98,7 @@ export default function ColaboradoresAdminPage() {
       const validationData = {
         nome: formData.nome,
         porcentagem_comissao: parseFloat(formData.porcentagem_comissao),
+        telefone: formData.telefone || '',
       };
 
       const validation = colaboradorSchema.safeParse(validationData);
@@ -109,6 +111,7 @@ export default function ColaboradoresAdminPage() {
       const data = {
         nome: validation.data.nome,
         porcentagem_comissao: validation.data.porcentagem_comissao,
+        telefone: validation.data.telefone || null,
       };
 
       if (editingColaborador) {
@@ -185,10 +188,11 @@ export default function ColaboradoresAdminPage() {
       setFormData({
         nome: colaborador.nome,
         porcentagem_comissao: colaborador.porcentagem_comissao.toString(),
+        telefone: colaborador.telefone || '',
       });
     } else {
       setEditingColaborador(null);
-      setFormData({ nome: '', porcentagem_comissao: '50' });
+      setFormData({ nome: '', porcentagem_comissao: '50', telefone: '' });
     }
     setFormErrors('');
     setShowModal(true);
@@ -197,7 +201,7 @@ export default function ColaboradoresAdminPage() {
   const closeModal = () => {
     setShowModal(false);
     setEditingColaborador(null);
-    setFormData({ nome: '', porcentagem_comissao: '50' });
+    setFormData({ nome: '', porcentagem_comissao: '50', telefone: '' });
   };
 
   const getColor = (index: number) => COLORS[index % COLORS.length];
@@ -440,6 +444,22 @@ export default function ColaboradoresAdminPage() {
                   className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white transition-all"
                   placeholder="Digite o nome"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Telefone (WhatsApp)
+                </label>
+                <input
+                  type="text"
+                  value={formData.telefone}
+                  onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white transition-all"
+                  placeholder="(17) 99999-9999"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Usado para enviar a agenda do dia automaticamente
+                </p>
               </div>
 
               <div>

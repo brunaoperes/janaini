@@ -17,6 +17,7 @@ export type Colaborador = {
   id: number;
   nome: string;
   porcentagem_comissao: number;
+  telefone?: string;
 };
 
 export type Servico = {

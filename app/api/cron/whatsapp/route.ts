@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { processarEnvio, agendarOuEnviarMensagem, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     pendentes: { encontrados: 0, enviados: 0, erros: 0 },
     pos_venda: { encontrados: 0, enviados: 0, erros: 0 },
     retry: { encontrados: 0, enviados: 0, erros: 0 },
+    agenda_colaboradores: { encontrados: 0, enviados: 0, erros: 0 },
   };
 
   // ========================================================================
@@ -182,6 +183,81 @@ export async function GET(request: Request) {
     }
   } catch (error) {
     console.error('[Cron/WhatsApp] Erro no passo C (retry):', error);
+  }
+
+  // ========================================================================
+  // PASSO D: Enviar agenda do dia para colaboradores (manhã)
+  // ========================================================================
+  try {
+    // Data de amanhã em BRT (o cron roda às 21h BRT = 00h UTC, então "amanhã" UTC = amanhã BRT)
+    const agora = new Date();
+    // Calcular a data do dia seguinte em BRT
+    // O cron roda às 00:00 UTC = 21:00 BRT do dia anterior
+    // Queremos a agenda do dia seguinte em BRT (que é o mesmo dia em UTC)
+    const amanhaBRT = new Date(agora);
+    amanhaBRT.setUTCHours(3, 0, 0, 0); // 03:00 UTC = 00:00 BRT do dia atual UTC = dia seguinte BRT
+    const diaStr = amanhaBRT.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Buscar colaboradores com telefone
+    const { data: colaboradores } = await supabase
+      .from('colaboradores')
+      .select('id, nome, telefone')
+      .not('telefone', 'is', null)
+      .neq('telefone', '');
+
+    if (colaboradores && colaboradores.length > 0) {
+      resultado.agenda_colaboradores.encontrados = colaboradores.length;
+
+      for (const colab of colaboradores) {
+        const telefoneNorm = normalizarTelefone(colab.telefone!);
+        if (!validarTelefone(telefoneNorm)) {
+          console.warn(`[Cron/WhatsApp] Telefone inválido colaborador ${colab.nome}: ${colab.telefone}`);
+          continue;
+        }
+
+        // Buscar agendamentos do dia para este colaborador
+        const { data: agendamentos } = await supabase
+          .from('agendamentos')
+          .select('data_hora, descricao_servico, clientes(nome)')
+          .eq('colaborador_id', colab.id)
+          .gte('data_hora', `${diaStr}T00:00:00`)
+          .lte('data_hora', `${diaStr}T23:59:59`)
+          .neq('status', 'cancelado')
+          .order('data_hora', { ascending: true });
+
+        if (!agendamentos || agendamentos.length === 0) {
+          console.log(`[Cron/WhatsApp] ${colab.nome} sem agendamentos para ${diaStr}`);
+          continue;
+        }
+
+        // Montar mensagem
+        const dataFormatada = `${diaStr.split('-')[2]}/${diaStr.split('-')[1]}/${diaStr.split('-')[0]}`;
+        let mensagem = `Bom dia, ${colab.nome}! 📋\n`;
+        mensagem += `Sua agenda para amanha (${dataFormatada}):\n\n`;
+
+        agendamentos.forEach((ag: any, i: number) => {
+          const horarioMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+          const horario = horarioMatch ? `${horarioMatch[1]}:${horarioMatch[2]}` : '--:--';
+          const clienteNome = ag.clientes?.nome || 'Cliente';
+          const servico = ag.descricao_servico || 'Servico';
+          mensagem += `${i + 1}. ${horario} - ${clienteNome}\n   ${servico}\n\n`;
+        });
+
+        mensagem += `Total: ${agendamentos.length} atendimento(s)\n`;
+        mensagem += `\nTenha um otimo dia de trabalho! ✨`;
+
+        try {
+          await enviarMensagemZApi(telefoneNorm, mensagem);
+          resultado.agenda_colaboradores.enviados++;
+          console.log(`[Cron/WhatsApp] Agenda enviada para ${colab.nome}`);
+        } catch (err: any) {
+          resultado.agenda_colaboradores.erros++;
+          console.error(`[Cron/WhatsApp] Erro ao enviar agenda para ${colab.nome}:`, err.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Cron/WhatsApp] Erro no passo D (agenda colaboradores):', error);
   }
 
   console.log('[Cron/WhatsApp] Resultado:', JSON.stringify(resultado));

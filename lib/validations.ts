@@ -9,6 +9,10 @@ export const colaboradorSchema = z.object({
   porcentagem_comissao: z.number()
     .min(0, 'Comissão deve ser no mínimo 0%')
     .max(100, 'Comissão deve ser no máximo 100%'),
+  telefone: z.string()
+    .max(20, 'Telefone deve ter no máximo 20 caracteres')
+    .optional()
+    .or(z.literal('')),
 });
 
 export type ColaboradorFormData = z.infer<typeof colaboradorSchema>;
