@@ -45,6 +45,24 @@ export async function GET(request: Request) {
 
     if (pendentes) {
       for (const msg of pendentes) {
+        // Não enviar confirmação/lembrete de agendamentos que já passaram
+        if (msg.tipo === 'confirmacao' || msg.tipo === 'lembrete') {
+          const { data: agendamento } = await supabase
+            .from('agendamentos')
+            .select('data_hora')
+            .eq('id', msg.agendamento_id)
+            .single();
+
+          if (agendamento && new Date(agendamento.data_hora) < new Date()) {
+            await supabase
+              .from('mensagens_whatsapp')
+              .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })
+              .eq('id', msg.id);
+            console.log(`[Cron/WhatsApp] Mensagem ${msg.id} cancelada: agendamento já passou`);
+            continue;
+          }
+        }
+
         const sucesso = await processarEnvio(msg.id, msg.telefone_destino, msg.mensagem);
         if (sucesso) {
           resultado.pendentes.enviados++;
@@ -140,6 +158,7 @@ export async function GET(request: Request) {
       .select('*')
       .eq('status', 'erro')
       .lt('tentativas', 3)
+      .not('erro_mensagem', 'like', 'Cancelado:%')
       .order('created_at', { ascending: true })
       .limit(20);
 
