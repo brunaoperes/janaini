@@ -7,6 +7,7 @@ import { format, startOfDay, endOfDay, parseISO, differenceInMinutes, parse } fr
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
+import WhatsAppStatusBanner from '@/components/WhatsAppStatusBanner';
 import toast from 'react-hot-toast';
 
 // Paleta de cores para colaboradores
@@ -1393,6 +1394,8 @@ export default function AgendaPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FCEBFB] via-[#EAD5FF] to-white">
+      {/* Banner WhatsApp */}
+      <WhatsAppStatusBanner />
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-purple-100 shadow-soft">
         <div className="container mx-auto px-4 md:px-6 py-3 md:py-4">

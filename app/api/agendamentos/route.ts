@@ -167,34 +167,41 @@ export async function POST(request: Request) {
             dataHora: data_hora,
           };
 
-          // Confirmação: enviar imediatamente
-          await agendarOuEnviarMensagem({
-            ...paramsBase,
-            tipo: 'confirmacao',
-            dataProgramada: new Date(),
-          });
-
-          // Lembrete: agendar para 24h antes, ou enviar imediatamente se < 24h
           const dataAgendamento = new Date(data_hora);
           const diffHoras = (dataAgendamento.getTime() - Date.now()) / (1000 * 60 * 60);
 
-          if (diffHoras > 24) {
-            // Agendamento > 24h no futuro: programar lembrete para 24h antes
-            const dataLembrete = new Date(dataAgendamento.getTime() - 24 * 60 * 60 * 1000);
+          if (diffHoras < 0) {
+            // Agendamento no passado: só enviar pós-venda (avaliação)
+            console.log('[WhatsApp] Agendamento no passado, enviando apenas pos-venda');
             await agendarOuEnviarMensagem({
               ...paramsBase,
-              tipo: 'lembrete',
-              dataProgramada: dataLembrete,
-            });
-          } else if (diffHoras > 1) {
-            // Agendamento entre 1h e 24h: enviar lembrete imediatamente
-            await agendarOuEnviarMensagem({
-              ...paramsBase,
-              tipo: 'lembrete',
+              tipo: 'pos_venda',
               dataProgramada: new Date(),
             });
+          } else {
+            // Agendamento no futuro: confirmação + lembrete
+            await agendarOuEnviarMensagem({
+              ...paramsBase,
+              tipo: 'confirmacao',
+              dataProgramada: new Date(),
+            });
+
+            if (diffHoras > 24) {
+              const dataLembrete = new Date(dataAgendamento.getTime() - 24 * 60 * 60 * 1000);
+              await agendarOuEnviarMensagem({
+                ...paramsBase,
+                tipo: 'lembrete',
+                dataProgramada: dataLembrete,
+              });
+            } else if (diffHoras > 1) {
+              await agendarOuEnviarMensagem({
+                ...paramsBase,
+                tipo: 'lembrete',
+                dataProgramada: new Date(),
+              });
+            }
+            // Se < 1h, não envia lembrete (já vai ser atendido logo)
           }
-          // Se < 1h, não envia lembrete (já vai ser atendido logo)
         } else {
           console.warn(`[WhatsApp] Telefone inválido: ${clienteData.telefone}`);
         }

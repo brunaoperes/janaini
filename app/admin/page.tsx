@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import WhatsAppStatusBanner from '@/components/WhatsAppStatusBanner';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AdminCardProps {
@@ -137,6 +138,8 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FDECFB] via-[#E7D3FF] to-white">
+      {/* Banner WhatsApp */}
+      <WhatsAppStatusBanner />
       {/* Header Premium */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-purple-100 shadow-soft">
         <div className="container mx-auto px-4 md:px-6 py-4">

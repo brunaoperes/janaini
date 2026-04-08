@@ -70,7 +70,7 @@ export async function GET(request: Request) {
         zapi_connected: statusInstancia.connected,
         zapi_status: statusInstancia.status,
         zapi_status_error: statusInstancia.error,
-        cron_schedule: '1x por dia (08:00)',
+        cron_schedule: 'A cada 30 minutos',
         tempo_lembrete: '24 horas antes',
         tempo_pos_venda: '15 minutos após conclusão',
         max_tentativas: 3,
