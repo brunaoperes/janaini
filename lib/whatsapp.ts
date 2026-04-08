@@ -290,6 +290,22 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
     return;
   }
 
+  // Verificar se já enviou mensagem do mesmo tipo para o mesmo telefone nas últimas 24h
+  const vinteQuatroHAtras = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: recente } = await supabase
+    .from('mensagens_whatsapp')
+    .select('id')
+    .eq('telefone_destino', telefoneNormalizado)
+    .eq('tipo', params.tipo)
+    .eq('status', 'enviado')
+    .gte('data_envio', vinteQuatroHAtras)
+    .limit(1);
+
+  if (recente && recente.length > 0) {
+    console.log(`[WhatsApp] Já enviou ${params.tipo} para ${telefoneNormalizado} nas últimas 24h, ignorando`);
+    return;
+  }
+
   const mensagemTexto = await gerarMensagem(params.tipo, params.clienteNome, params.colaboradorNome, params.dataHora);
 
   // Inserir no banco (ignorar se já existe)
