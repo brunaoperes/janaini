@@ -78,9 +78,6 @@ export default function AgendaPage() {
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Estado para layout mobile (A = cards, B = timeline vertical)
-  const [mobileLayout, setMobileLayout] = useState<'A' | 'B'>('A');
-
   // Estados para Drawer de Edição
   const [isEditMode, setIsEditMode] = useState(false);
   const [isFinalizando, setIsFinalizando] = useState(false);
@@ -1457,32 +1454,8 @@ export default function AgendaPage() {
         {/* MOBILE: Toggle de Layout + Vista Mobile */}
         {/* ============================================================ */}
         <div className="md:hidden mb-4">
-          {/* Toggle A/B */}
-          <div className="flex items-center gap-2 mb-4 bg-white/80 backdrop-blur rounded-xl p-1.5 border border-purple-100">
-            <button
-              onClick={() => setMobileLayout('A')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                mobileLayout === 'A'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Cards
-            </button>
-            <button
-              onClick={() => setMobileLayout('B')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                mobileLayout === 'B'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Timeline
-            </button>
-          </div>
-
-          {/* MODELO A: Cards por Colaborador */}
-          {mobileLayout === 'A' && (
+          {/* Mobile: Cards por Colaborador */}
+          {(
             <div className="space-y-4">
               {colaboradores.map((colaborador, colabIndex) => {
                 const color = getColaboradorColor(colabIndex);
@@ -1559,82 +1532,6 @@ export default function AgendaPage() {
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* MODELO B: Timeline Vertical */}
-          {mobileLayout === 'B' && (
-            <div className="bg-white/80 backdrop-blur rounded-2xl border border-purple-100 overflow-hidden shadow-sm">
-              {(() => {
-                // Agrupar todos agendamentos por horário
-                const todosAgendamentos = agendamentos
-                  .filter(a => a.status !== 'cancelado')
-                  .sort((a, b) => a.data_hora.localeCompare(b.data_hora));
-
-                if (todosAgendamentos.length === 0) {
-                  return (
-                    <div className="px-4 py-12 text-center">
-                      <div className="text-4xl mb-3">📅</div>
-                      <p className="text-gray-400 font-medium">Sem agendamentos para este dia</p>
-                    </div>
-                  );
-                }
-
-                // Agrupar por hora cheia
-                const grupos: Record<string, typeof todosAgendamentos> = {};
-                todosAgendamentos.forEach(ag => {
-                  const horMatch = ag.data_hora.match(/[T ](\d{2})/);
-                  const horaCheia = horMatch ? `${horMatch[1]}:00` : '00:00';
-                  if (!grupos[horaCheia]) grupos[horaCheia] = [];
-                  grupos[horaCheia].push(ag);
-                });
-
-                return (
-                  <div className="divide-y divide-purple-50">
-                    {Object.entries(grupos).map(([hora, ags]) => (
-                      <div key={hora} className="flex">
-                        {/* Coluna de hora */}
-                        <div className="w-16 flex-shrink-0 py-3 px-2 bg-purple-50/50 border-r border-purple-100 flex items-start justify-center">
-                          <span className="text-sm font-bold text-purple-700">{hora}</span>
-                        </div>
-                        {/* Cards */}
-                        <div className="flex-1 py-2 px-3 space-y-2">
-                          {ags.map(ag => {
-                            const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-                            const horario = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '--:--';
-                            const colaborador = colaboradores.find(c => c.id === ag.colaborador_id);
-                            const colabIndex = colaboradores.findIndex(c => c.id === ag.colaborador_id);
-                            const color = getColaboradorColor(colabIndex);
-                            const clienteNome = clientes.find(c => c.id === ag.cliente_id)?.nome || 'Cliente';
-                            const isConcluido = ag.status === 'concluido';
-
-                            return (
-                              <button
-                                key={ag.id}
-                                onClick={() => setSelectedAgendamento(ag)}
-                                className={`w-full p-3 rounded-xl border text-left transition-all hover:shadow-md ${
-                                  isConcluido
-                                    ? 'bg-green-50 border-green-200'
-                                    : 'bg-white border-purple-100 hover:border-purple-300'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-bold text-purple-600">{horario}</span>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium bg-gradient-to-r ${color.gradient} text-white`}>
-                                    {colaborador?.nome || '?'}
-                                  </span>
-                                </div>
-                                <p className="text-sm font-medium text-gray-800 truncate">{clienteNome}</p>
-                                <p className="text-xs text-gray-500 truncate">{ag.descricao_servico || 'Serviço'}</p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
             </div>
           )}
         </div>

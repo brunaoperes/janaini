@@ -107,6 +107,13 @@ export async function GET(request: Request) {
         console.error('Erro ao carregar agendamentos:', error);
       } else {
         agendamentos = agendData || [];
+        // Colaborador não-admin só vê seus próprios agendamentos
+        if (!isAdmin && userColaboradorId) {
+          agendamentos = agendamentos.filter((a: any) =>
+            a.colaborador_id === Number(userColaboradorId) ||
+            (a.colaboradores_ids && a.colaboradores_ids.includes(Number(userColaboradorId)))
+          );
+        }
       }
     }
 
