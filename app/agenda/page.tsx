@@ -78,6 +78,9 @@ export default function AgendaPage() {
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
 
+  // Estado para layout mobile (A = cards, B = timeline vertical)
+  const [mobileLayout, setMobileLayout] = useState<'A' | 'B'>('A');
+
   // Estados para Drawer de Edição
   const [isEditMode, setIsEditMode] = useState(false);
   const [isFinalizando, setIsFinalizando] = useState(false);
@@ -1448,9 +1451,198 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 md:px-6 py-8">
-        {/* Timeline Container - com scroll horizontal */}
-        <div className="bg-white/60 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-soft-xl border border-purple-100/50 overflow-x-auto relative">
+      <div className="container mx-auto px-4 md:px-6 py-4 md:py-8">
+
+        {/* ============================================================ */}
+        {/* MOBILE: Toggle de Layout + Vista Mobile */}
+        {/* ============================================================ */}
+        <div className="md:hidden mb-4">
+          {/* Toggle A/B */}
+          <div className="flex items-center gap-2 mb-4 bg-white/80 backdrop-blur rounded-xl p-1.5 border border-purple-100">
+            <button
+              onClick={() => setMobileLayout('A')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                mobileLayout === 'A'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Cards
+            </button>
+            <button
+              onClick={() => setMobileLayout('B')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                mobileLayout === 'B'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Timeline
+            </button>
+          </div>
+
+          {/* MODELO A: Cards por Colaborador */}
+          {mobileLayout === 'A' && (
+            <div className="space-y-4">
+              {colaboradores.map((colaborador, colabIndex) => {
+                const color = getColaboradorColor(colabIndex);
+                const agendamentosColab = agendamentos
+                  .filter(a => a.colaborador_id === colaborador.id || (a.colaboradores_ids && a.colaboradores_ids.includes(colaborador.id)))
+                  .sort((a, b) => a.data_hora.localeCompare(b.data_hora));
+
+                return (
+                  <div key={colaborador.id} className="bg-white/80 backdrop-blur rounded-2xl border border-purple-100 overflow-hidden shadow-sm">
+                    {/* Header do Colaborador */}
+                    <div className={`bg-gradient-to-r ${color.gradient} px-4 py-3 flex items-center justify-between`}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white font-bold text-sm">
+                          {colaborador.nome.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-white font-semibold text-sm">{colaborador.nome}</p>
+                          <p className="text-white/70 text-xs">{agendamentosColab.length} agendamento(s)</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lista de Agendamentos */}
+                    {agendamentosColab.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-gray-400 text-sm">Sem agendamentos</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-purple-50">
+                        {agendamentosColab.map((ag) => {
+                          const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+                          const horario = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '--:--';
+                          const duracao = ag.duracao_minutos || 60;
+                          const horaFim = (() => {
+                            const [h, m] = horario.split(':').map(Number);
+                            const totalMin = h * 60 + m + duracao;
+                            return `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`;
+                          })();
+                          const clienteNome = clientes.find(c => c.id === ag.cliente_id)?.nome || 'Cliente';
+                          const isPendente = ag.status === 'pendente';
+                          const isConcluido = ag.status === 'concluido';
+
+                          return (
+                            <button
+                              key={ag.id}
+                              onClick={() => setSelectedAgendamento(ag)}
+                              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-purple-50/50 transition-colors text-left"
+                            >
+                              {/* Horário */}
+                              <div className="flex-shrink-0 text-center">
+                                <p className="text-sm font-bold text-purple-700">{horario}</p>
+                                <p className="text-[10px] text-gray-400">{horaFim}</p>
+                              </div>
+                              {/* Divisor */}
+                              <div className={`w-1 h-10 rounded-full ${isConcluido ? 'bg-green-400' : isPendente ? 'bg-amber-400' : 'bg-gray-300'}`} />
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{clienteNome}</p>
+                                <p className="text-xs text-gray-500 truncate">{ag.descricao_servico || 'Serviço'}</p>
+                              </div>
+                              {/* Status */}
+                              <div className="flex-shrink-0">
+                                {isConcluido ? (
+                                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-xs">✓</span>
+                                ) : (
+                                  <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-xs">●</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* MODELO B: Timeline Vertical */}
+          {mobileLayout === 'B' && (
+            <div className="bg-white/80 backdrop-blur rounded-2xl border border-purple-100 overflow-hidden shadow-sm">
+              {(() => {
+                // Agrupar todos agendamentos por horário
+                const todosAgendamentos = agendamentos
+                  .filter(a => a.status !== 'cancelado')
+                  .sort((a, b) => a.data_hora.localeCompare(b.data_hora));
+
+                if (todosAgendamentos.length === 0) {
+                  return (
+                    <div className="px-4 py-12 text-center">
+                      <div className="text-4xl mb-3">📅</div>
+                      <p className="text-gray-400 font-medium">Sem agendamentos para este dia</p>
+                    </div>
+                  );
+                }
+
+                // Agrupar por hora cheia
+                const grupos: Record<string, typeof todosAgendamentos> = {};
+                todosAgendamentos.forEach(ag => {
+                  const horMatch = ag.data_hora.match(/[T ](\d{2})/);
+                  const horaCheia = horMatch ? `${horMatch[1]}:00` : '00:00';
+                  if (!grupos[horaCheia]) grupos[horaCheia] = [];
+                  grupos[horaCheia].push(ag);
+                });
+
+                return (
+                  <div className="divide-y divide-purple-50">
+                    {Object.entries(grupos).map(([hora, ags]) => (
+                      <div key={hora} className="flex">
+                        {/* Coluna de hora */}
+                        <div className="w-16 flex-shrink-0 py-3 px-2 bg-purple-50/50 border-r border-purple-100 flex items-start justify-center">
+                          <span className="text-sm font-bold text-purple-700">{hora}</span>
+                        </div>
+                        {/* Cards */}
+                        <div className="flex-1 py-2 px-3 space-y-2">
+                          {ags.map(ag => {
+                            const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+                            const horario = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '--:--';
+                            const colaborador = colaboradores.find(c => c.id === ag.colaborador_id);
+                            const colabIndex = colaboradores.findIndex(c => c.id === ag.colaborador_id);
+                            const color = getColaboradorColor(colabIndex);
+                            const clienteNome = clientes.find(c => c.id === ag.cliente_id)?.nome || 'Cliente';
+                            const isConcluido = ag.status === 'concluido';
+
+                            return (
+                              <button
+                                key={ag.id}
+                                onClick={() => setSelectedAgendamento(ag)}
+                                className={`w-full p-3 rounded-xl border text-left transition-all hover:shadow-md ${
+                                  isConcluido
+                                    ? 'bg-green-50 border-green-200'
+                                    : 'bg-white border-purple-100 hover:border-purple-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-bold text-purple-600">{horario}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium bg-gradient-to-r ${color.gradient} text-white`}>
+                                    {colaborador?.nome || '?'}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-medium text-gray-800 truncate">{clienteNome}</p>
+                                <p className="text-xs text-gray-500 truncate">{ag.descricao_servico || 'Serviço'}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* ============================================================ */}
+        {/* DESKTOP: Timeline horizontal (mantida intacta) */}
+        {/* ============================================================ */}
+        <div className="hidden md:block bg-white/60 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-soft-xl border border-purple-100/50 overflow-x-auto relative">
           {/* Linhas verticais GLOBAIS removidas - agora usamos grid dentro de cada seção */}
 
           {/* Header da Timeline (Horários) - largura fixa por hora */}
