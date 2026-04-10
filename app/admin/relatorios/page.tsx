@@ -11,6 +11,7 @@ import StatCard from '@/components/admin/StatCard';
 import ChartCard from '@/components/admin/ChartCard';
 import MetricBadge from '@/components/admin/MetricBadge';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { exportarLancamentosParaExcel, exportarLancamentosParaPDF, type LancamentoExport } from '@/lib/export-utils';
 
 type PeriodoType = 'dia' | 'semana' | 'mes' | 'personalizado';
 
@@ -723,12 +724,70 @@ export default function RelatoriosPage() {
 
             {/* Lista de Lançamentos */}
             <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-purple-100 shadow-soft">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                 <h2 className="text-xl font-bold text-gray-800">
-                  Lançamentos ({lancamentos.length})
+                  Lançamentos ({lancamentos.filter(l => l.status === 'concluido').length} concluídos)
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <MetricBadge label="Total" value={`R$ ${stats.total.toFixed(2)}`} color="purple" />
+                  {lancamentos.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => {
+                          const dados: LancamentoExport[] = lancamentos
+                            .filter(l => l.status === 'concluido')
+                            .map(l => ({
+                              data: (() => {
+                                const m = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/);
+                                const dataStr = m ? `${m[3]}/${m[2]}/${m[1]}` : l.data;
+                                return l.hora_inicio ? `${dataStr} ${l.hora_inicio}` : dataStr;
+                              })(),
+                              colaboradora: (l as any).colaboradores?.nome || l.colaborador?.nome || '-',
+                              cliente: (l as any).clientes?.nome || l.cliente?.nome || '-',
+                              valor_total: l.valor_total,
+                              forma_pagamento: l.forma_pagamento?.replace(/_/g, ' ') || 'Pendente',
+                              comissao_colaborador: l.comissao_colaborador,
+                              comissao_salao: l.comissao_salao,
+                            }));
+                          const nomeArquivo = `relatorio_${periodo}_${format(new Date(), 'yyyy-MM-dd')}`;
+                          exportarLancamentosParaExcel(dados, nomeArquivo);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Excel
+                      </button>
+                      <button
+                        onClick={() => {
+                          const dados: LancamentoExport[] = lancamentos
+                            .filter(l => l.status === 'concluido')
+                            .map(l => ({
+                              data: (() => {
+                                const m = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/);
+                                const dataStr = m ? `${m[3]}/${m[2]}/${m[1]}` : l.data;
+                                return l.hora_inicio ? `${dataStr} ${l.hora_inicio}` : dataStr;
+                              })(),
+                              colaboradora: (l as any).colaboradores?.nome || l.colaborador?.nome || '-',
+                              cliente: (l as any).clientes?.nome || l.cliente?.nome || '-',
+                              valor_total: l.valor_total,
+                              forma_pagamento: l.forma_pagamento?.replace(/_/g, ' ') || 'Pendente',
+                              comissao_colaborador: l.comissao_colaborador,
+                              comissao_salao: l.comissao_salao,
+                            }));
+                          const nomeArquivo = `relatorio_${periodo}_${format(new Date(), 'yyyy-MM-dd')}`;
+                          exportarLancamentosParaPDF(dados, nomeArquivo);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        PDF
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
