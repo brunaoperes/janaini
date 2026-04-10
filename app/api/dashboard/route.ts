@@ -51,17 +51,12 @@ export async function GET(request: Request) {
 
       // Segurança: se usuário tentar forçar outro colaborador_id, ignora
       if (colaboradorIdParam && colaboradorIdParam !== profile.colaborador_id) {
-        console.log('SEGURANÇA: Usuário tentou acessar dados de outro colaborador');
+        // Segurança: usuário tentou acessar dados de outro colaborador
       }
     } else {
       // Admin: pode filtrar por colaborador ou ver todos
       colaboradorIdFiltro = colaboradorIdParam || null;
     }
-
-    console.log('=== DASHBOARD PERMISSÕES ===');
-    console.log('Usuário:', profile.nome, '| Role:', profile.role);
-    console.log('Colaborador do usuário:', profile.colaborador_id);
-    console.log('Filtro aplicado:', colaboradorIdFiltro || 'TODOS');
 
     const hoje = new Date();
     const hojeStr = formatDate(hoje);
@@ -70,14 +65,6 @@ export async function GET(request: Request) {
     const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
     const inicioMesStr = formatDate(inicioMes);
     const fimMesStr = formatDate(fimMes);
-
-    console.log('=== API DASHBOARD ===');
-    console.log('Hoje:', hojeStr);
-    console.log('Inicio Mes:', inicioMesStr);
-    console.log('Fim Mes:', fimMesStr);
-    console.log('Dias gráfico:', dias);
-    console.log('Data início personalizada:', dataInicio);
-    console.log('Data fim personalizada:', dataFim);
 
     // Faturamento do dia (com detalhes)
     // IMPORTANTE: Excluir fiados pendentes (is_fiado=true com status pendente)
@@ -107,8 +94,6 @@ export async function GET(request: Request) {
     }
 
     const { data: faturamentoDia, error: errDia } = await queryFaturamentoDia.order('data', { ascending: false });
-
-    console.log('Faturamento dia:', faturamentoDia?.length, 'erro:', errDia?.message);
 
     // Filtrar para faturamento: apenas concluídos, não fiado, não troca/grátis
     const lancamentosNormaisDia = faturamentoDia?.filter((l: any) =>
@@ -164,8 +149,6 @@ export async function GET(request: Request) {
 
     const { data: faturamentoMes, error: errMes } = await queryFaturamentoMes.order('data', { ascending: false });
 
-    console.log('Faturamento mes:', faturamentoMes?.length, 'erro:', errMes?.message);
-
     // Filtrar para faturamento: apenas concluídos, não fiado, não troca/grátis
     const lancamentosNormaisMes = faturamentoMes?.filter((l: any) =>
       l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis
@@ -198,8 +181,6 @@ export async function GET(request: Request) {
       .from('clientes')
       .select('*', { count: 'exact', head: true });
 
-    console.log('Total clientes:', totalClientes, 'erro:', errClientes?.message);
-
     // Agendamentos de hoje
     let queryAgendamentosHoje = supabase
       .from('agendamentos')
@@ -213,8 +194,6 @@ export async function GET(request: Request) {
     }
 
     const { count: agendamentosHoje, error: errAgend } = await queryAgendamentosHoje;
-
-    console.log('Agendamentos hoje:', agendamentosHoje, 'erro:', errAgend?.message);
 
     // Top 5 Colaboradoras (por valor total)
     // IMPORTANTE: Excluir fiados pendentes e troca/grátis
@@ -323,8 +302,6 @@ export async function GET(request: Request) {
     const pagamentosFiadoClientes = colaboradorIdFiltro
       ? pagamentosFiadoClientesRaw?.filter((p: any) => p.lancamento?.colaborador_id === Number(colaboradorIdFiltro))
       : pagamentosFiadoClientesRaw;
-
-    console.log('Top clientes data:', topClientesData?.length, 'registros');
 
     const clientesMap = new Map();
 

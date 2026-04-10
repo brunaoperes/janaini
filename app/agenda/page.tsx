@@ -1461,7 +1461,7 @@ export default function AgendaPage() {
             </div>
 
             {/* Horários - largura fixa: 16 horas * 80px mobile / 120px desktop */}
-            <div className="relative h-16 md:h-20 bg-gradient-to-b from-purple-50/40 to-transparent" style={{ width: '1920px', minWidth: '1280px' }}>
+            <div className="relative h-16 md:h-20 bg-gradient-to-b from-purple-50/40 to-transparent" style={{ width: '1920px' }}>
               <div className="absolute inset-0">
                 {horarios.map((horario) => {
                   // Calcular posição usando a MESMA FÓRMULA dos cards
@@ -1539,7 +1539,7 @@ export default function AgendaPage() {
                   </div>
 
                   {/* Timeline do Colaborador - largura fixa igual ao header */}
-                  <div className="relative h-20 md:h-24 py-2" style={{ width: '1920px', minWidth: '1280px' }}>
+                  <div className="relative h-20 md:h-24 py-2" style={{ width: '1920px' }}>
                     {/* Grid de horários */}
                     <div className="absolute inset-0 flex">
                       {horarios.map((horario) => {
@@ -1804,7 +1804,7 @@ export default function AgendaPage() {
                   <div className="w-[120px] md:w-[160px] flex-shrink-0" />
 
                   {/* Container da timeline - MESMA LARGURA do header (1920px) */}
-                  <div className="relative" style={{ width: '1920px', minWidth: '1280px' }}>
+                  <div className="relative" style={{ width: '1920px' }}>
                     {/* Linha posicionada com left em % - IGUAL à régua do topo */}
                     <div
                       className="absolute top-0 bottom-0"
@@ -2214,7 +2214,7 @@ export default function AgendaPage() {
               </div>
 
               {/* Horários */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     ⏰ Hora Início *
@@ -2355,9 +2355,9 @@ export default function AgendaPage() {
                   </div>
 
                   {/* Grid de Informações */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Horário */}
-                    <div className="bg-white rounded-xl p-4 border-2 border-purple-100 hover:border-purple-300 transition-colors col-span-2">
+                    <div className="bg-white rounded-xl p-4 border-2 border-purple-100 hover:border-purple-300 transition-colors col-span-1 md:col-span-2">
                       <label className="text-xs font-bold text-purple-600 uppercase tracking-wide flex items-center gap-1">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2496,7 +2496,7 @@ export default function AgendaPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Forma de Pagamento
                             </label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               {/* Formas de pagamento normais */}
                               {[
                                 { value: 'pix', label: 'PIX', icon: '📱' },
@@ -2513,7 +2513,7 @@ export default function AgendaPage() {
                                     is_troca_gratis: false,
                                     valor_referencia: '',
                                   }))}
-                                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                  className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
                                     finalizarData.forma_pagamento === forma.value && !finalizarData.is_fiado && !finalizarData.is_troca_gratis
                                       ? 'bg-green-500 text-white'
                                       : 'bg-white border border-gray-200 hover:border-green-300'
@@ -2532,7 +2532,7 @@ export default function AgendaPage() {
                                   is_troca_gratis: false,
                                   valor_referencia: '',
                                 }))}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
                                   finalizarData.is_fiado
                                     ? 'bg-orange-500 text-white'
                                     : 'bg-white border border-gray-200 hover:border-orange-300'
@@ -2550,7 +2550,7 @@ export default function AgendaPage() {
                                   is_troca_gratis: true,
                                   valor_pago: '0',
                                 }))}
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
                                   finalizarData.is_troca_gratis
                                     ? 'bg-purple-500 text-white'
                                     : 'bg-white border border-gray-200 hover:border-purple-300'
@@ -2973,7 +2973,7 @@ export default function AgendaPage() {
                     </div>
 
                     {/* Horários */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Horário Início */}
                       <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">

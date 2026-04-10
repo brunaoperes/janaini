@@ -631,7 +631,7 @@ export default function PacotesAdminPage() {
 
                     {/* Progresso e valor */}
                     <div className="flex items-center gap-6">
-                      <div className="text-center min-w-[120px]">
+                      <div className="text-center md:min-w-[120px]">
                         <p className="text-sm text-gray-500 mb-1">Sessões</p>
                         <p className="text-lg font-bold text-gray-800">
                           {pacote.quantidade_usada} / {pacote.quantidade_total}
@@ -646,7 +646,7 @@ export default function PacotesAdminPage() {
                         </div>
                       </div>
 
-                      <div className="text-center min-w-[100px]">
+                      <div className="text-center md:min-w-[100px]">
                         <p className="text-sm text-gray-500 mb-1">Valor</p>
                         <p className="text-lg font-bold text-purple-600">
                           R$ {pacote.valor_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}

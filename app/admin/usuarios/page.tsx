@@ -58,14 +58,10 @@ export default function UsuariosPage() {
   const [showNovaSenha, setShowNovaSenha] = useState(false);
 
   useEffect(() => {
-    console.log('Auth state:', { authLoading, isAdmin });
-
     if (authLoading) {
-      console.log('Still loading auth...');
       return;
     }
 
-    console.log('Loading usuarios...');
     loadUsuarios();
     loadColaboradores();
   }, [authLoading, isAdmin]);
@@ -89,7 +85,6 @@ export default function UsuariosPage() {
   };
 
   const loadUsuarios = async () => {
-    console.log('Carregando usuários via API...');
     try {
       const response = await fetch('/api/admin/usuarios');
       const result = await response.json();
@@ -106,7 +101,6 @@ export default function UsuariosPage() {
         return;
       }
 
-      console.log('Usuários carregados:', result.usuarios?.length);
       setUsuarios(result.usuarios || []);
     } catch (err) {
       console.error('Erro catch:', err);
@@ -412,7 +406,7 @@ export default function UsuariosPage() {
         {/* Lista de Usuários */}
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full">
               <thead className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
                 <tr>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Usuário</th>
@@ -420,7 +414,7 @@ export default function UsuariosPage() {
                   <th className="px-4 py-4 text-left text-sm font-semibold">Permissão</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Colaborador</th>
                   <th className="px-4 py-4 text-left text-sm font-semibold">Último Acesso</th>
-                  <th className="px-4 py-4 text-center text-sm font-semibold min-w-[280px]">Ações</th>
+                  <th className="px-4 py-4 text-center text-sm font-semibold md:min-w-[280px]">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -471,7 +465,7 @@ export default function UsuariosPage() {
                             setEditForm({ nome: usuario.nome, username: usuario.username, email: usuario.email });
                             setShowEditModal(true);
                           }}
-                          className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                          className="p-2.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
                           title="Editar usuário"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -484,7 +478,7 @@ export default function UsuariosPage() {
                             setSelectedColaboradorId(usuario.colaborador_id);
                             setShowColaboradorModal(true);
                           }}
-                          className="p-2 text-pink-600 hover:bg-pink-100 rounded-lg transition-colors"
+                          className="p-2.5 text-pink-600 hover:bg-pink-100 rounded-lg transition-colors"
                           title="Vincular colaborador"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -496,7 +490,7 @@ export default function UsuariosPage() {
                             setSelectedUser(usuario);
                             setShowRoleModal(true);
                           }}
-                          className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
+                          className="p-2.5 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
                           title="Alterar permissão"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -506,7 +500,7 @@ export default function UsuariosPage() {
                         <button
                           onClick={() => handleToggleStatus(usuario)}
                           disabled={togglingStatus === usuario.id}
-                          className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                          className={`p-2.5 rounded-lg transition-colors disabled:opacity-50 ${
                             usuario.ativo
                               ? 'text-yellow-600 hover:bg-yellow-100'
                               : 'text-green-600 hover:bg-green-100'
@@ -531,7 +525,7 @@ export default function UsuariosPage() {
                           <button
                             onClick={() => handleResendEmail(usuario)}
                             disabled={sendingEmail === usuario.id}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            className="p-2.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
                             title="Reenviar email de confirmação"
                           >
                             {sendingEmail === usuario.id ? (
@@ -552,7 +546,7 @@ export default function UsuariosPage() {
                             setConfirmaSenha('');
                             setShowSenhaModal(true);
                           }}
-                          className="p-2 text-orange-600 hover:bg-orange-100 rounded-lg transition-colors"
+                          className="p-2.5 text-orange-600 hover:bg-orange-100 rounded-lg transition-colors"
                           title="Trocar senha"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -564,7 +558,7 @@ export default function UsuariosPage() {
                             setSelectedUser(usuario);
                             setShowDeleteConfirm(true);
                           }}
-                          className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          className="p-2.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                           title="Excluir usuário"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

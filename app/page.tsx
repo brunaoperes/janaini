@@ -284,7 +284,7 @@ export default function Dashboard() {
                   <select
                     value={colaboradorFiltro}
                     onChange={(e) => setColaboradorFiltro(e.target.value)}
-                    className="px-3 py-2 border border-purple-200 rounded-xl bg-white/80 backdrop-blur text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400 min-w-[180px]"
+                    className="px-3 py-2 border border-purple-200 rounded-xl bg-white/80 backdrop-blur text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-400 md:min-w-[180px]"
                   >
                     <option value="">Todos</option>
                     {data.colaboradores.map((c) => (

@@ -108,8 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Verificar sessão atual
     const initAuth = async () => {
-      console.log('AuthContext: Iniciando...');
-
       try {
         // Usar Promise.race com timeout de 15 segundos
         const sessionPromise = supabase.auth.getSession();
@@ -122,19 +120,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
 
         const session = result?.data?.session;
-        console.log('AuthContext: Sessão obtida:', !!session);
-
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user && !profileLoaded) {
-          console.log('AuthContext: Carregando perfil...');
           profileLoaded = true;
           await loadProfile(session.user.id, session.user.email);
-          console.log('AuthContext: Perfil carregado');
         }
       } catch (err) {
-        console.log('AuthContext: Erro ou timeout, tentando retry...', err);
         // Retry uma vez em caso de timeout
         try {
           const { data } = await supabase.auth.getSession();
@@ -147,7 +140,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await loadProfile(session.user.id, session.user.email);
           }
         } catch {
-          console.log('AuthContext: Retry também falhou, limpando sessão corrompida...');
           // Limpar storage corrompido e redirecionar para login
           const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
           if (!alreadyCleaned) {
@@ -164,7 +156,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         if (isMounted) {
-          console.log('AuthContext: Finalizando loading');
           setLoading(false);
         }
       }
@@ -177,11 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (!isMounted) return;
 
-        console.log('AuthContext: onAuthStateChange:', event, !!session);
 
         // Ignorar INITIAL_SESSION pois initAuth já trata
         if (event === 'INITIAL_SESSION') {
-          console.log('AuthContext: Ignorando INITIAL_SESSION (já tratado por initAuth)');
           return;
         }
 
@@ -192,15 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
           // Se perfil já foi carregado e usuário é o mesmo, não recarregar
           if (profileLoaded && profileRef.current?.id === session.user.id) {
-            console.log('AuthContext: Perfil já carregado, ignorando');
             return;
           }
 
-          console.log('AuthContext: onAuthStateChange - carregando perfil...');
           try {
             profileLoaded = true;
             await loadProfile(session.user.id, session.user.email);
-            console.log('AuthContext: onAuthStateChange - perfil carregado');
           } catch (err) {
             console.error('AuthContext: Erro ao carregar perfil:', err);
           }
@@ -211,7 +197,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setLoading(false);
-        console.log('AuthContext: onAuthStateChange - loading finalizado');
 
         if (event === 'SIGNED_OUT') {
           profileLoaded = false;
@@ -234,12 +219,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Login com email ou username
   const signIn = async (emailOrUsername: string, password: string) => {
-    console.log('[AuthContext] signIn iniciado para:', emailOrUsername);
     let email = emailOrUsername;
 
     // Se não for email, buscar o email pelo username
     if (!isEmail(emailOrUsername)) {
-      console.log('[AuthContext] Buscando email pelo username...');
       try {
         // Timeout de 10 segundos para a RPC
         const rpcPromise = supabase.rpc('get_email_by_username', {
@@ -250,8 +233,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
 
         const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
-
-        console.log('[AuthContext] Resultado RPC:', { data, error: error?.message });
 
         if (error || !data) {
           return {
@@ -276,14 +257,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    console.log('[AuthContext] Chamando signInWithPassword...');
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-
-      console.log('[AuthContext] signInWithPassword retornou:', { error: error?.message });
 
       // Inicializar rastreamento de atividade após login bem-sucedido
       // Passa o userId para criar chave única no localStorage
@@ -307,11 +285,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cadastro com username
   const signUp = async (email: string, password: string, nome: string, username: string) => {
-    console.log('[AuthContext] signUp iniciado para:', email);
-
     try {
       // Verificar se username já existe (com timeout de 5 segundos)
-      console.log('[AuthContext] Verificando se username existe...');
       try {
         const checkPromise = supabase
           .from('profiles')
@@ -331,17 +306,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (existingUser) {
-          console.log('[AuthContext] Username já existe');
           return {
             error: new Error('Este nome de usuário já está em uso')
           };
         }
       } catch (checkErr: any) {
-        console.log('[AuthContext] Timeout ou erro na verificação de username, continuando...', checkErr.message);
         // Continuar mesmo com timeout - o Supabase vai rejeitar se duplicado
       }
 
-      console.log('[AuthContext] Chamando auth.signUp...');
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -353,15 +325,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      console.log('[AuthContext] signUp retornou:', { user: !!data?.user, error: error?.message });
-
       if (error) {
         return { error };
       }
 
       // Se usuário foi criado, criar o perfil manualmente (caso o trigger não funcione)
       if (data?.user) {
-        console.log('[AuthContext] Criando perfil para novo usuário...');
         try {
           const profilePromise = supabase
             .from('profiles')
@@ -381,11 +350,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (result.error) {
             console.error('[AuthContext] Erro ao criar perfil:', result.error);
-          } else {
-            console.log('[AuthContext] Perfil criado com sucesso');
           }
         } catch (profileErr: any) {
-          console.log('[AuthContext] Timeout ao criar perfil, mas usuário foi criado:', profileErr.message);
         }
       }
 

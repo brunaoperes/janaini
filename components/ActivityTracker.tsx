@@ -68,7 +68,7 @@ export default function ActivityTracker() {
       const elapsed = Date.now() - lastActivity;
 
       if (elapsed > INACTIVITY_TIMEOUT) {
-        console.log('Sessão expirada por inatividade após 4 horas');
+        // Sessão expirada por inatividade
         logoutByInactivity();
       }
     } catch (error) {

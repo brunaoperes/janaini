@@ -303,7 +303,6 @@ export async function processarEnvio(mensagemId: number, telefone: string, mensa
       })
       .eq('id', mensagemId);
 
-    console.log(`[WhatsApp] Mensagem ${mensagemId} enviada com sucesso para ${telefone}`);
     return true;
   } catch (error: any) {
     console.error(`[WhatsApp] Erro ao enviar mensagem ${mensagemId}:`, error.message);
@@ -326,14 +325,12 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
   const telefoneNormalizado = normalizarTelefone(params.clienteTelefone);
 
   if (!validarTelefone(telefoneNormalizado)) {
-    console.warn(`[WhatsApp] Telefone inválido para cliente ${params.clienteNome}: ${params.clienteTelefone}`);
     return;
   }
 
   // Verificar se template está ativo antes de enviar
   const templateAtivo = await verificarTemplateAtivo(params.tipo);
   if (!templateAtivo) {
-    console.log(`[WhatsApp] Template '${params.tipo}' está desativado, mensagem não será enviada`);
     return;
   }
 
@@ -350,7 +347,6 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
     .limit(1);
 
   if (duplicada && duplicada.length > 0) {
-    console.log(`[WhatsApp] Mensagem duplicada para ${telefoneNormalizado} (${params.tipo}), ignorando`);
     return;
   }
 
@@ -372,7 +368,6 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
   if (error) {
     // Duplicidade (UNIQUE constraint) — ignorar silenciosamente
     if (error.code === '23505') {
-      console.log(`[WhatsApp] Mensagem ${params.tipo} já existe para agendamento ${params.agendamentoId}`);
       return;
     }
     console.error(`[WhatsApp] Erro ao agendar mensagem:`, error);

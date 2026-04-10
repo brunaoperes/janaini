@@ -455,14 +455,20 @@ export default function LancamentosPage() {
       };
 
       // Verificar conflito de horário para o mesmo colaborador
-      if (formData.hora_inicio && formData.hora_fim) {
+      if (formData.hora_inicio) {
         const [hI, mI] = formData.hora_inicio.split(':').map(Number);
-        const [hF, mF] = formData.hora_fim.split(':').map(Number);
         const inicioMinutos = hI * 60 + mI;
-        const fimMinutos = hF * 60 + mF;
+        let fimMinutos = inicioMinutos + 60; // default 1h
+        if (formData.hora_fim) {
+          const [hF, mF] = formData.hora_fim.split(':').map(Number);
+          fimMinutos = hF * 60 + mF;
+          if (fimMinutos <= inicioMinutos) fimMinutos = inicioMinutos + 60;
+        }
 
         const diaFiltro = formData.data; // YYYY-MM-DD
-        const { data: existentes } = await supabase
+
+        // Checar lançamentos existentes
+        const { data: lancExistentes } = await supabase
           .from('lancamentos')
           .select('id, hora_inicio, hora_fim, clientes(nome)')
           .eq('colaborador_id', validationData.colaborador_id)
@@ -470,19 +476,51 @@ export default function LancamentosPage() {
           .lte('data', `${diaFiltro}T23:59:59`)
           .neq('status', 'cancelado');
 
-        const conflito = existentes?.find((ag: any) => {
+        // Checar agendamentos existentes também
+        const { data: agendExistentes } = await supabase
+          .from('agendamentos')
+          .select('id, data_hora, duracao_minutos, clientes(nome)')
+          .eq('colaborador_id', validationData.colaborador_id)
+          .gte('data_hora', `${diaFiltro}T00:00:00`)
+          .lte('data_hora', `${diaFiltro}T23:59:59`)
+          .neq('status', 'cancelado');
+
+        // Verificar conflito com lançamentos
+        const conflitoLanc = lancExistentes?.find((ag: any) => {
           if (editingId && ag.id === editingId) return false;
-          if (!ag.hora_inicio || !ag.hora_fim) return false;
+          if (!ag.hora_inicio) return false;
           const [aHI, aMI] = ag.hora_inicio.split(':').map(Number);
-          const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
           const aInicio = aHI * 60 + aMI;
-          const aFim = aHF * 60 + aMF;
+          let aFim = aInicio + 60;
+          if (ag.hora_fim) {
+            const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
+            aFim = aHF * 60 + aMF;
+            if (aFim <= aInicio) aFim = aInicio + 60;
+          }
           return inicioMinutos < aFim && fimMinutos > aInicio;
         });
 
-        if (conflito) {
-          const clienteNome = (conflito as any).clientes?.nome || 'outro cliente';
-          toast.error(`Conflito de horário: este colaborador já tem lançamento das ${conflito.hora_inicio} às ${conflito.hora_fim} com ${clienteNome}`);
+        if (conflitoLanc) {
+          const clienteNome = (conflitoLanc as any).clientes?.nome || 'outro cliente';
+          toast.error(`Conflito de horário: colaborador já tem lançamento das ${conflitoLanc.hora_inicio} às ${conflitoLanc.hora_fim || '?'} com ${clienteNome}`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Verificar conflito com agendamentos
+        const conflitoAgend = agendExistentes?.find((ag: any) => {
+          const horMatch = ag.data_hora?.match?.(/[T ](\d{2}):(\d{2})/);
+          if (!horMatch) return false;
+          const aInicio = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
+          const aFim = aInicio + (ag.duracao_minutos || 60);
+          return inicioMinutos < aFim && fimMinutos > aInicio;
+        });
+
+        if (conflitoAgend) {
+          const clienteNome = (conflitoAgend as any).clientes?.nome || 'outro cliente';
+          const horMatch = conflitoAgend.data_hora?.match?.(/[T ](\d{2}):(\d{2})/);
+          const horStr = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '?';
+          toast.error(`Conflito de horário: colaborador já tem agendamento às ${horStr} com ${clienteNome}`);
           setIsSubmitting(false);
           return;
         }
@@ -868,7 +906,7 @@ export default function LancamentosPage() {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 min-w-[120px] px-4 py-4 text-sm font-medium transition-all relative ${
+                  className={`flex-1 md:min-w-[120px] px-4 py-4 text-sm font-medium transition-all relative ${
                     activeTab === tab.key
                       ? 'text-purple-600 bg-purple-50'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
@@ -1172,7 +1210,7 @@ export default function LancamentosPage() {
                     onChange={(e) => setFiltroServico(e.target.value)}
                     className="w-full px-4 py-2 mb-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
                   />
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl">
                     {servicos
                       .filter(s => s.nome.toLowerCase().includes(filtroServico.toLowerCase()))
                       .map(s => (

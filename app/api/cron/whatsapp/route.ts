@@ -59,7 +59,6 @@ export async function GET(request: Request) {
               .from('mensagens_whatsapp')
               .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })
               .eq('id', msg.id);
-            console.log(`[Cron/WhatsApp] Mensagem ${msg.id} cancelada: agendamento já passou`);
             continue;
           }
         }
@@ -119,13 +118,11 @@ export async function GET(request: Request) {
         const colaborador = agendamento.colaboradores as any;
 
         if (!cliente?.telefone) {
-          console.warn(`[Cron/WhatsApp] Cliente ${cliente?.nome} sem telefone, pulando pós-venda`);
           continue;
         }
 
         const telefoneNorm = normalizarTelefone(cliente.telefone);
         if (!validarTelefone(telefoneNorm)) {
-          console.warn(`[Cron/WhatsApp] Telefone inválido: ${cliente.telefone}`);
           continue;
         }
 
@@ -210,7 +207,6 @@ export async function GET(request: Request) {
       for (const colab of colaboradores) {
         const telefoneNorm = normalizarTelefone(colab.telefone!);
         if (!validarTelefone(telefoneNorm)) {
-          console.warn(`[Cron/WhatsApp] Telefone inválido colaborador ${colab.nome}: ${colab.telefone}`);
           continue;
         }
 
@@ -253,14 +249,12 @@ export async function GET(request: Request) {
         }
 
         if (!ativo) {
-          console.log(`[Cron/WhatsApp] Template agenda_colaborador desativado`);
           continue;
         }
 
         try {
           await enviarMensagemZApi(telefoneNorm, mensagem);
           resultado.agenda_colaboradores.enviados++;
-          console.log(`[Cron/WhatsApp] Agenda enviada para ${colab.nome}`);
         } catch (err: any) {
           resultado.agenda_colaboradores.erros++;
           console.error(`[Cron/WhatsApp] Erro ao enviar agenda para ${colab.nome}:`, err.message);
@@ -270,8 +264,6 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[Cron/WhatsApp] Erro no passo D (agenda colaboradores):', error);
   }
-
-  console.log('[Cron/WhatsApp] Resultado:', JSON.stringify(resultado));
 
   return NextResponse.json({
     success: true,

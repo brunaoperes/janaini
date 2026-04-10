@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { requireAdmin, isAuthError } from '@/lib/api-auth';
 
 // Usar service role key para bypass RLS
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -9,6 +10,10 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 
 export async function POST(request: Request) {
   try {
+    // Verificar autenticação admin
+    const authResult = await requireAdmin();
+    if (isAuthError(authResult)) return authResult;
+
     // Verificar se tem a service key
     if (!supabaseServiceKey) {
       return NextResponse.json(

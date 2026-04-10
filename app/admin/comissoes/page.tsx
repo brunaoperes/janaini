@@ -347,7 +347,7 @@ export default function ComissoesPage() {
 
                 {/* Detalhes */}
                 <div className="p-6">
-                  <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                     <div className="text-center">
                       <p className="text-sm text-gray-500">Bruto</p>
                       <p className="text-lg font-semibold text-blue-600">R$ {comissao.total_bruto.toFixed(2)}</p>

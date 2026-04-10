@@ -149,7 +149,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setIsLogin(true)}
-            className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 py-3 md:py-2 rounded-md text-sm font-medium transition-all ${
               isLogin
                 ? 'bg-white text-purple-600 shadow'
                 : 'text-gray-500 hover:text-gray-700'
@@ -160,7 +160,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setIsLogin(false)}
-            className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 py-3 md:py-2 rounded-md text-sm font-medium transition-all ${
               !isLogin
                 ? 'bg-white text-purple-600 shadow'
                 : 'text-gray-500 hover:text-gray-700'

@@ -62,8 +62,6 @@ export async function POST(request: Request) {
       observacoes,
     } = body;
 
-    console.log('[API/agendamentos] Criando agendamento:', { colaborador_id, cliente_id, data_hora });
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -178,8 +176,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: lancError.message }, { status: 500 });
     }
 
-    console.log('[API/agendamentos] Lançamento criado:', lancamento.id);
-
     // 2. Criar agendamento vinculado ao lançamento
     const { data: agendamento, error: agendError } = await supabase
       .from('agendamentos')
@@ -203,8 +199,6 @@ export async function POST(request: Request) {
       await supabase.from('lancamentos').delete().eq('id', lancamento.id);
       return NextResponse.json({ error: agendError.message }, { status: 500 });
     }
-
-    console.log('[API/agendamentos] Agendamento criado:', agendamento.id);
 
     // Registrar auditoria
     const authUser = await getAuthUser(supabase);
@@ -244,7 +238,6 @@ export async function POST(request: Request) {
 
           if (diffHoras < 0) {
             // Agendamento no passado: só enviar pós-venda (avaliação)
-            console.log('[WhatsApp] Agendamento no passado, enviando apenas pos-venda');
             await agendarOuEnviarMensagem({
               ...paramsBase,
               tipo: 'pos_venda',
@@ -291,10 +284,8 @@ export async function POST(request: Request) {
             }
           }
         } else {
-          console.warn(`[WhatsApp] Telefone inválido: ${clienteData.telefone}`);
         }
       } else {
-        console.warn('[WhatsApp] Cliente sem telefone ou colaborador não encontrado');
       }
     } catch (whatsappError) {
       console.error('[WhatsApp] Erro ao disparar mensagens (não afeta agendamento):', whatsappError);

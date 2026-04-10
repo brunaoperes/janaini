@@ -237,7 +237,7 @@ const ReadableData = ({ data, title, colorClass }: { data: Record<string, any>; 
       <div className="mt-3 space-y-2">
         {entries.map(([key, value]) => (
           <div key={key} className="flex items-start gap-3 py-2 border-b border-white/50 last:border-0">
-            <span className="text-sm font-medium text-gray-600 min-w-[140px]">
+            <span className="text-sm font-medium text-gray-600 md:min-w-[140px]">
               {FIELD_LABELS[key] || key}:
             </span>
             <span className="text-sm text-gray-900 flex-1">

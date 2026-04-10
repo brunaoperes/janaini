@@ -207,7 +207,7 @@ export default function FiadosPage() {
         {/* Filtros */}
         <div className="bg-white rounded-2xl shadow-lg p-4 mb-6">
           <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[150px]">
+            <div className="flex-1 md:min-w-[150px]">
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
                 value={filtroStatus}
@@ -219,7 +219,7 @@ export default function FiadosPage() {
                 <option value="todos">Todos</option>
               </select>
             </div>
-            <div className="flex-1 min-w-[150px]">
+            <div className="flex-1 md:min-w-[150px]">
               <label className="block text-sm font-medium text-gray-700 mb-1">Colaborador</label>
               <select
                 value={filtroColaborador}

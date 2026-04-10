@@ -23,7 +23,6 @@ function addNoCacheHeaders(response: NextResponse) {
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  console.log(`[Middleware] ${request.method} ${pathname}`);
 
   // Criar response base
   let supabaseResponse = NextResponse.next({
@@ -60,17 +59,13 @@ export async function middleware(request: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
-  console.log(`[Middleware] Auth check - User: ${user?.email || 'null'}, Error: ${authError?.message || 'none'}`);
-
   // Verificar se é rota pública
   const isPublicRoute = PUBLIC_ROUTES.some(route => pathname.startsWith(route));
 
   // Se é rota pública
   if (isPublicRoute) {
-    console.log(`[Middleware] Rota pública: ${pathname}`);
     // Se já está logado e tenta acessar /login, redireciona para home
     if (pathname === '/login' && user) {
-      console.log(`[Middleware] Usuário já logado, redirecionando para home`);
       const url = request.nextUrl.clone();
       url.pathname = '/';
       const redirectResponse = NextResponse.redirect(url);
@@ -81,7 +76,6 @@ export async function middleware(request: NextRequest) {
 
   // Se não está autenticado, redireciona para login
   if (!user) {
-    console.log(`[Middleware] Não autenticado, redirecionando para /login`);
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     const redirectResponse = NextResponse.redirect(url);
@@ -92,8 +86,6 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = ADMIN_ROUTES.some(route => pathname.startsWith(route));
 
   if (isAdminRoute) {
-    console.log(`[Middleware] Rota admin: ${pathname}, verificando permissão...`);
-
     // Buscar perfil do usuário para verificar role
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -101,18 +93,14 @@ export async function middleware(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
-    console.log(`[Middleware] Profile: ${JSON.stringify(profile)}, Error: ${error?.message || 'none'}`);
-
     // Se não encontrou perfil ou não é admin, redirecionar para acesso negado
     if (error || !profile || profile.role !== 'admin') {
-      console.log(`[Middleware] Acesso negado para ${user.email}`);
       const url = request.nextUrl.clone();
       url.pathname = '/acesso-negado';
       const redirectResponse = NextResponse.redirect(url);
       return addNoCacheHeaders(redirectResponse);
     }
 
-    console.log(`[Middleware] Acesso admin permitido para ${user.email}`);
   }
 
   return addNoCacheHeaders(supabaseResponse);

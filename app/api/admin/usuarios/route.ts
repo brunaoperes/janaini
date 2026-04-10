@@ -193,8 +193,6 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log('[API Usuarios] Usuário criado com sucesso:', email);
-
     return jsonResponse({
       success: true,
       message: 'Usuário criado com sucesso',
@@ -229,8 +227,6 @@ export async function PUT(request: Request) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    console.log('[API Usuarios] Action:', action, 'Role:', role, 'UserId:', userId);
-
     // Ação específica: atualizar role (permissão) - VERIFICAR PRIMEIRO
     if (action === 'updateRole') {
       if (!role || (role !== 'admin' && role !== 'user')) {
@@ -242,8 +238,6 @@ export async function PUT(request: Request) {
         return errorResponse('Você não pode remover sua própria permissão de administrador', 400);
       }
 
-      console.log('[API Usuarios] Atualizando role para:', role);
-
       const { error } = await supabaseAdmin
         .from('profiles')
         .update({ role })
@@ -254,7 +248,6 @@ export async function PUT(request: Request) {
         return errorResponse(error.message, 500);
       }
 
-      console.log('[API Usuarios] Role atualizado com sucesso');
       return jsonResponse({ success: true, message: 'Permissão atualizada' });
     }
 
@@ -287,7 +280,6 @@ export async function PUT(request: Request) {
         return errorResponse(authError.message, 500);
       }
 
-      console.log('[API Usuarios] Status do usuário atualizado:', ativo ? 'ativo' : 'desativado');
       return jsonResponse({ success: true, message: ativo ? 'Usuário ativado' : 'Usuário desativado' });
     }
 
