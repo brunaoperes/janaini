@@ -126,6 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user && !profileLoaded) {
           profileLoaded = true;
           await loadProfile(session.user.id, session.user.email);
+          // Login funcionou, limpar flag de limpeza para futuras sessoes
+          try { sessionStorage.removeItem('auth_cleaned'); } catch {}
         }
       } catch (err) {
         // Retry uma vez em caso de timeout

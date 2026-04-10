@@ -210,8 +210,8 @@ export default function LancamentosPage() {
     };
   }, [lancamentos, filtroColaborador]);
 
-  async function loadData(retryCount = 0) {
-    setLoading(true);
+  async function loadData(retryCount = 0, showLoading = true) {
+    if (showLoading) setLoading(true);
 
     try {
       // Carregar todos os lançamentos (sem filtro de data na API)
@@ -228,7 +228,7 @@ export default function LancamentosPage() {
       if (!response.ok) {
         if (retryCount < 2) {
           await new Promise(resolve => setTimeout(resolve, 500));
-          return loadData(retryCount + 1);
+          return loadData(retryCount + 1, false);
         }
         throw new Error(`Erro ao carregar dados (status: ${response.status})`);
       }
@@ -648,7 +648,7 @@ export default function LancamentosPage() {
       toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgExtra);
       setShowModal(false);
       resetForm();
-      loadData();
+      loadData(0, false);
 
     } catch (error) {
       console.error('Erro:', error);
@@ -777,7 +777,7 @@ export default function LancamentosPage() {
       }
 
       toast.success('Excluído com sucesso!');
-      loadData();
+      loadData(0, false);
     } catch (error) {
       console.error('Erro ao excluir:', error);
       toast.error('Erro ao excluir');
