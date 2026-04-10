@@ -147,7 +147,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await loadProfile(session.user.id, session.user.email);
           }
         } catch {
-          console.log('AuthContext: Retry também falhou');
+          console.log('AuthContext: Retry também falhou, limpando sessão corrompida...');
+          // Limpar storage corrompido e redirecionar para login
+          const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
+          if (!alreadyCleaned) {
+            sessionStorage.setItem('auth_cleaned', '1');
+            // Limpar dados do Supabase no localStorage
+            Object.keys(localStorage).forEach(key => {
+              if (key.startsWith('sb-') || key.includes('supabase')) {
+                localStorage.removeItem(key);
+              }
+            });
+            window.location.href = '/login';
+            return;
+          }
         }
       } finally {
         if (isMounted) {
