@@ -618,7 +618,7 @@ export default function LancamentosPage() {
           console.error('Erro ao atualizar agendamento:', agendError);
         }
       } else {
-        const { error: agendError } = await supabase
+        const { data: agendCriado, error: agendError } = await supabase
           .from('agendamentos')
           .insert({
             cliente_id: validationData.cliente_id,
@@ -630,10 +630,25 @@ export default function LancamentosPage() {
             lancamento_id: lancamento.id,
             status: statusFinal,
             colaboradores_ids: colaboradoresIdsAgenda,
-          });
+          })
+          .select('id')
+          .single();
 
         if (agendError) {
           console.error('Erro ao criar agendamento:', agendError);
+        }
+
+        // Disparar WhatsApp para o agendamento criado
+        if (agendCriado?.id) {
+          try {
+            await fetch('/api/agendamentos/whatsapp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ agendamentoId: agendCriado.id }),
+            });
+          } catch {
+            // Não bloquear o lançamento se WhatsApp falhar
+          }
         }
       }
 

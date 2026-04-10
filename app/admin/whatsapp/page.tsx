@@ -418,7 +418,7 @@ export default function AdminWhatsAppPage() {
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Fluxo de Automacao</h2>
-                <p className="text-xs text-gray-400 mt-1">Mensagens sao disparadas apenas pela Agenda. Lancamentos diretos nao enviam mensagem.</p>
+                <p className="text-xs text-gray-400 mt-1">Mensagens sao disparadas pela Agenda e pela tela de Lancamentos automaticamente.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0">
@@ -533,8 +533,8 @@ export default function AdminWhatsAppPage() {
                   <p className="text-gray-600"><span className="font-medium text-gray-800">Retry automatico:</span> Mensagens com erro sao reenviadas ate 3 vezes</p>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
-                  <span className="text-amber-500 mt-0.5">!</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Apenas Agenda:</span> Lancamentos criados direto pela tela de Lancamentos nao disparam mensagens WhatsApp</p>
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Agenda e Lancamentos:</span> Mensagens sao disparadas tanto pela Agenda quanto pela tela de Lancamentos</p>
                 </div>
               </div>
             </div>
