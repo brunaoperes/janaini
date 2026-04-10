@@ -412,7 +412,7 @@ export default function LancamentosPage() {
       }
 
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
-      const dataCompleta = `${formData.data}T${horaInicioFormatada}`;
+      const dataCompleta = `${formData.data} ${horaInicioFormatada}`;
 
       const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
 
@@ -455,7 +455,12 @@ export default function LancamentosPage() {
       };
 
       // Verificar conflito de horário para o mesmo colaborador
-      if (formData.hora_inicio) {
+      if (!formData.hora_inicio) {
+        toast.error('Horário de início é obrigatório');
+        setIsSubmitting(false);
+        return;
+      }
+      {
         const [hI, mI] = formData.hora_inicio.split(':').map(Number);
         const inicioMinutos = hI * 60 + mI;
         let fimMinutos = inicioMinutos + 60; // default 1h
@@ -472,8 +477,8 @@ export default function LancamentosPage() {
           .from('lancamentos')
           .select('id, hora_inicio, hora_fim, clientes(nome)')
           .eq('colaborador_id', validationData.colaborador_id)
-          .gte('data', `${diaFiltro}T00:00:00`)
-          .lte('data', `${diaFiltro}T23:59:59`)
+          .gte('data', `${diaFiltro} 00:00:00`)
+          .lte('data', `${diaFiltro} 23:59:59`)
           .neq('status', 'cancelado');
 
         // Checar agendamentos existentes também
@@ -481,8 +486,8 @@ export default function LancamentosPage() {
           .from('agendamentos')
           .select('id, data_hora, duracao_minutos, clientes(nome)')
           .eq('colaborador_id', validationData.colaborador_id)
-          .gte('data_hora', `${diaFiltro}T00:00:00`)
-          .lte('data_hora', `${diaFiltro}T23:59:59`)
+          .gte('data_hora', `${diaFiltro} 00:00:00`)
+          .lte('data_hora', `${diaFiltro} 23:59:59`)
           .neq('status', 'cancelado');
 
         // Verificar conflito com lançamentos
@@ -627,6 +632,8 @@ export default function LancamentosPage() {
             descricao_servico: servicosNomes,
             duracao_minutos: duracaoTotal,
             valor_estimado: validationData.valor_total,
+            hora_inicio: formData.hora_inicio,
+            hora_fim: formData.hora_fim,
             lancamento_id: lancamento.id,
             status: statusFinal,
             colaboradores_ids: colaboradoresIdsAgenda,

@@ -186,13 +186,14 @@ export async function GET(request: Request) {
   // PASSO D: Enviar agenda do dia para colaboradores (manhã)
   // ========================================================================
   try {
-    // Calcular "amanhã" em BRT
-    // Primeiro: converter agora para BRT (UTC-3), pegar a data, somar 1 dia
+    // Calcular "amanhã" em BRT de forma confiável
     const agora = new Date();
-    const agoraBRT = new Date(agora.getTime() - 3 * 60 * 60 * 1000); // UTC-3
-    const amanha = new Date(agoraBRT);
-    amanha.setUTCDate(amanha.getUTCDate() + 1);
-    const diaStr = amanha.toISOString().split('T')[0]; // YYYY-MM-DD
+    // Usar toLocaleDateString para obter a data atual em BRT
+    const hojeBRTStr = agora.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    // Somar 1 dia
+    const hojeBRT = new Date(hojeBRTStr + 'T12:00:00'); // noon to avoid DST issues
+    hojeBRT.setDate(hojeBRT.getDate() + 1);
+    const diaStr = hojeBRT.toISOString().split('T')[0]; // YYYY-MM-DD
 
     // Buscar colaboradores com telefone
     const { data: colaboradores } = await supabase
@@ -215,8 +216,8 @@ export async function GET(request: Request) {
           .from('agendamentos')
           .select('data_hora, descricao_servico, clientes(nome)')
           .eq('colaborador_id', colab.id)
-          .gte('data_hora', `${diaStr}T00:00:00`)
-          .lte('data_hora', `${diaStr}T23:59:59`)
+          .gte('data_hora', `${diaStr} 00:00:00`)
+          .lte('data_hora', `${diaStr} 23:59:59`)
           .neq('status', 'cancelado')
           .order('data_hora', { ascending: true });
 
@@ -254,8 +255,7 @@ export async function GET(request: Request) {
 
         try {
           // Buscar pendentes do dia atual (hoje em BRT)
-          const hojeBRT = new Date(new Date().getTime() - 3 * 60 * 60 * 1000);
-          const hojeStr = hojeBRT.toISOString().split('T')[0];
+          const hojeStr = agora.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
           const { data: pendentesHoje } = await supabase
             .from('agendamentos')

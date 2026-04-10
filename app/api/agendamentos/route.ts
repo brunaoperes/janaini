@@ -201,6 +201,8 @@ export async function POST(request: Request) {
         descricao_servico,
         duracao_minutos,
         valor_estimado,
+        hora_inicio: hora_inicio || null,
+        hora_fim: hora_fim || hora_inicio || null,
         lancamento_id: lancamento.id,
         status: 'pendente',
         observacoes: observacoes || null,
