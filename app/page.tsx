@@ -74,6 +74,15 @@ export default function Dashboard() {
   const [loadingCliente, setLoadingCliente] = useState(false);
   const [modalHoje, setModalHoje] = useState(false);
   const [modalMes, setModalMes] = useState(false);
+  const [modalRelatorio, setModalRelatorio] = useState(false);
+  const [relDataInicio, setRelDataInicio] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [relDataFim, setRelDataFim] = useState(() => new Date().toISOString().split('T')[0]);
+  const [relLancamentos, setRelLancamentos] = useState<any[]>([]);
+  const [relLoading, setRelLoading] = useState(false);
 
   // Estado do filtro do gráfico
   const [periodoGrafico, setPeriodoGrafico] = useState<PeriodoGrafico>('30');
@@ -376,6 +385,17 @@ export default function Dashboard() {
             </div>
           </Link>
         </div>
+
+        {/* Botão Gerar Relatório */}
+        <button
+          onClick={() => setModalRelatorio(true)}
+          className="w-full mb-8 p-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:from-purple-700 hover:to-pink-700 transition-all hover:scale-[1.02] flex items-center justify-center gap-3"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          {data?.isAdmin ? 'Gerar Relatório' : 'Gerar Meu Relatório'}
+        </button>
 
         {/* Cards de Indicadores Financeiros */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -1119,6 +1139,164 @@ export default function Dashboard() {
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Gerar Relatório */}
+      {modalRelatorio && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setModalRelatorio(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-5 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <h3 className="text-xl font-bold text-white">{data?.isAdmin ? 'Gerar Relatório' : 'Meu Relatório'}</h3>
+                </div>
+                <button onClick={() => setModalRelatorio(false)} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Data Início</label>
+                  <input
+                    type="date"
+                    value={relDataInicio}
+                    onChange={e => setRelDataInicio(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Data Fim</label>
+                  <input
+                    type="date"
+                    value={relDataFim}
+                    onChange={e => setRelDataFim(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  setRelLoading(true);
+                  try {
+                    const params = new URLSearchParams({
+                      startDate: relDataInicio,
+                      endDate: relDataFim,
+                      colaboradorId: data?.colaboradorIdFiltro || 'todos',
+                    });
+                    const res = await fetch(`/api/relatorios?${params}`);
+                    const result = await res.json();
+                    setRelLancamentos((result.lancamentos || []).filter((l: any) => l.status === 'concluido'));
+                  } catch {
+                    setRelLancamentos([]);
+                  } finally {
+                    setRelLoading(false);
+                  }
+                }}
+                disabled={relLoading}
+                className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                {relLoading ? 'Buscando...' : 'Buscar Lançamentos'}
+              </button>
+
+              {relLancamentos.length > 0 && (
+                <>
+                  <div className="bg-purple-50 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-purple-700 font-medium">{relLancamentos.length} lançamento(s) concluído(s)</span>
+                      <span className="text-xl font-bold text-purple-700">
+                        R$ {relLancamentos.reduce((s: number, l: any) => s + (l.valor_total || 0), 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-purple-600">
+                      Comissão: R$ {relLancamentos.reduce((s: number, l: any) => s + (l.comissao_colaborador || 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+
+                  {/* Tabela resumida */}
+                  <div className="max-h-48 overflow-y-auto border rounded-xl">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Data</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Cliente</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Valor</th>
+                          <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">Comissão</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {relLancamentos.map((l: any) => (
+                          <tr key={l.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-600">
+                              {(() => { const m = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}` : '-'; })()}
+                            </td>
+                            <td className="px-3 py-2 text-gray-800">{l.clientes?.nome || l.cliente?.nome || '-'}</td>
+                            <td className="px-3 py-2 text-right font-medium">R$ {l.valor_total?.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right text-purple-600 font-medium">R$ {l.comissao_colaborador?.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => {
+                        const dados: LancamentoExport[] = relLancamentos.map((l: any) => ({
+                          data: (() => { const m = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '-'; })(),
+                          colaboradora: l.colaboradores?.nome || l.colaborador?.nome || '-',
+                          cliente: l.clientes?.nome || l.cliente?.nome || '-',
+                          valor_total: l.valor_total,
+                          forma_pagamento: l.forma_pagamento?.replace(/_/g, ' ') || 'Pendente',
+                          comissao_colaborador: l.comissao_colaborador || 0,
+                          comissao_salao: l.comissao_salao || 0,
+                        }));
+                        exportarLancamentosParaPDF(dados, `relatorio-${relDataInicio}-a-${relDataFim}`);
+                      }}
+                      className="flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      Baixar PDF
+                    </button>
+                    <button
+                      onClick={() => {
+                        const dados: LancamentoExport[] = relLancamentos.map((l: any) => ({
+                          data: (() => { const m = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '-'; })(),
+                          colaboradora: l.colaboradores?.nome || l.colaborador?.nome || '-',
+                          cliente: l.clientes?.nome || l.cliente?.nome || '-',
+                          valor_total: l.valor_total,
+                          forma_pagamento: l.forma_pagamento?.replace(/_/g, ' ') || 'Pendente',
+                          comissao_colaborador: l.comissao_colaborador || 0,
+                          comissao_salao: l.comissao_salao || 0,
+                        }));
+                        exportarLancamentosParaExcel(dados, `relatorio-${relDataInicio}-a-${relDataFim}`);
+                      }}
+                      className="flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Baixar Excel
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {relLancamentos.length === 0 && !relLoading && (
+                <p className="text-center text-gray-400 py-4">Selecione o período e clique em "Buscar"</p>
+              )}
             </div>
           </div>
         </div>
