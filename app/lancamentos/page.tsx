@@ -454,6 +454,40 @@ export default function LancamentosPage() {
           : null,
       };
 
+      // Verificar conflito de horário para o mesmo colaborador
+      if (formData.hora_inicio && formData.hora_fim) {
+        const [hI, mI] = formData.hora_inicio.split(':').map(Number);
+        const [hF, mF] = formData.hora_fim.split(':').map(Number);
+        const inicioMinutos = hI * 60 + mI;
+        const fimMinutos = hF * 60 + mF;
+
+        const diaFiltro = formData.data; // YYYY-MM-DD
+        const { data: existentes } = await supabase
+          .from('lancamentos')
+          .select('id, hora_inicio, hora_fim, clientes(nome)')
+          .eq('colaborador_id', validationData.colaborador_id)
+          .gte('data', `${diaFiltro}T00:00:00`)
+          .lte('data', `${diaFiltro}T23:59:59`)
+          .neq('status', 'cancelado');
+
+        const conflito = existentes?.find((ag: any) => {
+          if (editingId && ag.id === editingId) return false;
+          if (!ag.hora_inicio || !ag.hora_fim) return false;
+          const [aHI, aMI] = ag.hora_inicio.split(':').map(Number);
+          const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
+          const aInicio = aHI * 60 + aMI;
+          const aFim = aHF * 60 + aMF;
+          return inicioMinutos < aFim && fimMinutos > aInicio;
+        });
+
+        if (conflito) {
+          const clienteNome = (conflito as any).clientes?.nome || 'outro cliente';
+          setFormErrors(`Conflito de horário: este colaborador já tem lançamento das ${conflito.hora_inicio} às ${conflito.hora_fim} com ${clienteNome}`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       let lancamento;
       let lancError;
 
