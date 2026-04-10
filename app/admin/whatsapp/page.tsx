@@ -124,6 +124,9 @@ export default function AdminWhatsAppPage() {
   // Tab ativa
   const [tabAtiva, setTabAtiva] = useState<TabType>('painel');
 
+  // Mensagem selecionada para visualizar
+  const [mensagemSelecionada, setMensagemSelecionada] = useState<MensagemWhatsApp | null>(null);
+
   // Mensagem de teste
   const [testeTelefone, setTesteTelefone] = useState('');
   const [testeMensagem, setTesteMensagem] = useState('Ola! Esta e uma mensagem de teste do sistema NaviBelle. Se voce recebeu, o WhatsApp esta funcionando corretamente! ✅');
@@ -687,7 +690,7 @@ export default function AdminWhatsAppPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {mensagens.map((msg) => (
-                          <tr key={msg.id} className="hover:bg-gray-50/50 transition-colors">
+                          <tr key={msg.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setMensagemSelecionada(msg)}>
                             <td className="px-4 py-3 text-sm text-gray-500">
                               {formatarDataHora(msg.created_at)}
                             </td>
@@ -831,6 +834,100 @@ export default function AdminWhatsAppPage() {
           </div>
         )}
       </div>
+
+      {/* ============================================================ */}
+      {/* MODAL DE VISUALIZAÇÃO DA MENSAGEM */}
+      {/* ============================================================ */}
+      {mensagemSelecionada && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setMensagemSelecionada(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-modal-in"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className={`bg-gradient-to-r ${TIPO_GRADIENTS[mensagemSelecionada.tipo] || 'from-gray-400 to-gray-600'} px-6 py-4 rounded-t-2xl`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{TIPO_ICONS[mensagemSelecionada.tipo]}</span>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">
+                      {TIPO_LABELS[mensagemSelecionada.tipo] || mensagemSelecionada.tipo}
+                    </h3>
+                    <p className="text-white/70 text-sm">{mensagemSelecionada.clientes?.nome || 'Cliente'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMensagemSelecionada(null)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Info */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Telefone</p>
+                  <p className="font-mono text-gray-700">{mensagemSelecionada.telefone_destino}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Status</p>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[mensagemSelecionada.status]?.bg || 'bg-gray-100'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${STATUS_STYLES[mensagemSelecionada.status]?.dot || 'bg-gray-400'}`} />
+                    {mensagemSelecionada.status}
+                  </span>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Criado em</p>
+                  <p className="text-gray-700">{formatarDataHora(mensagemSelecionada.created_at)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Enviado em</p>
+                  <p className="text-gray-700">{mensagemSelecionada.data_envio ? formatarDataHora(mensagemSelecionada.data_envio) : '-'}</p>
+                </div>
+              </div>
+
+              {/* Erro */}
+              {mensagemSelecionada.erro_mensagem && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-600 text-xs font-medium mb-1">Erro</p>
+                  <p className="text-red-700 text-sm">{mensagemSelecionada.erro_mensagem}</p>
+                </div>
+              )}
+
+              {/* Mensagem estilo WhatsApp */}
+              <div>
+                <p className="text-gray-500 text-xs font-medium mb-2">Mensagem enviada</p>
+                <div className="bg-[#e8e0d8] rounded-xl p-4">
+                  <div className="bg-white rounded-lg p-3 shadow-sm">
+                    <p className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">
+                      {mensagemSelecionada.mensagem}
+                    </p>
+                    <span className="text-[9px] text-gray-400 float-right mt-1">
+                      {mensagemSelecionada.data_envio ? formatarDataHora(mensagemSelecionada.data_envio) : '--:--'} {mensagemSelecionada.status === 'enviado' ? '✓✓' : '✓'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setMensagemSelecionada(null)}
+                className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* MODAL DE EDICAO */}
