@@ -50,7 +50,7 @@ interface Config {
 }
 
 const TIPO_LABELS: Record<string, string> = {
-  confirmacao: 'Confirmacao',
+  confirmacao: 'Confirmação',
   lembrete: 'Lembrete',
   pos_venda: 'Pos-Venda',
   agenda_colaborador: 'Agenda Colaborador',
@@ -133,7 +133,7 @@ export default function AdminWhatsAppPage() {
 
   // Mensagem de teste
   const [testeTelefone, setTesteTelefone] = useState('');
-  const [testeMensagem, setTesteMensagem] = useState('Ola! Esta e uma mensagem de teste do sistema NaviBelle. Se voce recebeu, o WhatsApp esta funcionando corretamente! ✅');
+  const [testeMensagem, setTesteMensagem] = useState('Olá! Esta é uma mensagem de teste do sistema NaviBelle. Se você recebeu, o WhatsApp está funcionando corretamente! ✅');
   const [enviandoTeste, setEnviandoTeste] = useState(false);
   const [testeResultado, setTesteResultado] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -246,7 +246,7 @@ export default function AdminWhatsAppPage() {
 
   async function enviarTeste() {
     if (!testeTelefone.trim()) {
-      setTesteResultado({ success: false, message: 'Digite um numero de telefone' });
+      setTesteResultado({ success: false, message: 'Digite um número de telefone' });
       return;
     }
     setEnviandoTeste(true);
@@ -259,7 +259,7 @@ export default function AdminWhatsAppPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setTesteResultado({ success: true, message: 'Mensagem enviada e entregue com sucesso! Verifique o WhatsApp.' });
+        setTesteResultado({ success: true, message: 'Mensagem enviada com sucesso! Verifique o WhatsApp.' });
         showToast('Mensagem de teste enviada!', 'success');
       } else {
         let errorMsg = data.error || 'Erro ao enviar';
@@ -270,7 +270,7 @@ export default function AdminWhatsAppPage() {
         showToast('Falha no envio', 'error');
       }
     } catch (err) {
-      setTesteResultado({ success: false, message: 'Erro de conexao com o servidor' });
+      setTesteResultado({ success: false, message: 'Erro de conexão com o servidor' });
     } finally {
       setEnviandoTeste(false);
     }
@@ -293,7 +293,7 @@ export default function AdminWhatsAppPage() {
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'painel', label: 'Painel', icon: '📊' },
     { id: 'templates', label: 'Templates', icon: '📝' },
-    { id: 'historico', label: 'Historico', icon: '📋' },
+    { id: 'historico', label: 'Histórico', icon: '📋' },
     { id: 'teste', label: 'Testar Envio', icon: '🧪' },
   ];
 
@@ -324,8 +324,8 @@ export default function AdminWhatsAppPage() {
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">WhatsApp Automatico</h1>
-              <p className="text-white/70 text-sm">Mensagens automaticas para seus clientes</p>
+              <h1 className="text-2xl font-bold text-white">WhatsApp Automático</h1>
+              <p className="text-white/70 text-sm">Mensagens automáticas para seus clientes</p>
             </div>
           </div>
 
@@ -375,10 +375,10 @@ export default function AdminWhatsAppPage() {
         {/* ============================================================ */}
         {tabAtiva === 'painel' && (
           <div className="space-y-6">
-            {/* Status da Integracao */}
+            {/* Status da Integração */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800">Status da Integracao</h2>
+                <h2 className="text-lg font-bold text-gray-800">Status da Integração</h2>
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-6">
@@ -389,7 +389,7 @@ export default function AdminWhatsAppPage() {
                   <div>
                     <p className="font-semibold text-gray-800">
                       {config?.zapi_connected ? 'Z-API Conectado' :
-                       config?.zapi_configurado ? 'Z-API Desconectado' : 'Z-API Nao Configurado'}
+                       config?.zapi_configurado ? 'Z-API Desconectado' : 'Z-API Não Configurado'}
                     </p>
                     <p className="text-sm text-gray-500">
                       {config?.zapi_connected ? 'Pronto para enviar mensagens' :
@@ -414,11 +414,11 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
-            {/* Fluxo de Automacao */}
+            {/* Fluxo de Automação */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800">Fluxo de Automacao</h2>
-                <p className="text-xs text-gray-400 mt-1">Mensagens sao disparadas pela Agenda e pela tela de Lancamentos automaticamente.</p>
+                <h2 className="text-lg font-bold text-gray-800">Fluxo de Automação</h2>
+                <p className="text-xs text-gray-400 mt-1">Mensagens são disparadas pela Agenda e pela tela de Lançamentos automaticamente.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0">
@@ -434,9 +434,9 @@ export default function AdminWhatsAppPage() {
                       <div className="w-0.5 h-8 bg-gray-200 my-1" />
                     </div>
                     <div className="pb-6">
-                      <h3 className="font-semibold text-gray-800">Confirmacao de Agendamento</h3>
+                      <h3 className="font-semibold text-gray-800">Confirmação de Agendamento</h3>
                       <p className="text-sm text-gray-500">Enviada <span className="font-medium text-emerald-600">imediatamente</span> ao criar agendamento no futuro</p>
-                      <p className="text-xs text-gray-400 mt-1">Se o horario ja passou, nao envia confirmacao (envia apenas pos-venda)</p>
+                      <p className="text-xs text-gray-400 mt-1">Se o horário já passou, não envia confirmação (envia apenas pós-venda)</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'confirmacao')?.ativo ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -459,7 +459,7 @@ export default function AdminWhatsAppPage() {
                     </div>
                     <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Lembrete ao Cliente</h3>
-                      <p className="text-sm text-gray-500">Enviado as <span className="font-medium text-sky-600">21h do dia anterior</span> ao horario agendado</p>
+                      <p className="text-sm text-gray-500">Enviado as <span className="font-medium text-sky-600">21h do dia anterior</span> ao horário agendado</p>
                       <p className="text-xs text-gray-400 mt-1">Cliente recebe lembrete na noite anterior ao atendimento</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'lembrete')?.ativo ? 'bg-sky-50 text-sky-700' : 'bg-gray-100 text-gray-500'
@@ -479,7 +479,7 @@ export default function AdminWhatsAppPage() {
                     <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Pos-Venda (Avaliacao)</h3>
                       <p className="text-sm text-gray-500">Enviado apos <span className="font-medium text-pink-600">conclusao e pagamento</span> do atendimento</p>
-                      <p className="text-xs text-gray-400 mt-1">Pede avaliacao no Google. Tambem enviado quando agendamento e criado com data passada</p>
+                      <p className="text-xs text-gray-400 mt-1">Pede avaliação no Google. Também enviado quando agendamento é criado com data passada</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'pos_venda')?.ativo ? 'bg-pink-50 text-pink-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -497,7 +497,7 @@ export default function AdminWhatsAppPage() {
                     <div>
                       <h3 className="font-semibold text-gray-800">Agenda do Colaborador</h3>
                       <p className="text-sm text-gray-500">Enviada as <span className="font-medium text-indigo-600">21h</span> para colaboradores com telefone cadastrado</p>
-                      <p className="text-xs text-gray-400 mt-1">Lista todos os agendamentos do dia seguinte. Se nao tiver nenhum, avisa que esta livre</p>
+                      <p className="text-xs text-gray-400 mt-1">Lista todos os agendamentos do dia seguinte. Se não tiver nenhum, avisa que está livre</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'agenda_colaborador')?.ativo ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -510,39 +510,39 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
-            {/* Regras e Protecoes */}
+            {/* Regras e Proteções */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800">Regras e Protecoes</h2>
+                <h2 className="text-lg font-bold text-gray-800">Regras e Proteções</h2>
               </div>
               <div className="p-6 space-y-3">
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Anti-duplicidade:</span> Mesma mensagem nao e enviada duas vezes para o mesmo telefone</p>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Anti-duplicidade:</span> Mesma mensagem não é enviada duas vezes para o mesmo telefone</p>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Horario passado:</span> Se o agendamento ja passou, envia apenas pos-venda (nao envia confirmacao/lembrete)</p>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Horário passado:</span> Se o agendamento já passou, envia apenas pós-venda (não envia confirmação/lembrete)</p>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Template desativado:</span> Se desativar um template, mensagens daquele tipo nao sao criadas</p>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Template desativado:</span> Se desativar um template, mensagens daquele tipo não são criadas</p>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Retry automatico:</span> Mensagens com erro sao reenviadas ate 3 vezes</p>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Retry automático:</span> Mensagens com erro sao reenviadas ate 3 vezes</p>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
-                  <p className="text-gray-600"><span className="font-medium text-gray-800">Agenda e Lancamentos:</span> Mensagens sao disparadas tanto pela Agenda quanto pela tela de Lancamentos</p>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Agenda e Lançamentos:</span> Mensagens são disparadas tanto pela Agenda quanto pela tela de Lançamentos</p>
                 </div>
               </div>
             </div>
 
-            {/* Configuracoes */}
+            {/* Configurações */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800">Configuracoes</h2>
+                <h2 className="text-lg font-bold text-gray-800">Configurações</h2>
               </div>
               <div className="p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -580,7 +580,7 @@ export default function AdminWhatsAppPage() {
           <div className="space-y-6">
             {/* Placeholders */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-5">
-              <h3 className="text-sm font-bold text-gray-700 mb-3">Placeholders disponiveis</h3>
+              <h3 className="text-sm font-bold text-gray-700 mb-3">Placeholders disponíveis</h3>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(PLACEHOLDERS_PREVIEW).map(([key, val]) => (
                   <span key={key} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-lg text-sm">
@@ -666,7 +666,7 @@ export default function AdminWhatsAppPage() {
                     className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-green-200 focus:border-green-300"
                   >
                     <option value="todos">Todos</option>
-                    <option value="confirmacao">Confirmacao</option>
+                    <option value="confirmacao">Confirmação</option>
                     <option value="lembrete">Lembrete</option>
                     <option value="pos_venda">Pos-Venda</option>
                   </select>
@@ -719,7 +719,7 @@ export default function AdminWhatsAppPage() {
                     </svg>
                   </div>
                   <p className="text-gray-400 font-medium">Nenhuma mensagem encontrada</p>
-                  <p className="text-gray-300 text-sm mt-1">As mensagens aparecerao aqui apos os envios</p>
+                  <p className="text-gray-300 text-sm mt-1">As mensagens aparecerão aqui após os envios</p>
                 </div>
               ) : (
                 <>
@@ -814,11 +814,11 @@ export default function AdminWhatsAppPage() {
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Enviar Mensagem de Teste</h2>
-                <p className="text-sm text-gray-500 mt-0.5">Envie uma mensagem para verificar se a integracao Z-API esta funcionando</p>
+                <p className="text-sm text-gray-500 mt-0.5">Envie uma mensagem para verificar se a integração Z-API está funcionando</p>
               </div>
               <div className="p-6 space-y-5">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Numero do WhatsApp</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Número do WhatsApp</label>
                   <input
                     type="text"
                     value={testeTelefone}
