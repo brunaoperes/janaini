@@ -43,7 +43,7 @@ export default function UsuariosPage() {
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [savingColaborador, setSavingColaborador] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ nome: '', username: '' });
+  const [editForm, setEditForm] = useState({ nome: '', username: '', email: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingRole, setSavingRole] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -290,6 +290,7 @@ export default function UsuariosPage() {
           userId: selectedUser.id,
           nome: editForm.nome,
           username: editForm.username,
+          email: editForm.email,
           action: 'updateProfile'
         })
       });
@@ -304,7 +305,7 @@ export default function UsuariosPage() {
       toast.success('Usuário atualizado com sucesso');
       setUsuarios(usuarios.map(u =>
         u.id === selectedUser.id
-          ? { ...u, nome: editForm.nome, username: editForm.username }
+          ? { ...u, nome: editForm.nome, username: editForm.username, email: editForm.email }
           : u
       ));
     } catch (err) {
@@ -314,7 +315,7 @@ export default function UsuariosPage() {
       setSavingEdit(false);
       setShowEditModal(false);
       setSelectedUser(null);
-      setEditForm({ nome: '', username: '' });
+      setEditForm({ nome: '', username: '', email: '' });
     }
   };
 
@@ -467,7 +468,7 @@ export default function UsuariosPage() {
                         <button
                           onClick={() => {
                             setSelectedUser(usuario);
-                            setEditForm({ nome: usuario.nome, username: usuario.username });
+                            setEditForm({ nome: usuario.nome, username: usuario.username, email: usuario.email });
                             setShowEditModal(true);
                           }}
                           className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
@@ -591,7 +592,7 @@ export default function UsuariosPage() {
           onClose={() => {
             setShowEditModal(false);
             setSelectedUser(null);
-            setEditForm({ nome: '', username: '' });
+            setEditForm({ nome: '', username: '', email: '' });
           }}
           title="Editar Usuário"
           size="sm"
@@ -627,11 +628,17 @@ export default function UsuariosPage() {
               <p className="text-xs text-gray-500 mt-1">Apenas letras minúsculas, números e _</p>
             </div>
 
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-sm text-gray-600">
-                <strong>Email:</strong> {selectedUser?.email}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">O email não pode ser alterado</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="email@exemplo.com"
+              />
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -640,7 +647,7 @@ export default function UsuariosPage() {
                 onClick={() => {
                   setShowEditModal(false);
                   setSelectedUser(null);
-                  setEditForm({ nome: '', username: '' });
+                  setEditForm({ nome: '', username: '', email: '' });
                 }}
                 className="flex-1"
               >

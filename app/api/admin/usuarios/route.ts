@@ -146,6 +146,17 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
+    // Verificar se username já existe
+    const { data: usernameExiste } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .limit(1);
+
+    if (usernameExiste && usernameExiste.length > 0) {
+      return errorResponse(`O username "${username}" já está em uso. Escolha outro username.`, 400);
+    }
+
     // Criar usuário no Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -282,22 +293,41 @@ export async function PUT(request: Request) {
 
     // Ação específica: atualizar dados do usuário
     if (action === 'updateProfile') {
+      const { email } = body;
       const updateData: Record<string, string> = {};
       if (nome) updateData.nome = nome;
       if (username) updateData.username = username;
 
-      if (Object.keys(updateData).length === 0) {
+      // Atualizar email no auth.users se fornecido
+      if (email) {
+        const { error: emailError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+          email,
+          email_confirm: true,
+        });
+
+        if (emailError) {
+          console.error('Erro ao atualizar email:', emailError);
+          if (emailError.message.includes('already been registered')) {
+            return errorResponse('Este email já está cadastrado por outro usuário', 400);
+          }
+          return errorResponse(emailError.message, 500);
+        }
+      }
+
+      if (Object.keys(updateData).length === 0 && !email) {
         return errorResponse('Nenhum dado para atualizar', 400);
       }
 
-      const { error } = await supabaseAdmin
-        .from('profiles')
-        .update(updateData)
-        .eq('id', userId);
+      if (Object.keys(updateData).length > 0) {
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .update(updateData)
+          .eq('id', userId);
 
-      if (error) {
-        console.error('Erro ao atualizar perfil:', error);
-        return errorResponse(error.message, 500);
+        if (error) {
+          console.error('Erro ao atualizar perfil:', error);
+          return errorResponse(error.message, 500);
+        }
       }
 
       return jsonResponse({ success: true, message: 'Perfil atualizado' });
