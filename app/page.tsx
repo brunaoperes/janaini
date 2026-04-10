@@ -6,6 +6,7 @@ import FaturamentoChart from '@/components/FaturamentoChart';
 import Header from '@/components/Header';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/contexts/AuthContext';
+import { exportarLancamentosParaPDF, exportarLancamentosParaExcel, type LancamentoExport } from '@/lib/export-utils';
 
 interface Lancamento {
   id: number;
@@ -1024,6 +1025,54 @@ export default function Dashboard() {
                 <span className="text-2xl font-bold text-purple-700">R$ {data.totalMes.toFixed(2)}</span>
               </div>
               <span className="text-sm text-purple-600">{data.lancamentosMes.length} lançamento(s)</span>
+              {data.lancamentosMes.length > 0 && (
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      const dados: LancamentoExport[] = data.lancamentosMes
+                        .filter((l: any) => l.status === 'concluido')
+                        .map((l: any) => ({
+                          data: l.data ? new Date(l.data).toLocaleDateString('pt-BR') : '-',
+                          colaboradora: l.colaboradores?.nome || '-',
+                          cliente: l.clientes?.nome || '-',
+                          valor_total: l.valor_total,
+                          forma_pagamento: l.forma_pagamento || 'Pendente',
+                          comissao_colaborador: l.comissao_colaborador || 0,
+                          comissao_salao: l.comissao_salao || 0,
+                        }));
+                      exportarLancamentosParaPDF(dados, `meu-relatorio-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => {
+                      const dados: LancamentoExport[] = data.lancamentosMes
+                        .filter((l: any) => l.status === 'concluido')
+                        .map((l: any) => ({
+                          data: l.data ? new Date(l.data).toLocaleDateString('pt-BR') : '-',
+                          colaboradora: l.colaboradores?.nome || '-',
+                          cliente: l.clientes?.nome || '-',
+                          valor_total: l.valor_total,
+                          forma_pagamento: l.forma_pagamento || 'Pendente',
+                          comissao_colaborador: l.comissao_colaborador || 0,
+                          comissao_salao: l.comissao_salao || 0,
+                        }));
+                      exportarLancamentosParaExcel(dados, `meu-relatorio-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Excel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Lista de Lançamentos */}
