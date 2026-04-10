@@ -9,7 +9,7 @@ const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
-type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador' | 'agenda_colaborador_vazia';
+type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador' | 'agenda_colaborador_vazia' | 'pendentes_colaborador';
 
 interface ZApiResponse {
   zapiMessageId?: string;
@@ -130,6 +130,12 @@ Tenha um otimo dia de trabalho! ✨`,
 Voce nao tem nenhum agendamento para amanha ({data}).
 
 Aproveite para descansar! 😊`,
+
+  pendentes_colaborador: `{nome}, voce tem {total} agendamento(s) pendente(s) de hoje que precisam ser fechados:
+
+{pendentes}
+
+Por favor, finalize esses atendimentos no sistema!`,
 };
 
 function aplicarPlaceholders(template: string, nome: string, profissional: string, dataHora: string): string {
@@ -201,6 +207,28 @@ export async function gerarMensagemAgendaColaborador(
     .replace(/\{data\}/g, data)
     .replace(/\{agenda\}/g, agendaTexto)
     .replace(/\{total\}/g, String(agendamentos.length));
+
+  return { mensagem, ativo };
+}
+
+export async function gerarMensagemPendentesColaborador(
+  nomeColaborador: string,
+  pendentes: { horario: string; cliente: string; servico: string }[]
+): Promise<{ mensagem: string; ativo: boolean }> {
+  const resultado = await buscarTemplateDoBanco('pendentes_colaborador');
+  const ativo = resultado ? resultado.ativo : true;
+  const template = resultado?.template || TEMPLATES_FALLBACK['pendentes_colaborador'];
+
+  if (pendentes.length === 0) return { mensagem: '', ativo: false };
+
+  const pendentesTexto = pendentes
+    .map((p, i) => `${i + 1}. ${p.horario} - ${p.cliente}\n   ${p.servico}`)
+    .join('\n\n');
+
+  const mensagem = template
+    .replace(/\{nome\}/g, nomeColaborador)
+    .replace(/\{pendentes\}/g, pendentesTexto)
+    .replace(/\{total\}/g, String(pendentes.length));
 
   return { mensagem, ativo };
 }

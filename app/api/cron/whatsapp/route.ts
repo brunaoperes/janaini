@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, gerarMensagemAgendaColaborador, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, gerarMensagemAgendaColaborador, gerarMensagemPendentesColaborador, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -253,7 +253,42 @@ export async function GET(request: Request) {
         }
 
         try {
-          await enviarMensagemZApi(telefoneNorm, mensagem);
+          // Buscar pendentes do dia atual (hoje em BRT)
+          const hojeBRT = new Date(new Date().getTime() - 3 * 60 * 60 * 1000);
+          const hojeStr = hojeBRT.toISOString().split('T')[0];
+
+          const { data: pendentesHoje } = await supabase
+            .from('agendamentos')
+            .select('data_hora, descricao_servico, clientes(nome)')
+            .eq('colaborador_id', colab.id)
+            .gte('data_hora', `${hojeStr} 00:00:00`)
+            .lte('data_hora', `${hojeStr} 23:59:59`)
+            .eq('status', 'pendente')
+            .order('data_hora', { ascending: true });
+
+          // Se tem pendentes, adicionar aviso na mensagem
+          let mensagemFinal = mensagem;
+
+          if (pendentesHoje && pendentesHoje.length > 0) {
+            const listaPendentes = pendentesHoje.map((p: any) => {
+              const horMatch = p.data_hora.match(/[T ](\d{2}):(\d{2})/);
+              return {
+                horario: horMatch ? `${horMatch[1]}:${horMatch[2]}` : '--:--',
+                cliente: p.clientes?.nome || 'Cliente',
+                servico: p.descricao_servico || 'Servico',
+              };
+            });
+
+            const { mensagem: msgPendentes, ativo: ativoPendentes } = await gerarMensagemPendentesColaborador(
+              colab.nome, listaPendentes
+            );
+
+            if (ativoPendentes && msgPendentes) {
+              mensagemFinal = mensagem + '\n\n---\n\n' + msgPendentes;
+            }
+          }
+
+          await enviarMensagemZApi(telefoneNorm, mensagemFinal);
           resultado.agenda_colaboradores.enviados++;
         } catch (err: any) {
           resultado.agenda_colaboradores.erros++;

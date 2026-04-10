@@ -55,6 +55,7 @@ const TIPO_LABELS: Record<string, string> = {
   pos_venda: 'Pos-Venda',
   agenda_colaborador: 'Agenda Colaborador',
   agenda_colaborador_vazia: 'Agenda Vazia',
+  pendentes_colaborador: 'Pendentes do Dia',
 };
 
 const TIPO_ICONS: Record<string, string> = {
@@ -63,6 +64,7 @@ const TIPO_ICONS: Record<string, string> = {
   pos_venda: '💖',
   agenda_colaborador: '📋',
   agenda_colaborador_vazia: '📭',
+  pendentes_colaborador: '⚠️',
 };
 
 const TIPO_GRADIENTS: Record<string, string> = {
@@ -71,6 +73,7 @@ const TIPO_GRADIENTS: Record<string, string> = {
   pos_venda: 'from-pink-400 to-rose-500',
   agenda_colaborador: 'from-indigo-400 to-indigo-600',
   agenda_colaborador_vazia: 'from-gray-400 to-gray-600',
+  pendentes_colaborador: 'from-amber-400 to-orange-500',
 };
 
 const STATUS_STYLES: Record<string, { bg: string; dot: string }> = {
@@ -86,6 +89,7 @@ const PLACEHOLDERS_PREVIEW: Record<string, string> = {
   '{horario}': '14:30',
   '{agenda}': '1. 09:00 - Ana Paula\n   Corte + Escova\n\n2. 11:00 - Beatriz\n   Coloracao',
   '{total}': '2',
+  '{pendentes}': '1. 14:00 - Maria Silva\n   Escova Progressiva\n\n2. 16:00 - Ana Paula\n   Corte',
 };
 
 function aplicarPreview(template: string): string {
