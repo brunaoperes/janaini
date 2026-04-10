@@ -482,7 +482,7 @@ export default function LancamentosPage() {
 
         if (conflito) {
           const clienteNome = (conflito as any).clientes?.nome || 'outro cliente';
-          setFormErrors(`Conflito de horário: este colaborador já tem lançamento das ${conflito.hora_inicio} às ${conflito.hora_fim} com ${clienteNome}`);
+          toast.error(`Conflito de horário: este colaborador já tem lançamento das ${conflito.hora_inicio} às ${conflito.hora_fim} com ${clienteNome}`);
           setIsSubmitting(false);
           return;
         }
