@@ -412,21 +412,21 @@ export default function UsuariosPage() {
         {/* Lista de Usuários */}
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Usuário</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Email</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Permissão</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Colaborador</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Último Acesso</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold">Ações</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Usuário</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Email</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Permissão</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Colaborador</th>
+                  <th className="px-4 py-4 text-left text-sm font-semibold">Último Acesso</th>
+                  <th className="px-4 py-4 text-center text-sm font-semibold min-w-[280px]">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {usuarios.map((usuario) => (
                   <tr key={usuario.id} className="hover:bg-purple-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <div>
                           <p className={`font-medium ${usuario.ativo ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
@@ -441,8 +441,8 @@ export default function UsuariosPage() {
                         )}
                       </div>
                     </td>
-                    <td className={`px-6 py-4 ${usuario.ativo ? 'text-gray-600' : 'text-gray-400'}`}>{usuario.email}</td>
-                    <td className="px-6 py-4">
+                    <td className={`px-4 py-4 text-sm ${usuario.ativo ? 'text-gray-600' : 'text-gray-400'}`}>{usuario.email}</td>
+                    <td className="px-4 py-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
                         usuario.role === 'admin'
                           ? 'bg-purple-100 text-purple-700'
@@ -451,7 +451,7 @@ export default function UsuariosPage() {
                         {usuario.role === 'admin' ? 'Administrador' : 'Usuário'}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       {usuario.colaborador_nome ? (
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-pink-100 text-pink-700">
                           {usuario.colaborador_nome}
@@ -460,11 +460,11 @@ export default function UsuariosPage() {
                         <span className="text-sm text-gray-400 italic">Não vinculado</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-4 py-4 text-sm text-gray-600">
                       {formatDate(usuario.last_sign_in_at)}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-center flex-wrap gap-1">
                         <button
                           onClick={() => {
                             setSelectedUser(usuario);
