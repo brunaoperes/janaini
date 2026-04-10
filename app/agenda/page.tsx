@@ -57,6 +57,7 @@ export default function AgendaPage() {
   const [showNovoAgendamento, setShowNovoAgendamento] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [userProfile, setUserProfile] = useState<{ isAdmin: boolean; colaboradorId: number | null }>({ isAdmin: true, colaboradorId: null });
 
   // Estados para Drag & Drop
   const [draggedAgendamento, setDraggedAgendamento] = useState<Agendamento | null>(null);
@@ -208,17 +209,27 @@ export default function AgendaPage() {
       const colaboradoresData = data.colaboradores || [];
       const servicosData = data.servicos || [];
 
-      setColaboradores(colaboradoresData);
+      const isAdmin = data._userProfile?.isAdmin ?? true;
+      const colaboradorId = data._userProfile?.colaboradorId || null;
+      setUserProfile({ isAdmin, colaboradorId });
+
+      // Colaborador não-admin: filtrar lista de colaboradores para mostrar só o dele
+      if (!isAdmin && colaboradorId) {
+        setColaboradores(colaboradoresData.filter((c: any) => c.id === Number(colaboradorId)));
+      } else {
+        setColaboradores(colaboradoresData);
+      }
+
       setClientes(data.clientes || []);
       setServicos(servicosData);
       setAgendamentos(data.agendamentos || []);
       setFormasPagamentoDB(data.formasPagamento || []);
 
       // Pré-selecionar colaborador do usuário logado (se tiver colaboradorId)
-      if (data._userProfile?.colaboradorId) {
+      if (colaboradorId) {
         setFormData(prev => ({
           ...prev,
-          colaborador_id: data._userProfile.colaboradorId.toString(),
+          colaborador_id: colaboradorId.toString(),
         }));
       }
     } catch (error) {
