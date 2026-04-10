@@ -138,12 +138,14 @@ export default function RelatoriosPage() {
   };
 
   const calcularEstatisticas = () => {
-    const total = lancamentos.reduce((acc, l) => acc + l.valor_total, 0);
-    const comissaoColaboradores = lancamentos.reduce((acc, l) => acc + l.comissao_colaborador, 0);
-    const comissaoSalao = lancamentos.reduce((acc, l) => acc + l.comissao_salao, 0);
-    const totalAnterior = lancamentosAnterior.reduce((acc, l) => acc + l.valor_total, 0);
+    const concluidos = lancamentos.filter(l => l.status === 'concluido');
+    const total = concluidos.reduce((acc, l) => acc + l.valor_total, 0);
+    const comissaoColaboradores = concluidos.reduce((acc, l) => acc + l.comissao_colaborador, 0);
+    const comissaoSalao = concluidos.reduce((acc, l) => acc + l.comissao_salao, 0);
+    const concluidosAnterior = lancamentosAnterior.filter(l => l.status === 'concluido');
+    const totalAnterior = concluidosAnterior.reduce((acc, l) => acc + l.valor_total, 0);
 
-    const ticketMedio = lancamentos.length > 0 ? total / lancamentos.length : 0;
+    const ticketMedio = concluidos.length > 0 ? total / concluidos.length : 0;
     const trendTotal = totalAnterior > 0 ? ((total - totalAnterior) / totalAnterior) * 100 : 0;
 
     return {
@@ -151,7 +153,7 @@ export default function RelatoriosPage() {
       comissaoColaboradores,
       comissaoSalao,
       ticketMedio,
-      totalAtendimentos: lancamentos.length,
+      totalAtendimentos: concluidos.length,
       trendTotal,
     };
   };
@@ -159,10 +161,10 @@ export default function RelatoriosPage() {
   const getTotaisPorColaborador = () => {
     const totais: Record<number, { nome: string; total: number; comissao: number; atendimentos: number }> = {};
 
-    lancamentos.forEach((l) => {
+    lancamentos.filter(l => l.status === 'concluido').forEach((l) => {
       if (!totais[l.colaborador_id]) {
         totais[l.colaborador_id] = {
-          nome: l.colaborador?.nome || 'Desconhecido',
+          nome: (l as any).colaboradores?.nome || l.colaborador?.nome || 'Desconhecido',
           total: 0,
           comissao: 0,
           atendimentos: 0,
@@ -179,7 +181,7 @@ export default function RelatoriosPage() {
   const getFormasPagamento = () => {
     const formas: Record<string, number> = {};
 
-    lancamentos.forEach((l) => {
+    lancamentos.filter(l => l.status === 'concluido').forEach((l) => {
       const key = l.forma_pagamento || 'Não informado';
       formas[key] = (formas[key] || 0) + l.valor_total;
     });
@@ -193,14 +195,21 @@ export default function RelatoriosPage() {
   const getEvolucaoTemporal = () => {
     const dados: Record<string, number> = {};
 
-    lancamentos.forEach((l) => {
+    lancamentos.filter(l => l.status === 'concluido').forEach((l) => {
       let chave: string;
       if (periodo === 'dia') {
-        chave = format(new Date(l.data), 'HH:00');
+        chave = l.hora_inicio ? l.hora_inicio.slice(0, 2) + ':00' : '00:00';
       } else if (periodo === 'semana') {
-        chave = format(new Date(l.data), 'EEE', { locale: ptBR });
+        const match = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          const d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+          chave = format(d, 'EEE', { locale: ptBR });
+        } else {
+          chave = format(new Date(l.data), 'EEE', { locale: ptBR });
+        }
       } else {
-        chave = format(new Date(l.data), 'dd/MM');
+        const match = l.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/);
+        chave = match ? `${match[3]}/${match[2]}` : format(new Date(l.data), 'dd/MM');
       }
 
       dados[chave] = (dados[chave] || 0) + l.valor_total;
@@ -751,17 +760,28 @@ export default function RelatoriosPage() {
                       {lancamentos.map((lancamento) => (
                         <tr key={lancamento.id} className="border-b border-purple-100 hover:bg-purple-50 transition-colors">
                           <td className="px-4 py-3 text-sm text-gray-600">
-                            {format(new Date(lancamento.data), 'dd/MM/yy HH:mm')}
+                            {(() => {
+                              const match = lancamento.data?.match?.(/(\d{4})-(\d{2})-(\d{2})/);
+                              const dataStr = match ? `${match[3]}/${match[2]}/${match[1].slice(2)}` : format(new Date(lancamento.data), 'dd/MM/yy');
+                              const hora = lancamento.hora_inicio || '';
+                              return hora ? `${dataStr} ${hora}` : dataStr;
+                            })()}
                           </td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-800">{lancamento.cliente?.nome || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{lancamento.colaborador?.nome}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-800">{(lancamento as any).clientes?.nome || lancamento.cliente?.nome || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{(lancamento as any).colaboradores?.nome || lancamento.colaborador?.nome || '-'}</td>
                           <td className="px-4 py-3 text-right font-semibold text-gray-800">
                             R$ {lancamento.valor_total.toFixed(2)}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 capitalize">
-                              {lancamento.forma_pagamento}
-                            </span>
+                            {lancamento.forma_pagamento ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 capitalize">
+                                {lancamento.forma_pagamento.replace(/_/g, ' ')}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                                Pendente
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right font-semibold text-purple-600">
                             R$ {lancamento.comissao_colaborador.toFixed(2)}

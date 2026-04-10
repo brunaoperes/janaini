@@ -211,9 +211,9 @@ export async function GET(request: Request) {
     const lancamentosFiltrados = filterComissoes(lancamentosFinal, isAdmin, userColaboradorId);
     const lancamentosAnteriorFiltrados = filterComissoes(lancamentosAnteriorFinal, isAdmin, userColaboradorId);
 
-    // Calcular totais
+    // Calcular totais (apenas concluídos)
     const totalFaturamento = lancamentosFinal
-      .filter((l: any) => !l.is_fiado && !l.is_troca_gratis)
+      .filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis)
       .reduce((sum: number, l: any) => sum + (l.valor_total || 0), 0);
 
     // Adicionar pagamentos de fiado ao faturamento

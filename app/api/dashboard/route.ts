@@ -110,9 +110,9 @@ export async function GET(request: Request) {
 
     console.log('Faturamento dia:', faturamentoDia?.length, 'erro:', errDia?.message);
 
-    // Filtrar para faturamento: apenas lançamentos normais (não fiado, não troca/grátis)
+    // Filtrar para faturamento: apenas concluídos, não fiado, não troca/grátis
     const lancamentosNormaisDia = faturamentoDia?.filter((l: any) =>
-      !l.is_fiado && !l.is_troca_gratis
+      l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis
     ) || [];
 
     // Buscar pagamentos de fiado do dia (fiados que foram pagos hoje)
@@ -166,9 +166,9 @@ export async function GET(request: Request) {
 
     console.log('Faturamento mes:', faturamentoMes?.length, 'erro:', errMes?.message);
 
-    // Filtrar para faturamento: apenas lançamentos normais (não fiado, não troca/grátis)
+    // Filtrar para faturamento: apenas concluídos, não fiado, não troca/grátis
     const lancamentosNormaisMes = faturamentoMes?.filter((l: any) =>
-      !l.is_fiado && !l.is_troca_gratis
+      l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis
     ) || [];
 
     // Buscar pagamentos de fiado do mês
@@ -224,6 +224,7 @@ export async function GET(request: Request) {
       .select(`
         colaborador_id,
         valor_total,
+        status,
         is_fiado,
         is_troca_gratis,
         colaboradores(nome)
@@ -254,8 +255,8 @@ export async function GET(request: Request) {
 
     const colaboradorasMap = new Map();
 
-    // Adicionar lançamentos normais (não fiado, não troca/grátis)
-    topColaboradoras?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
+    // Adicionar lançamentos normais (concluídos, não fiado, não troca/grátis)
+    topColaboradoras?.filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const id = lanc.colaborador_id;
       const nome = lanc.colaboradores?.nome || 'Desconhecida';
       const valor = lanc.valor_total || 0;
@@ -293,6 +294,7 @@ export async function GET(request: Request) {
         cliente_id,
         colaborador_id,
         valor_total,
+        status,
         is_fiado,
         is_troca_gratis,
         clientes(nome)
@@ -326,8 +328,8 @@ export async function GET(request: Request) {
 
     const clientesMap = new Map();
 
-    // Adicionar lançamentos normais (não fiado, não troca/grátis)
-    topClientesData?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
+    // Adicionar lançamentos normais (concluídos, não fiado, não troca/grátis)
+    topClientesData?.filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const id = lanc.cliente_id;
       const nome = lanc.clientes?.nome || 'Desconhecido';
       const valor = lanc.valor_total || 0;
@@ -402,7 +404,7 @@ export async function GET(request: Request) {
     // IMPORTANTE: Excluir fiados pendentes e troca/grátis
     let queryFaturamentoPeriodo = supabase
       .from('lancamentos')
-      .select('data, valor_total, is_fiado, is_troca_gratis, colaborador_id')
+      .select('data, valor_total, status, is_fiado, is_troca_gratis, colaborador_id')
       .gte('data', `${chartDataInicio}T00:00:00`)
       .lte('data', `${chartDataFim}T23:59:59`);
 
@@ -430,8 +432,8 @@ export async function GET(request: Request) {
 
     const faturamentoPorDia = new Map();
 
-    // Adicionar lançamentos normais (não fiado, não troca/grátis)
-    faturamentoPeriodo?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
+    // Adicionar lançamentos normais (concluídos, não fiado, não troca/grátis)
+    faturamentoPeriodo?.filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis).forEach((lanc: any) => {
       const data = new Date(lanc.data).toLocaleDateString('pt-BR');
       if (!faturamentoPorDia.has(data)) {
         faturamentoPorDia.set(data, 0);
@@ -454,7 +456,7 @@ export async function GET(request: Request) {
     }));
 
     // Total do período do gráfico
-    const totalLancamentosNormais = faturamentoPeriodo?.filter((l: any) => !l.is_fiado && !l.is_troca_gratis)
+    const totalLancamentosNormais = faturamentoPeriodo?.filter((l: any) => l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis)
       .reduce((sum, l) => sum + (l.valor_total || 0), 0) || 0;
     const totalPagamentosFiadoPeriodo = pagamentosFiadoPeriodo?.reduce((sum, p) => sum + (p.valor_pago || 0), 0) || 0;
     const totalPeriodoGrafico = totalLancamentosNormais + totalPagamentosFiadoPeriodo;
