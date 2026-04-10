@@ -414,9 +414,15 @@ export default function AdminWhatsAppPage() {
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Fluxo de Automacao</h2>
+                <p className="text-xs text-gray-400 mt-1">Mensagens sao disparadas apenas pela Agenda. Lancamentos diretos nao enviam mensagem.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0">
+                  {/* Secao: Ao criar agendamento */}
+                  <div className="mb-4">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Ao criar agendamento</p>
+                  </div>
+
                   {/* Step 1 */}
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center">
@@ -425,7 +431,8 @@ export default function AdminWhatsAppPage() {
                     </div>
                     <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Confirmacao de Agendamento</h3>
-                      <p className="text-sm text-gray-500">Enviada <span className="font-medium text-emerald-600">imediatamente</span> ao criar um agendamento</p>
+                      <p className="text-sm text-gray-500">Enviada <span className="font-medium text-emerald-600">imediatamente</span> ao criar agendamento no futuro</p>
+                      <p className="text-xs text-gray-400 mt-1">Se o horario ja passou, nao envia confirmacao (envia apenas pos-venda)</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'confirmacao')?.ativo ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -435,6 +442,11 @@ export default function AdminWhatsAppPage() {
                     </div>
                   </div>
 
+                  {/* Secao: Cron 21h */}
+                  <div className="mb-4 mt-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Todo dia as 21h (automatico)</p>
+                  </div>
+
                   {/* Step 2 */}
                   <div className="flex gap-4">
                     <div className="flex flex-col items-center">
@@ -442,8 +454,9 @@ export default function AdminWhatsAppPage() {
                       <div className="w-0.5 h-8 bg-gray-200 my-1" />
                     </div>
                     <div className="pb-6">
-                      <h3 className="font-semibold text-gray-800">Lembrete</h3>
+                      <h3 className="font-semibold text-gray-800">Lembrete ao Cliente</h3>
                       <p className="text-sm text-gray-500">Enviado as <span className="font-medium text-sky-600">21h do dia anterior</span> ao horario agendado</p>
+                      <p className="text-xs text-gray-400 mt-1">Cliente recebe lembrete na noite anterior ao atendimento</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'lembrete')?.ativo ? 'bg-sky-50 text-sky-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -460,8 +473,9 @@ export default function AdminWhatsAppPage() {
                       <div className="w-0.5 h-8 bg-gray-200 my-1" />
                     </div>
                     <div className="pb-6">
-                      <h3 className="font-semibold text-gray-800">Pos-Venda</h3>
-                      <p className="text-sm text-gray-500">Enviado <span className="font-medium text-pink-600">{config?.tempo_pos_venda || '15 min apos conclusao'}</span> do atendimento</p>
+                      <h3 className="font-semibold text-gray-800">Pos-Venda (Avaliacao)</h3>
+                      <p className="text-sm text-gray-500">Enviado apos <span className="font-medium text-pink-600">conclusao e pagamento</span> do atendimento</p>
+                      <p className="text-xs text-gray-400 mt-1">Pede avaliacao no Google. Tambem enviado quando agendamento e criado com data passada</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'pos_venda')?.ativo ? 'bg-pink-50 text-pink-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -478,7 +492,8 @@ export default function AdminWhatsAppPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-800">Agenda do Colaborador</h3>
-                      <p className="text-sm text-gray-500">Enviada as <span className="font-medium text-indigo-600">21h do dia anterior</span> com todos os agendamentos do dia seguinte</p>
+                      <p className="text-sm text-gray-500">Enviada as <span className="font-medium text-indigo-600">21h</span> para colaboradores com telefone cadastrado</p>
+                      <p className="text-xs text-gray-400 mt-1">Lista todos os agendamentos do dia seguinte. Se nao tiver nenhum, avisa que esta livre</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'agenda_colaborador')?.ativo ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'
                       }`}>
@@ -487,6 +502,35 @@ export default function AdminWhatsAppPage() {
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Regras e Protecoes */}
+            <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-lg font-bold text-gray-800">Regras e Protecoes</h2>
+              </div>
+              <div className="p-6 space-y-3">
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Anti-duplicidade:</span> Mesma mensagem nao e enviada duas vezes para o mesmo telefone</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Horario passado:</span> Se o agendamento ja passou, envia apenas pos-venda (nao envia confirmacao/lembrete)</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Template desativado:</span> Se desativar um template, mensagens daquele tipo nao sao criadas</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Retry automatico:</span> Mensagens com erro sao reenviadas ate 3 vezes</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-amber-500 mt-0.5">!</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Apenas Agenda:</span> Lancamentos criados direto pela tela de Lancamentos nao disparam mensagens WhatsApp</p>
                 </div>
               </div>
             </div>
