@@ -111,10 +111,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('AuthContext: Iniciando...');
 
       try {
-        // Usar Promise.race com timeout de 10 segundos
+        // Usar Promise.race com timeout de 15 segundos
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 10000)
+          setTimeout(() => reject(new Error('Timeout')), 15000)
         );
 
         const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
@@ -134,7 +134,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('AuthContext: Perfil carregado');
         }
       } catch (err) {
-        console.log('AuthContext: Erro ou timeout:', err);
+        console.log('AuthContext: Erro ou timeout, tentando retry...', err);
+        // Retry uma vez em caso de timeout
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (!isMounted) return;
+          const session = data?.session;
+          setSession(session);
+          setUser(session?.user ?? null);
+          if (session?.user && !profileLoaded) {
+            profileLoaded = true;
+            await loadProfile(session.user.id, session.user.email);
+          }
+        } catch {
+          console.log('AuthContext: Retry também falhou');
+        }
       } finally {
         if (isMounted) {
           console.log('AuthContext: Finalizando loading');
