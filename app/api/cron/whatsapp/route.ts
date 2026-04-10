@@ -189,14 +189,13 @@ export async function GET(request: Request) {
   // PASSO D: Enviar agenda do dia para colaboradores (manhã)
   // ========================================================================
   try {
-    // Data de amanhã em BRT (o cron roda às 21h BRT = 00h UTC, então "amanhã" UTC = amanhã BRT)
+    // Calcular "amanhã" em BRT
+    // Primeiro: converter agora para BRT (UTC-3), pegar a data, somar 1 dia
     const agora = new Date();
-    // Calcular a data do dia seguinte em BRT
-    // O cron roda às 00:00 UTC = 21:00 BRT do dia anterior
-    // Queremos a agenda do dia seguinte em BRT (que é o mesmo dia em UTC)
-    const amanhaBRT = new Date(agora);
-    amanhaBRT.setUTCHours(3, 0, 0, 0); // 03:00 UTC = 00:00 BRT do dia atual UTC = dia seguinte BRT
-    const diaStr = amanhaBRT.toISOString().split('T')[0]; // YYYY-MM-DD
+    const agoraBRT = new Date(agora.getTime() - 3 * 60 * 60 * 1000); // UTC-3
+    const amanha = new Date(agoraBRT);
+    amanha.setUTCDate(amanha.getUTCDate() + 1);
+    const diaStr = amanha.toISOString().split('T')[0]; // YYYY-MM-DD
 
     // Buscar colaboradores com telefone
     const { data: colaboradores } = await supabase

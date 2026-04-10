@@ -52,6 +52,18 @@ export async function POST(request: Request) {
       return errorResponse('Nome e telefone são obrigatórios', 400);
     }
 
+    // Verificar se já existe cliente com mesmo telefone
+    const telefoneLimpo = telefone.replace(/\D/g, '');
+    const { data: clienteExistente } = await supabase
+      .from('clientes')
+      .select('id, nome, telefone')
+      .or(`telefone.eq.${telefone},telefone.eq.${telefoneLimpo}`)
+      .limit(1);
+
+    if (clienteExistente && clienteExistente.length > 0) {
+      return errorResponse(`Ja existe um cliente com este telefone: ${clienteExistente[0].nome}`, 400);
+    }
+
     const { data, error } = await supabase
       .from('clientes')
       .insert({ nome, telefone, aniversario: aniversario || null })

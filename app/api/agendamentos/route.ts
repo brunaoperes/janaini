@@ -71,6 +71,39 @@ export async function POST(request: Request) {
       }
     });
 
+    // Verificar conflito de horário para o mesmo colaborador
+    const duracaoMin = duracao_minutos || 60;
+    const inicioNovo = new Date(data_hora);
+    const fimNovo = new Date(inicioNovo.getTime() + duracaoMin * 60 * 1000);
+
+    // Buscar agendamentos do mesmo colaborador no mesmo dia
+    const diaStr = data_hora.split('T')[0] || data_hora.split(' ')[0];
+    const { data: agendamentosExistentes } = await supabase
+      .from('agendamentos')
+      .select('id, data_hora, duracao_minutos, clientes(nome)')
+      .eq('colaborador_id', colaborador_id)
+      .gte('data_hora', `${diaStr}T00:00:00`)
+      .lte('data_hora', `${diaStr}T23:59:59`)
+      .neq('status', 'cancelado');
+
+    if (agendamentosExistentes && agendamentosExistentes.length > 0) {
+      for (const ag of agendamentosExistentes) {
+        const inicioExistente = new Date(ag.data_hora);
+        const duracaoExistente = ag.duracao_minutos || 60;
+        const fimExistente = new Date(inicioExistente.getTime() + duracaoExistente * 60 * 1000);
+
+        // Verifica sobreposição: novo começa antes do existente terminar E novo termina depois do existente começar
+        if (inicioNovo < fimExistente && fimNovo > inicioExistente) {
+          const clienteNome = (ag.clientes as any)?.nome || 'outro cliente';
+          const horarioExistente = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+          const horarioStr = horarioExistente ? `${horarioExistente[1]}:${horarioExistente[2]}` : '';
+          return NextResponse.json({
+            error: `Conflito de horario: este colaborador ja tem agendamento as ${horarioStr} com ${clienteNome}`,
+          }, { status: 409 });
+        }
+      }
+    }
+
     // Buscar colaborador para calcular comissão
     const { data: colaborador } = await supabase
       .from('colaboradores')
