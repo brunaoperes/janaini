@@ -72,11 +72,19 @@ export async function POST(request: Request) {
     });
 
     // Verificar conflito de horário para o mesmo colaborador
-    const duracaoMin = duracao_minutos || 60;
-    const inicioNovo = new Date(data_hora);
-    const fimNovo = new Date(inicioNovo.getTime() + duracaoMin * 60 * 1000);
+    // Usar hora_inicio e hora_fim em minutos para comparação precisa
+    const hiNovo = hora_inicio || data_hora.match(/[T ](\d{2}:\d{2})/)?.[1] || '00:00';
+    const hfNovo = hora_fim || hiNovo;
+    const [hIN, mIN] = hiNovo.split(':').map(Number);
+    const [hFN, mFN] = hfNovo.split(':').map(Number);
+    const inicioNovoMin = hIN * 60 + mIN;
+    // Se hora_fim == hora_inicio, usar duração para calcular fim
+    let fimNovoMin = hFN * 60 + mFN;
+    if (fimNovoMin <= inicioNovoMin) {
+      fimNovoMin = inicioNovoMin + (duracao_minutos || 60);
+    }
 
-    // Buscar agendamentos do mesmo colaborador no mesmo dia
+    // Buscar agendamentos e lançamentos do mesmo colaborador no mesmo dia
     const diaStr = data_hora.split('T')[0] || data_hora.split(' ')[0];
     const { data: agendamentosExistentes } = await supabase
       .from('agendamentos')
@@ -86,19 +94,50 @@ export async function POST(request: Request) {
       .lte('data_hora', `${diaStr}T23:59:59`)
       .neq('status', 'cancelado');
 
+    // Também checar lançamentos (podem ser criados sem agendamento)
+    const { data: lancamentosExistentes } = await supabase
+      .from('lancamentos')
+      .select('id, hora_inicio, hora_fim, clientes(nome)')
+      .eq('colaborador_id', colaborador_id)
+      .gte('data', `${diaStr}T00:00:00`)
+      .lte('data', `${diaStr}T23:59:59`)
+      .neq('status', 'cancelado');
+
+    // Verificar conflito com agendamentos existentes
     if (agendamentosExistentes && agendamentosExistentes.length > 0) {
       for (const ag of agendamentosExistentes) {
-        const inicioExistente = new Date(ag.data_hora);
-        const duracaoExistente = ag.duracao_minutos || 60;
-        const fimExistente = new Date(inicioExistente.getTime() + duracaoExistente * 60 * 1000);
+        const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+        if (!horMatch) continue;
+        const agInicioMin = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
+        const agDuracao = ag.duracao_minutos || 60;
+        const agFimMin = agInicioMin + agDuracao;
 
-        // Verifica sobreposição: novo começa antes do existente terminar E novo termina depois do existente começar
-        if (inicioNovo < fimExistente && fimNovo > inicioExistente) {
+        if (inicioNovoMin < agFimMin && fimNovoMin > agInicioMin) {
           const clienteNome = (ag.clientes as any)?.nome || 'outro cliente';
-          const horarioExistente = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-          const horarioStr = horarioExistente ? `${horarioExistente[1]}:${horarioExistente[2]}` : '';
           return NextResponse.json({
-            error: `Conflito de horario: este colaborador ja tem agendamento as ${horarioStr} com ${clienteNome}`,
+            error: `Conflito de horario: este colaborador ja tem agendamento as ${horMatch[1]}:${horMatch[2]} com ${clienteNome}`,
+          }, { status: 409 });
+        }
+      }
+    }
+
+    // Verificar conflito com lançamentos existentes
+    if (lancamentosExistentes && lancamentosExistentes.length > 0) {
+      for (const lc of lancamentosExistentes) {
+        if (!lc.hora_inicio) continue;
+        const [lcHI, lcMI] = lc.hora_inicio.split(':').map(Number);
+        const lcInicioMin = lcHI * 60 + lcMI;
+        let lcFimMin = lcInicioMin + 60;
+        if (lc.hora_fim) {
+          const [lcHF, lcMF] = lc.hora_fim.split(':').map(Number);
+          lcFimMin = lcHF * 60 + lcMF;
+          if (lcFimMin <= lcInicioMin) lcFimMin = lcInicioMin + 60;
+        }
+
+        if (inicioNovoMin < lcFimMin && fimNovoMin > lcInicioMin) {
+          const clienteNome = (lc.clientes as any)?.nome || 'outro cliente';
+          return NextResponse.json({
+            error: `Conflito de horario: este colaborador ja tem lancamento as ${lc.hora_inicio} com ${clienteNome}`,
           }, { status: 409 });
         }
       }
