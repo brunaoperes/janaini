@@ -70,50 +70,80 @@ export async function POST(request: Request) {
     });
 
     // Verificar conflito de horário para o mesmo colaborador
-    // Usar hora_inicio e hora_fim em minutos para comparação precisa
     const hiNovo = hora_inicio || data_hora.match(/[T ](\d{2}:\d{2})/)?.[1] || '00:00';
     const hfNovo = hora_fim || hiNovo;
     const [hIN, mIN] = hiNovo.split(':').map(Number);
     const [hFN, mFN] = hfNovo.split(':').map(Number);
     const inicioNovoMin = hIN * 60 + mIN;
-    // Se hora_fim == hora_inicio, usar duração para calcular fim
     let fimNovoMin = hFN * 60 + mFN;
     if (fimNovoMin <= inicioNovoMin) {
       fimNovoMin = inicioNovoMin + (duracao_minutos || 60);
     }
 
-    // Buscar agendamentos e lançamentos do mesmo colaborador no mesmo dia
-    const diaStr = data_hora.split('T')[0] || data_hora.split(' ')[0];
-    const { data: agendamentosExistentes } = await supabase
+    // Extrair dia — data_hora pode ser "2026-04-10 16:00:00" ou "2026-04-10T16:00:00"
+    const diaMatch = data_hora.match(/(\d{4}-\d{2}-\d{2})/);
+    const diaStr = diaMatch ? diaMatch[1] : data_hora.split('T')[0];
+
+    console.error('[DEBUG CONFLITO] Input:', { data_hora, hora_inicio, hora_fim, colaborador_id, diaStr, inicioNovoMin, fimNovoMin });
+
+    // Buscar agendamentos do mesmo colaborador no mesmo dia
+    const { data: agendamentosExistentes, error: agErr } = await supabase
       .from('agendamentos')
-      .select('id, data_hora, duracao_minutos, clientes(nome)')
+      .select('id, data_hora, duracao_minutos, hora_inicio, hora_fim, clientes(nome)')
       .eq('colaborador_id', colaborador_id)
-      .gte('data_hora', `${diaStr}T00:00:00`)
-      .lte('data_hora', `${diaStr}T23:59:59`)
+      .gte('data_hora', `${diaStr} 00:00:00`)
+      .lte('data_hora', `${diaStr} 23:59:59`)
       .neq('status', 'cancelado');
 
-    // Também checar lançamentos (podem ser criados sem agendamento)
-    const { data: lancamentosExistentes } = await supabase
+    console.error('[DEBUG CONFLITO] Agendamentos encontrados:', agendamentosExistentes?.length, 'erro:', agErr?.message);
+    if (agendamentosExistentes) {
+      agendamentosExistentes.forEach((ag: any) => {
+        console.error('[DEBUG CONFLITO] Agendamento:', { id: ag.id, data_hora: ag.data_hora, duracao: ag.duracao_minutos, hora_inicio: ag.hora_inicio, hora_fim: ag.hora_fim });
+      });
+    }
+
+    // Buscar lançamentos do mesmo colaborador no mesmo dia
+    const { data: lancamentosExistentes, error: lcErr } = await supabase
       .from('lancamentos')
-      .select('id, hora_inicio, hora_fim, clientes(nome)')
+      .select('id, hora_inicio, hora_fim, data, clientes(nome)')
       .eq('colaborador_id', colaborador_id)
-      .gte('data', `${diaStr}T00:00:00`)
-      .lte('data', `${diaStr}T23:59:59`)
+      .gte('data', `${diaStr} 00:00:00`)
+      .lte('data', `${diaStr} 23:59:59`)
       .neq('status', 'cancelado');
+
+    console.error('[DEBUG CONFLITO] Lancamentos encontrados:', lancamentosExistentes?.length, 'erro:', lcErr?.message);
 
     // Verificar conflito com agendamentos existentes
     if (agendamentosExistentes && agendamentosExistentes.length > 0) {
       for (const ag of agendamentosExistentes) {
-        const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-        if (!horMatch) continue;
-        const agInicioMin = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
-        const agDuracao = ag.duracao_minutos || 60;
-        const agFimMin = agInicioMin + agDuracao;
+        // Usar hora_inicio do agendamento se disponível, senão extrair de data_hora
+        let agInicioMin: number;
+        if (ag.hora_inicio) {
+          const [aHI, aMI] = ag.hora_inicio.split(':').map(Number);
+          agInicioMin = aHI * 60 + aMI;
+        } else {
+          const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
+          if (!horMatch) continue;
+          agInicioMin = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
+        }
+
+        let agFimMin: number;
+        if (ag.hora_fim && ag.hora_fim !== ag.hora_inicio) {
+          const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
+          agFimMin = aHF * 60 + aMF;
+          if (agFimMin <= agInicioMin) agFimMin = agInicioMin + (ag.duracao_minutos || 60);
+        } else {
+          agFimMin = agInicioMin + (ag.duracao_minutos || 60);
+        }
+
+        console.error('[DEBUG CONFLITO] Comparando novo', inicioNovoMin, '-', fimNovoMin, 'vs agend', ag.id, agInicioMin, '-', agFimMin);
 
         if (inicioNovoMin < agFimMin && fimNovoMin > agInicioMin) {
           const clienteNome = (ag.clientes as any)?.nome || 'outro cliente';
+          const horStr = ag.hora_inicio || `${String(Math.floor(agInicioMin / 60)).padStart(2, '0')}:${String(agInicioMin % 60).padStart(2, '0')}`;
+          console.error('[DEBUG CONFLITO] CONFLITO DETECTADO com agendamento', ag.id);
           return NextResponse.json({
-            error: `Conflito de horario: este colaborador ja tem agendamento as ${horMatch[1]}:${horMatch[2]} com ${clienteNome}`,
+            error: `Conflito de horario: este colaborador ja tem agendamento as ${horStr} com ${clienteNome}`,
           }, { status: 409 });
         }
       }
@@ -132,14 +162,19 @@ export async function POST(request: Request) {
           if (lcFimMin <= lcInicioMin) lcFimMin = lcInicioMin + 60;
         }
 
+        console.error('[DEBUG CONFLITO] Comparando novo', inicioNovoMin, '-', fimNovoMin, 'vs lanc', lc.id, lcInicioMin, '-', lcFimMin);
+
         if (inicioNovoMin < lcFimMin && fimNovoMin > lcInicioMin) {
           const clienteNome = (lc.clientes as any)?.nome || 'outro cliente';
+          console.error('[DEBUG CONFLITO] CONFLITO DETECTADO com lancamento', lc.id);
           return NextResponse.json({
             error: `Conflito de horario: este colaborador ja tem lancamento as ${lc.hora_inicio} com ${clienteNome}`,
           }, { status: 409 });
         }
       }
     }
+
+    console.error('[DEBUG CONFLITO] Nenhum conflito encontrado, prosseguindo...');
 
     // Buscar colaborador para calcular comissão
     const { data: colaborador } = await supabase
