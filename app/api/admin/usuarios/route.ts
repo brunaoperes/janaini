@@ -169,22 +169,17 @@ export async function POST(request: Request) {
       return errorResponse('Erro ao criar usuário', 500);
     }
 
-    // Criar perfil na tabela profiles
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        id: authData.user.id,
-        email,
-        nome,
-        username,
-        role,
-      });
+    // O trigger on_auth_user_created já cria o perfil automaticamente.
+    // Apenas atualizar o role se for diferente de 'user' (o trigger cria com 'user' por padrão)
+    if (role !== 'user') {
+      const { error: roleError } = await supabaseAdmin
+        .from('profiles')
+        .update({ role })
+        .eq('id', authData.user.id);
 
-    if (profileError) {
-      console.error('Erro ao criar perfil:', profileError);
-      // Se falhou ao criar perfil, deletar o usuário auth
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-      return errorResponse(profileError.message, 500);
+      if (roleError) {
+        console.error('Erro ao atualizar role:', roleError);
+      }
     }
 
     console.log('[API Usuarios] Usuário criado com sucesso:', email);
