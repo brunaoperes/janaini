@@ -61,12 +61,20 @@ export async function POST(request: Request) {
     dataHora: agendamento.data_hora,
   };
 
-  // Verificar se é passado ou futuro
-  const dataAgendamento = new Date(agendamento.data_hora);
-  const diffHoras = (dataAgendamento.getTime() - Date.now()) / (1000 * 60 * 60);
+  // Verificar se é passado ou futuro (em BRT)
+  const dataMatch = agendamento.data_hora.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  const agendamentoNoPassado = (() => {
+    if (!dataMatch) return false;
+    const [, ano, mes, dia, hora, min] = dataMatch;
+    const dataUTC = new Date(Date.UTC(
+      parseInt(ano), parseInt(mes) - 1, parseInt(dia),
+      parseInt(hora) + 3, parseInt(min)
+    ));
+    return dataUTC.getTime() < Date.now();
+  })();
 
   try {
-    if (diffHoras < 0) {
+    if (agendamentoNoPassado) {
       // Passado: não enviar nada automaticamente
       // Pós-venda será enviado pelo cron quando o lançamento for concluído
       return NextResponse.json({ success: true, message: 'Agendamento no passado, pós-venda será enviado após conclusão' });
@@ -79,16 +87,16 @@ export async function POST(request: Request) {
       });
 
       // Lembrete: programar para 21h BRT do dia anterior
-      const match = agendamento.data_hora.match(/(\d{4})-(\d{2})-(\d{2})/);
-      if (match) {
-        const diaAnterior = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-        diaAnterior.setDate(diaAnterior.getDate() - 1);
+      if (dataMatch) {
+        const [, ano, mes, dia, hora, min] = dataMatch;
+        // 21h BRT do dia anterior = 00:00 UTC do dia do agendamento
         const dataLembrete = new Date(Date.UTC(
-          diaAnterior.getFullYear(),
-          diaAnterior.getMonth(),
-          diaAnterior.getDate() + 1,
+          parseInt(ano), parseInt(mes) - 1, parseInt(dia),
           0, 0, 0
         ));
+
+        const agendUTC = new Date(Date.UTC(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora) + 3, parseInt(min)));
+        const horasFaltam = (agendUTC.getTime() - Date.now()) / (1000 * 60 * 60);
 
         if (dataLembrete > new Date()) {
           await agendarOuEnviarMensagem({
@@ -96,7 +104,7 @@ export async function POST(request: Request) {
             tipo: 'lembrete',
             dataProgramada: dataLembrete,
           });
-        } else if (diffHoras > 1) {
+        } else if (horasFaltam > 1) {
           await agendarOuEnviarMensagem({
             ...paramsBase,
             tipo: 'lembrete',

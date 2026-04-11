@@ -54,7 +54,14 @@ export async function GET(request: Request) {
             .eq('id', msg.agendamento_id)
             .single();
 
-          if (agendamento && new Date(agendamento.data_hora) < new Date()) {
+          // Comparar em BRT: data_hora é horário local, somar 3h para UTC
+          const agMatch = agendamento?.data_hora?.match?.(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+          const agPassou = agMatch ? new Date(Date.UTC(
+            parseInt(agMatch[1]), parseInt(agMatch[2]) - 1, parseInt(agMatch[3]),
+            parseInt(agMatch[4]) + 3, parseInt(agMatch[5])
+          )).getTime() < Date.now() : false;
+
+          if (agendamento && agPassou) {
             await supabase
               .from('mensagens_whatsapp')
               .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })

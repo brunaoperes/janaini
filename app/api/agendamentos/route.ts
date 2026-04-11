@@ -250,10 +250,21 @@ export async function POST(request: Request) {
             dataHora: data_hora,
           };
 
-          const dataAgendamento = new Date(data_hora);
-          const diffHoras = (dataAgendamento.getTime() - Date.now()) / (1000 * 60 * 60);
+          // Comparar datas em BRT (banco armazena horário local sem timezone)
+          // Converter data_hora para UTC adicionando 3h (BRT = UTC-3)
+          const dataMatch = data_hora.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+          const agendamentoNoPassado = (() => {
+            if (!dataMatch) return false;
+            const [, ano, mes, dia, hora, min] = dataMatch;
+            // Criar data como se fosse BRT, convertendo para UTC (+3h)
+            const dataUTC = new Date(Date.UTC(
+              parseInt(ano), parseInt(mes) - 1, parseInt(dia),
+              parseInt(hora) + 3, parseInt(min)
+            ));
+            return dataUTC.getTime() < Date.now();
+          })();
 
-          if (diffHoras < 0) {
+          if (agendamentoNoPassado) {
             // Agendamento no passado: não enviar nada automaticamente
             // Pós-venda será enviado pelo cron quando o lançamento for concluído
           } else {
@@ -265,18 +276,19 @@ export async function POST(request: Request) {
             });
 
             // Lembrete: programar para 21h BRT do dia anterior ao agendamento
-            // Extrair data do agendamento (formato: YYYY-MM-DDTHH:MM)
-            const match = data_hora.match(/(\d{4})-(\d{2})-(\d{2})/);
-            if (match) {
-              const diaAnterior = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-              diaAnterior.setDate(diaAnterior.getDate() - 1);
-              // 21h BRT = 00h UTC do dia seguinte (que é o dia do agendamento)
+            if (dataMatch) {
+              const [, ano, mes, dia] = dataMatch;
+              // 21h BRT do dia anterior = 00:00 UTC do dia do agendamento
               const dataLembrete = new Date(Date.UTC(
-                diaAnterior.getFullYear(),
-                diaAnterior.getMonth(),
-                diaAnterior.getDate() + 1,
-                0, 0, 0 // 00:00 UTC = 21:00 BRT
+                parseInt(ano), parseInt(mes) - 1, parseInt(dia),
+                0, 0, 0 // 00:00 UTC = 21:00 BRT do dia anterior
               ));
+
+              // Calcular quantas horas faltam (em BRT)
+              const horaAg = parseInt(dataMatch[4]);
+              const minAg = parseInt(dataMatch[5]);
+              const agendUTC = new Date(Date.UTC(parseInt(ano), parseInt(mes) - 1, parseInt(dia), horaAg + 3, minAg));
+              const horasFaltam = (agendUTC.getTime() - Date.now()) / (1000 * 60 * 60);
 
               if (dataLembrete > new Date()) {
                 // Dia anterior ainda não chegou: agendar
@@ -285,7 +297,7 @@ export async function POST(request: Request) {
                   tipo: 'lembrete',
                   dataProgramada: dataLembrete,
                 });
-              } else if (diffHoras > 1) {
+              } else if (horasFaltam > 1) {
                 // Já passou das 21h do dia anterior mas falta mais de 1h: enviar agora
                 await agendarOuEnviarMensagem({
                   ...paramsBase,
