@@ -89,19 +89,27 @@ export async function GET(request: Request) {
     const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
     // Buscar agendamentos concluídos
-    const { data: agendConcluidos } = await supabase
+    const { data: agendConcluidos, error: agendErr } = await supabase
       .from('agendamentos')
-      .select(`
-        id,
-        data_hora,
-        cliente_id,
-        colaborador_id,
-        lancamento_id,
-        clientes!inner(id, nome, telefone),
-        colaboradores!inner(id, nome)
-      `)
+      .select('id, data_hora, cliente_id, colaborador_id, lancamento_id')
       .eq('status', 'concluido')
       .not('lancamento_id', 'is', null);
+
+    // Buscar dados de clientes e colaboradores separadamente para evitar problemas de FK
+    let clientesMap: Record<number, { id: number; nome: string; telefone: string }> = {};
+    let colaboradoresMap: Record<number, { id: number; nome: string }> = {};
+    if (agendConcluidos && agendConcluidos.length > 0) {
+      const clienteIds = [...new Set(agendConcluidos.map(a => a.cliente_id).filter(Boolean))];
+      const colabIds = [...new Set(agendConcluidos.map(a => a.colaborador_id).filter(Boolean))];
+
+      const [{ data: clientesData }, { data: colabsData }] = await Promise.all([
+        supabase.from('clientes').select('id, nome, telefone').in('id', clienteIds),
+        supabase.from('colaboradores').select('id, nome').in('id', colabIds),
+      ]);
+
+      (clientesData || []).forEach(c => { clientesMap[c.id] = c; });
+      (colabsData || []).forEach(c => { colaboradoresMap[c.id] = c; });
+    }
 
     // Filtrar: verificar se o lançamento vinculado está concluído e pago há mais de 15 min
     let concluidos: any[] = [];
@@ -135,8 +143,8 @@ export async function GET(request: Request) {
       resultado.pos_venda.encontrados = paraEnviar.length;
 
       for (const agendamento of paraEnviar) {
-        const cliente = agendamento.clientes as any;
-        const colaborador = agendamento.colaboradores as any;
+        const cliente = clientesMap[agendamento.cliente_id];
+        const colaborador = colaboradoresMap[agendamento.colaborador_id];
 
         if (!cliente?.telefone) {
           continue;
