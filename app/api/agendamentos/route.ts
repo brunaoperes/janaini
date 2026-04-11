@@ -254,12 +254,8 @@ export async function POST(request: Request) {
           const diffHoras = (dataAgendamento.getTime() - Date.now()) / (1000 * 60 * 60);
 
           if (diffHoras < 0) {
-            // Agendamento no passado: só enviar pós-venda (avaliação)
-            await agendarOuEnviarMensagem({
-              ...paramsBase,
-              tipo: 'pos_venda',
-              dataProgramada: new Date(),
-            });
+            // Agendamento no passado: não enviar nada automaticamente
+            // Pós-venda será enviado pelo cron quando o lançamento for concluído
           } else {
             // Agendamento no futuro: confirmação + lembrete
             await agendarOuEnviarMensagem({

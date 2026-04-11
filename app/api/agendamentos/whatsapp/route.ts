@@ -67,12 +67,9 @@ export async function POST(request: Request) {
 
   try {
     if (diffHoras < 0) {
-      // Passado: só pós-venda
-      await agendarOuEnviarMensagem({
-        ...paramsBase,
-        tipo: 'pos_venda',
-        dataProgramada: new Date(),
-      });
+      // Passado: não enviar nada automaticamente
+      // Pós-venda será enviado pelo cron quando o lançamento for concluído
+      return NextResponse.json({ success: true, message: 'Agendamento no passado, pós-venda será enviado após conclusão' });
     } else {
       // Futuro: confirmação + lembrete
       await agendarOuEnviarMensagem({
