@@ -42,6 +42,38 @@ async function getAuthUser(supabase: any) {
   }
 }
 
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const lancamentoId = parseInt(id);
+
+    if (isNaN(lancamentoId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data, error } = await supabase
+      .from('lancamentos')
+      .select('*')
+      .eq('id', lancamentoId)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ error: 'Lançamento não encontrado' }, { status: 404 });
+    }
+
+    return NextResponse.json({ data });
+  } catch (error: any) {
+    return NextResponse.json({ error: 'Erro ao buscar lançamento' }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

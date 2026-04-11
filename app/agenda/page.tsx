@@ -701,21 +701,22 @@ export default function AgendaPage() {
     let isTrocaGratis = false;
     let valorReferencia = '';
 
-    // Buscar dados financeiros do lançamento (concluído ou pendente)
+    // Buscar dados financeiros do lançamento (via API para bypass RLS)
     if (selectedAgendamento.lancamento_id) {
-      const { data: lancFresh, error } = await supabase
-        .from('lancamentos')
-        .select('*')
-        .eq('id', selectedAgendamento.lancamento_id)
-        .single();
-
-      if (!error && lancFresh) {
-        valorTotal = lancFresh.valor_total?.toFixed(2) || '';
-        formaPagamento = lancFresh.forma_pagamento || '';
-        isFiado = lancFresh.is_fiado || false;
-        isTrocaGratis = lancFresh.is_troca_gratis || false;
-        valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
-      }
+      try {
+        const lancRes = await fetch(`/api/lancamentos/${selectedAgendamento.lancamento_id}`);
+        if (lancRes.ok) {
+          const lancResult = await lancRes.json();
+          const lancFresh = lancResult.data || lancResult;
+          if (lancFresh) {
+            valorTotal = lancFresh.valor_total?.toFixed(2) || '';
+            formaPagamento = lancFresh.forma_pagamento || '';
+            isFiado = lancFresh.is_fiado || false;
+            isTrocaGratis = lancFresh.is_troca_gratis || false;
+            valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
+          }
+        }
+      } catch {}
     } else if ((selectedAgendamento as any).lancamento?.valor_total) {
       valorTotal = (selectedAgendamento as any).lancamento.valor_total.toFixed(2);
     } else if (selectedAgendamento.valor_estimado) {

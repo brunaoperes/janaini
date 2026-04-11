@@ -718,14 +718,17 @@ export default function LancamentosPage() {
 
   async function handleEdit(lanc: LancamentoComRelacoes) {
     try {
-    const { data: lancFresh, error } = await supabase
-      .from('lancamentos')
-      .select('*')
-      .eq('id', lanc.id)
-      .single();
-
-    if (error || !lancFresh) {
+    // Buscar dados frescos via API (bypass RLS)
+    const response = await fetch(`/api/lancamentos/${lanc.id}`);
+    if (!response.ok) {
       toast.error('Erro ao carregar dados do lançamento');
+      return;
+    }
+    const result = await response.json();
+    const lancFresh = result.data || result;
+
+    if (!lancFresh || !lancFresh.id) {
+      toast.error('Lançamento não encontrado');
       return;
     }
 
@@ -771,7 +774,7 @@ export default function LancamentosPage() {
     const { data: divisoesData } = await supabase
       .from('lancamento_divisoes')
       .select('colaborador_id, valor')
-      .eq('lancamento_id', lancFresh.id);
+      .eq('lancamento_id', lanc.id);
 
     if (divisoesData && divisoesData.length > 0) {
       setCompartilhado(true);
