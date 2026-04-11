@@ -307,6 +307,7 @@ export default function LancamentosPage() {
     console.error('[DEBUG] handleSubmit iniciado, editingId:', editingId);
 
     try {
+      console.error('[DEBUG] Montando dados...');
       const servicosNomes = formData.servicos_ids
         .map(id => servicos.find(s => s.id === id)?.nome)
         .filter(Boolean)
@@ -374,6 +375,7 @@ export default function LancamentosPage() {
         forma_pagamento: jaRealizado ? formData.forma_pagamento as 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' : undefined,
       };
 
+      console.error('[DEBUG] Validando com Zod...');
       const validation = lancamentoSchema.safeParse(validationData);
       if (!validation.success) {
         setFormErrors(formatZodErrors(validation.error));
@@ -381,9 +383,11 @@ export default function LancamentosPage() {
         return;
       }
 
+      console.error('[DEBUG] Zod OK, buscando taxa...');
       let taxaPercentual = 0;
       let valorTaxa = 0;
       if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
+        console.error('[DEBUG] Buscando taxa forma pagamento:', formData.forma_pagamento);
         const { data: formaPagamento } = await supabase
           .from('formas_pagamento')
           .select('taxa_percentual')
