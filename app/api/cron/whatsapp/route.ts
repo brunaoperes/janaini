@@ -142,8 +142,8 @@ export async function GET(request: Request) {
       const idsJaEnviados = new Set((jaEnviadas || []).map(m => m.agendamento_id));
       const paraEnviar = concluidos.filter(a => !idsJaEnviados.has(a.id));
 
-      // LIMITE DE SEGURANÇA: máximo 5 pós-vendas por execução do cron
-      const MAX_POS_VENDA = 5;
+      // LIMITE DE SEGURANÇA: máximo 10 pós-vendas por execução do cron
+      const MAX_POS_VENDA = 10;
       const paraEnviarLimitado = paraEnviar.slice(0, MAX_POS_VENDA);
       resultado.pos_venda.encontrados = paraEnviar.length;
 
