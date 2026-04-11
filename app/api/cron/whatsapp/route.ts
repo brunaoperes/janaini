@@ -88,24 +88,38 @@ export async function GET(request: Request) {
   try {
     const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-    // Buscar agendamentos concluídos com lançamento pago há mais de 15 min
-    const { data: concluidos } = await supabase
+    // Buscar agendamentos concluídos
+    const { data: agendConcluidos } = await supabase
       .from('agendamentos')
       .select(`
         id,
         data_hora,
         cliente_id,
         colaborador_id,
+        lancamento_id,
         clientes!inner(id, nome, telefone),
-        colaboradores!inner(id, nome),
-        lancamentos!inner(id, data_pagamento, status)
+        colaboradores!inner(id, nome)
       `)
       .eq('status', 'concluido')
-      .eq('lancamentos.status', 'concluido')
-      .not('lancamentos.data_pagamento', 'is', null)
-      .lte('lancamentos.data_pagamento', quinzeMinAtras);
+      .not('lancamento_id', 'is', null);
 
-    if (concluidos) {
+    // Filtrar: verificar se o lançamento vinculado está concluído e pago há mais de 15 min
+    let concluidos: any[] = [];
+    if (agendConcluidos && agendConcluidos.length > 0) {
+      const lancIds = agendConcluidos.map(a => a.lancamento_id).filter(Boolean);
+      const { data: lancamentos } = await supabase
+        .from('lancamentos')
+        .select('id, status, data_pagamento')
+        .in('id', lancIds)
+        .eq('status', 'concluido')
+        .not('data_pagamento', 'is', null)
+        .lte('data_pagamento', quinzeMinAtras);
+
+      const lancPagosIds = new Set((lancamentos || []).map(l => l.id));
+      concluidos = agendConcluidos.filter(a => lancPagosIds.has(a.lancamento_id));
+    }
+
+    if (concluidos.length > 0) {
       // Filtrar os que já têm mensagem pos_venda
       const agendamentoIds = concluidos.map(a => a.id);
 
