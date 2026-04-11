@@ -717,7 +717,6 @@ export default function LancamentosPage() {
   }
 
   async function handleEdit(lanc: LancamentoComRelacoes) {
-    toast('Carregando lançamento...', { icon: '⏳' });
     try {
     // Buscar dados frescos via API (bypass RLS)
     const response = await fetch(`/api/lancamentos/${lanc.id}`);
@@ -732,8 +731,6 @@ export default function LancamentosPage() {
       toast.error('Lançamento não encontrado');
       return;
     }
-
-    toast('Dados carregados, abrindo...', { icon: '✅' });
 
     const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
     const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
@@ -773,24 +770,28 @@ export default function LancamentosPage() {
     setSelectedColaborador(colaborador || null);
     setJaRealizado(lancFresh.status === 'concluido' || lancFresh.is_fiado || lancFresh.is_troca_gratis);
     setEditingId(lancFresh.id);
+    setCompartilhado(false);
+    setDivisoes([]);
 
-    const { data: divisoesData } = await supabase
-      .from('lancamento_divisoes')
-      .select('colaborador_id, valor')
-      .eq('lancamento_id', lanc.id);
-
-    if (divisoesData && divisoesData.length > 0) {
-      setCompartilhado(true);
-      setDivisoes(divisoesData.map((d: { colaborador_id: number; valor: number }) => ({
-        colaborador_id: d.colaborador_id,
-        valor: d.valor.toFixed(2),
-      })));
-    } else {
-      setCompartilhado(false);
-      setDivisoes([]);
-    }
-
+    // Abrir modal ANTES de buscar divisões (para não travar se RLS bloquear)
     setShowModal(true);
+
+    // Tentar buscar divisões (não bloqueia abertura do modal)
+    try {
+      const { data: divisoesData } = await supabase
+        .from('lancamento_divisoes')
+        .select('colaborador_id, valor')
+        .eq('lancamento_id', lanc.id);
+
+      if (divisoesData && divisoesData.length > 0) {
+        setCompartilhado(true);
+        setDivisoes(divisoesData.map((d: { colaborador_id: number; valor: number }) => ({
+          colaborador_id: d.colaborador_id,
+          valor: d.valor.toFixed(2),
+        })));
+      }
+    } catch {}
+
     } catch (err: any) {
       toast.error('Erro ao abrir edição: ' + (err.message || 'erro desconhecido'));
     }
