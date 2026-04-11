@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { auditDelete } from '@/lib/audit';
-import { requireAdmin, isAuthError } from '@/lib/api-auth';
+import { auditDelete, auditUpdate } from '@/lib/audit';
+import { requireAdmin, requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -71,6 +71,74 @@ export async function GET(
     return NextResponse.json({ data });
   } catch (error: any) {
     return NextResponse.json({ error: 'Erro ao buscar lançamento' }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
+    const { id } = await params;
+    const lancamentoId = parseInt(id);
+
+    if (isNaN(lancamentoId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    }
+
+    const body = await request.json();
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    // Buscar dados anteriores para auditoria
+    const { data: dadosAnterior } = await supabase
+      .from('lancamentos')
+      .select('*')
+      .eq('id', lancamentoId)
+      .single();
+
+    if (!dadosAnterior) {
+      return NextResponse.json({ error: 'Lançamento não encontrado' }, { status: 404 });
+    }
+
+    // Atualizar lançamento
+    const { data, error } = await supabase
+      .from('lancamentos')
+      .update(body)
+      .eq('id', lancamentoId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[API/lancamentos] Erro ao atualizar:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Registrar auditoria
+    const authUser = await getAuthUser(supabase);
+    if (authUser && data) {
+      await auditUpdate({
+        ...authUser,
+        modulo: 'Lancamentos',
+        tabela: 'lancamentos',
+        registroId: lancamentoId,
+        dadosAnterior,
+        dadosNovo: data,
+        metodo: 'PUT',
+        endpoint: `/api/lancamentos/${lancamentoId}`,
+      });
+    }
+
+    return NextResponse.json({ data });
+  } catch (error: any) {
+    console.error('[API/lancamentos] Erro fatal PUT:', error);
+    return NextResponse.json({ error: 'Erro ao atualizar lançamento' }, { status: 500 });
   }
 }
 

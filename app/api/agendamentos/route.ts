@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { auditCreate } from '@/lib/audit';
+import { auditCreate, auditUpdate } from '@/lib/audit';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { agendarOuEnviarMensagem, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
 
@@ -325,5 +325,76 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('[API/agendamentos] Erro fatal:', error);
     return NextResponse.json({ error: 'Erro ao criar agendamento' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
+    const body = await request.json();
+    const { id, ...updateData } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID do agendamento é obrigatório' }, { status: 400 });
+    }
+
+    const agendamentoId = parseInt(id);
+    if (isNaN(agendamentoId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    // Buscar dados anteriores para auditoria
+    const { data: dadosAnterior } = await supabase
+      .from('agendamentos')
+      .select('*')
+      .eq('id', agendamentoId)
+      .single();
+
+    if (!dadosAnterior) {
+      return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
+    }
+
+    // Atualizar agendamento
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .update(updateData)
+      .eq('id', agendamentoId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[API/agendamentos] Erro ao atualizar:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Registrar auditoria
+    const authUser = await getAuthUser(supabase);
+    if (authUser && data) {
+      await auditUpdate({
+        ...authUser,
+        modulo: 'Agenda',
+        tabela: 'agendamentos',
+        registroId: agendamentoId,
+        dadosAnterior,
+        dadosNovo: data,
+        metodo: 'PUT',
+        endpoint: '/api/agendamentos',
+      });
+    }
+
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error('[API/agendamentos] Erro fatal PUT:', error);
+    return NextResponse.json({ error: 'Erro ao atualizar agendamento' }, { status: 500 });
   }
 }

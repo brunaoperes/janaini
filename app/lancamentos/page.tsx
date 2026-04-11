@@ -531,30 +531,28 @@ export default function LancamentosPage() {
         }
       }
 
-      let lancamento;
-      let lancError;
+      let lancamento: any = null;
+      let lancError: any = null;
 
       if (editingId) {
-        const result = await supabase
-          .from('lancamentos')
-          .update(lancamentoData)
-          .eq('id', editingId)
-          .select()
-          .single();
-        lancamento = result.data;
-        lancError = result.error;
+        const res = await fetch(`/api/lancamentos/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(lancamentoData),
+        });
+        const result = await res.json();
+        if (!res.ok) { lancError = { message: result.error }; } else { lancamento = result.data; }
       } else {
-        const result = await supabase
-          .from('lancamentos')
-          .insert(lancamentoData)
-          .select()
-          .single();
-        lancamento = result.data;
-        lancError = result.error;
+        const res = await fetch('/api/lancamentos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(lancamentoData),
+        });
+        const result = await res.json();
+        if (!res.ok) { lancError = { message: result.error }; } else { lancamento = result.data; }
       }
 
       if (lancError) {
-        console.error('Erro ao salvar lançamento:', lancError.message);
         toast.error(`Erro: ${lancError.message || 'Erro ao salvar lançamento'}`);
         setIsSubmitting(false);
         return;

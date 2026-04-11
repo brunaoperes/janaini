@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { auditCreate } from '@/lib/audit';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -224,5 +226,84 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error('[API/lancamentos] Erro fatal:', error?.message || error);
     return fallbackResponse();
+  }
+}
+
+// Helper para obter dados do usuário autenticado
+async function getAuthUser(supabase: any) {
+  try {
+    const cookieStore = await cookies();
+    const supabaseAuth = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll() {},
+      },
+    });
+
+    const { data: { user } } = await supabaseAuth.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('nome, role')
+      .eq('id', user.id)
+      .single();
+
+    return {
+      userId: user.id,
+      userEmail: user.email || undefined,
+      userName: profile?.nome,
+      userRole: profile?.role,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    // Verificar autenticação
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
+    const body = await request.json();
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    // Inserir lançamento
+    const { data: lancamento, error: lancError } = await supabase
+      .from('lancamentos')
+      .insert(body)
+      .select()
+      .single();
+
+    if (lancError) {
+      console.error('[API/lancamentos] Erro ao criar lançamento:', lancError);
+      return NextResponse.json({ error: lancError.message }, { status: 500 });
+    }
+
+    // Registrar auditoria
+    const authUser = await getAuthUser(supabase);
+    if (authUser) {
+      await auditCreate({
+        ...authUser,
+        modulo: 'Lancamentos',
+        tabela: 'lancamentos',
+        registroId: lancamento.id,
+        dadosNovo: lancamento,
+        metodo: 'POST',
+        endpoint: '/api/lancamentos',
+      });
+    }
+
+    return NextResponse.json({ data: lancamento });
+  } catch (error: any) {
+    console.error('[API/lancamentos] Erro fatal POST:', error?.message || error);
+    return NextResponse.json({ error: 'Erro ao criar lançamento' }, { status: 500 });
   }
 }

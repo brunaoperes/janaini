@@ -775,23 +775,26 @@ export default function AgendaPage() {
       return;
     }
 
-    // 1. Atualizar agendamento
-    const { error } = await supabase
-      .from('agendamentos')
-      .update({
+    // 1. Atualizar agendamento via API (com auditoria)
+    const agendRes = await fetch('/api/agendamentos', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: selectedAgendamento.id,
         colaborador_id: Number(editData.colaborador_id),
         cliente_id: Number(editData.cliente_id),
         data_hora: novoDataHora,
         descricao_servico: descricaoServicos,
         duracao_minutos: duracaoMinutos,
+        hora_inicio: editData.hora_inicio,
+        hora_fim: editData.hora_fim,
         observacoes: editData.observacoes || null,
-      })
-      .eq('id', selectedAgendamento.id)
-      .select();
+      }),
+    });
 
-    if (error) {
-      console.error('Erro ao atualizar agendamento:', error);
-      toast.error('Erro ao atualizar: ' + error.message);
+    if (!agendRes.ok) {
+      const err = await agendRes.json();
+      toast.error('Erro ao atualizar: ' + (err.error || 'erro desconhecido'));
       return;
     }
 
@@ -899,26 +902,24 @@ export default function AgendaPage() {
           : null;
 
         // Atualizar status do agendamento se mudou (ex: fiado → pendente)
-        if (editData.is_fiado) {
-          await supabase
-            .from('agendamentos')
-            .update({ status: 'pendente' })
-            .eq('id', selectedAgendamento.id);
-        } else {
-          await supabase
-            .from('agendamentos')
-            .update({ status: 'concluido' })
-            .eq('id', selectedAgendamento.id);
-        }
+        const novoStatus = editData.is_fiado ? 'pendente' : 'concluido';
+        await fetch('/api/agendamentos', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selectedAgendamento.id, status: novoStatus }),
+        });
       }
 
-      const { error: lancError } = await supabase
-        .from('lancamentos')
-        .update(lancamentoUpdate)
-        .eq('id', selectedAgendamento.lancamento_id);
+      // Atualizar lançamento via API (com auditoria)
+      const lancRes = await fetch(`/api/lancamentos/${selectedAgendamento.lancamento_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lancamentoUpdate),
+      });
 
-      if (lancError) {
-        console.error('Erro ao atualizar lançamento:', lancError);
+      if (!lancRes.ok) {
+        const err = await lancRes.json();
+        toast.error('Erro ao atualizar lançamento: ' + (err.error || ''));
       }
     }
 
