@@ -422,7 +422,7 @@ export default function LogsAuditoriaPage() {
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
                 {ACOES.map(a => (
-                  <option key={a} value={a}>{a === 'todos' ? 'Todas' : a}</option>
+                  <option key={a} value={a}>{a === 'todos' ? 'Todas' : a === 'CREATE' ? 'Criado' : a === 'UPDATE' ? 'Editado' : a === 'DELETE' ? 'Excluído' : a}</option>
                 ))}
               </select>
             </div>
@@ -455,7 +455,7 @@ export default function LogsAuditoriaPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ação</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Módulo</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tabela</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ID</th>
+{/* ID removido */}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Resultado</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Detalhes</th>
                   </tr>
@@ -479,12 +479,12 @@ export default function LogsAuditoriaPage() {
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAcaoColor(log.acao)}`}>
-                            {log.acao}
+                            {log.acao === 'CREATE' ? 'Criado' : log.acao === 'UPDATE' ? 'Editado' : log.acao === 'DELETE' ? 'Excluído' : log.acao}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{log.modulo}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{log.tabela || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{log.registro_id || '-'}</td>
+{/* ID removido */}
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getResultadoColor(log.resultado)}`}>
                             {log.resultado}
@@ -612,35 +612,66 @@ export default function LogsAuditoriaPage() {
                 );
               })()}
 
-              {/* Campos Alterados */}
-              {selectedLog.campos_alterados && selectedLog.campos_alterados.length > 0 && (
-                <div className="bg-blue-50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-blue-600 uppercase mb-2 block">Campos Alterados</label>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedLog.campos_alterados.map((campo, i) => (
-                      <span key={i} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                        {FIELD_LABELS[campo] || campo}
-                      </span>
-                    ))}
+              {/* Comparação de alterações (UPDATE) */}
+              {selectedLog.acao === 'UPDATE' && selectedLog.dados_anterior && selectedLog.dados_novo && (
+                <div className="bg-white border border-purple-100 rounded-xl overflow-hidden">
+                  <div className="bg-purple-50 px-4 py-3 border-b border-purple-100">
+                    <label className="text-sm font-bold text-purple-700">Alterações Realizadas</label>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {(() => {
+                      const anterior = selectedLog.dados_anterior;
+                      const novo = selectedLog.dados_novo;
+                      const camposAlterados = selectedLog.campos_alterados || [];
+                      const allKeys = [...new Set([...Object.keys(anterior), ...Object.keys(novo)])];
+                      const changed = allKeys.filter(key => {
+                        if (IGNORE_FIELDS.includes(key)) return false;
+                        if (camposAlterados.length > 0) return camposAlterados.includes(key);
+                        return JSON.stringify(anterior[key]) !== JSON.stringify(novo[key]);
+                      });
+
+                      if (changed.length === 0) {
+                        return <div className="px-4 py-6 text-center text-gray-400 text-sm">Nenhuma alteração detectada</div>;
+                      }
+
+                      return changed.map(key => (
+                        <div key={key} className="px-4 py-3">
+                          <p className="text-xs font-semibold text-gray-500 mb-2">{FIELD_LABELS[key] || key}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                              <span className="text-xs text-red-400 block mb-0.5">Antes</span>
+                              <span className="text-sm text-red-700 font-medium">{formatValue(key, anterior[key])}</span>
+                            </div>
+                            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                            <div className="flex-1 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                              <span className="text-xs text-green-400 block mb-0.5">Depois</span>
+                              <span className="text-sm text-green-700 font-medium">{formatValue(key, novo[key])}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               )}
 
-              {/* Dados Anteriores */}
-              {selectedLog.dados_anterior && (
+              {/* Detalhes do registro (CREATE) */}
+              {selectedLog.acao === 'CREATE' && selectedLog.dados_novo && (
                 <ReadableData
-                  data={selectedLog.dados_anterior}
-                  title="Dados Anteriores"
-                  colorClass="bg-red-50"
+                  data={selectedLog.dados_novo}
+                  title="Detalhes do Registro Criado"
+                  colorClass="bg-green-50"
                 />
               )}
 
-              {/* Dados Novos */}
-              {selectedLog.dados_novo && (
+              {/* Detalhes do registro (DELETE) */}
+              {selectedLog.acao === 'DELETE' && selectedLog.dados_anterior && (
                 <ReadableData
-                  data={selectedLog.dados_novo}
-                  title={selectedLog.acao === 'CREATE' ? 'Detalhes do Registro' : 'Dados Atualizados'}
-                  colorClass="bg-green-50"
+                  data={selectedLog.dados_anterior}
+                  title="Registro Excluído"
+                  colorClass="bg-red-50"
                 />
               )}
 
