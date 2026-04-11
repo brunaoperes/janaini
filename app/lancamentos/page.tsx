@@ -304,10 +304,8 @@ export default function LancamentosPage() {
   async function handleSubmit() {
     setFormErrors('');
     setIsSubmitting(true);
-    console.error('[DEBUG] handleSubmit iniciado, editingId:', editingId);
 
     try {
-      console.error('[DEBUG] Montando dados...');
       const servicosNomes = formData.servicos_ids
         .map(id => servicos.find(s => s.id === id)?.nome)
         .filter(Boolean)
@@ -375,7 +373,6 @@ export default function LancamentosPage() {
         forma_pagamento: jaRealizado ? formData.forma_pagamento as 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' : undefined,
       };
 
-      console.error('[DEBUG] Validando com Zod...');
       const validation = lancamentoSchema.safeParse(validationData);
       if (!validation.success) {
         setFormErrors(formatZodErrors(validation.error));
@@ -383,7 +380,6 @@ export default function LancamentosPage() {
         return;
       }
 
-      console.error('[DEBUG] Zod OK, buscando taxa...');
       let taxaPercentual = 0;
       let valorTaxa = 0;
       if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
@@ -454,99 +450,25 @@ export default function LancamentosPage() {
           : null,
       };
 
-      console.error('[DEBUG] Dados montados, verificando conflito...');
-
-      // Helper para timeout em queries Supabase (evita travamento)
-      const withTimeout = (query: any, ms = 5000): Promise<any> =>
-        Promise.race([
-          Promise.resolve(query),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
-        ]);
-
-      // Verificar conflito de horário para o mesmo colaborador
+      // Validar horário obrigatório
       if (!formData.hora_inicio) {
         toast.error('Horário de início é obrigatório');
         setIsSubmitting(false);
         return;
       }
-      {
-        const [hI, mI] = formData.hora_inicio.split(':').map(Number);
-        const inicioMinutos = hI * 60 + mI;
-        let fimMinutos = inicioMinutos + 60; // default 1h
-        if (formData.hora_fim) {
-          const [hF, mF] = formData.hora_fim.split(':').map(Number);
-          fimMinutos = hF * 60 + mF;
-          if (fimMinutos <= inicioMinutos) fimMinutos = inicioMinutos + 60;
-        }
 
-        const diaFiltro = formData.data; // YYYY-MM-DD
+      // Helper para timeout em queries Supabase (evita travamento)
+      const withTimeout = (query: any, ms = 3000): Promise<any> =>
+        Promise.race([
+          Promise.resolve(query),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+        ]);
 
-        // Verificação de conflito via API (evita travamento do Supabase client)
-        let lancExistentes: any[] = [];
-        let agendExistentes: any[] = [];
-        try {
-          const conflictRes = await Promise.race([
-            Promise.all([
-              supabase.from('lancamentos').select('id, hora_inicio, hora_fim, cliente_id')
-                .eq('colaborador_id', validationData.colaborador_id)
-                .gte('data', `${diaFiltro} 00:00:00`).lte('data', `${diaFiltro} 23:59:59`).neq('status', 'cancelado'),
-              supabase.from('agendamentos').select('id, data_hora, duracao_minutos, cliente_id')
-                .eq('colaborador_id', validationData.colaborador_id)
-                .gte('data_hora', `${diaFiltro} 00:00:00`).lte('data_hora', `${diaFiltro} 23:59:59`).neq('status', 'cancelado'),
-            ]),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-          ]);
-          lancExistentes = conflictRes[0]?.data || [];
-          agendExistentes = conflictRes[1]?.data || [];
-        } catch {
-          // Se timeout, pular verificação de conflito (API do backend também verifica)
-          console.error('[DEBUG] Timeout na verificação de conflito, pulando...');
-        }
-        // Verificar conflito com lançamentos
-        const conflitoLanc = lancExistentes?.find((ag: any) => {
-          if (editingId && ag.id === editingId) return false;
-          if (!ag.hora_inicio) return false;
-          const [aHI, aMI] = ag.hora_inicio.split(':').map(Number);
-          const aInicio = aHI * 60 + aMI;
-          let aFim = aInicio + 60;
-          if (ag.hora_fim) {
-            const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
-            aFim = aHF * 60 + aMF;
-            if (aFim <= aInicio) aFim = aInicio + 60;
-          }
-          return inicioMinutos < aFim && fimMinutos > aInicio;
-        });
-
-        if (conflitoLanc) {
-          const clienteConflito = clientes.find(c => c.id === conflitoLanc.cliente_id);
-          toast.error(`Conflito de horário: colaborador já tem lançamento das ${conflitoLanc.hora_inicio} às ${conflitoLanc.hora_fim || '?'} com ${clienteConflito?.nome || 'outro cliente'}`);
-          setIsSubmitting(false);
-          return;
-        }
-
-        // Verificar conflito com agendamentos
-        const conflitoAgend = agendExistentes?.find((ag: any) => {
-          const horMatch = ag.data_hora?.match?.(/[T ](\d{2}):(\d{2})/);
-          if (!horMatch) return false;
-          const aInicio = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
-          const aFim = aInicio + (ag.duracao_minutos || 60);
-          return inicioMinutos < aFim && fimMinutos > aInicio;
-        });
-
-        if (conflitoAgend) {
-          const clienteConflito2 = clientes.find(c => c.id === conflitoAgend.cliente_id);
-          const horMatch = conflitoAgend.data_hora?.match?.(/[T ](\d{2}):(\d{2})/);
-          const horStr = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '?';
-          toast.error(`Conflito de horário: colaborador já tem agendamento às ${horStr} com ${clienteConflito2?.nome || 'outro cliente'}`);
-          setIsSubmitting(false);
-          return;
-        }
-      }
+      // Conflito de horário é verificado pela API do backend (/api/agendamentos)
 
       let lancamento: any = null;
       let lancError: any = null;
 
-      console.error('[DEBUG] Sem conflito, salvando via API...', editingId ? 'EDITAR' : 'CRIAR');
       try {
         if (editingId) {
           const res = await fetch(`/api/lancamentos/${editingId}`, {

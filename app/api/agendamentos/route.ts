@@ -335,15 +335,10 @@ export async function PUT(request: Request) {
     if (isAuthError(authResult)) return authResult;
 
     const body = await request.json();
-    const { id, ...updateData } = body;
+    const { id, lancamento_id, ...updateData } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'ID do agendamento é obrigatório' }, { status: 400 });
-    }
-
-    const agendamentoId = parseInt(id);
-    if (isNaN(agendamentoId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    if (!id && !lancamento_id) {
+      return NextResponse.json({ error: 'ID do agendamento ou lancamento_id é obrigatório' }, { status: 400 });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -353,14 +348,21 @@ export async function PUT(request: Request) {
       }
     });
 
-    // Buscar dados anteriores para auditoria
-    const { data: dadosAnterior } = await supabase
-      .from('agendamentos')
-      .select('*')
-      .eq('id', agendamentoId)
-      .single();
+    // Buscar dados anteriores para auditoria (por id ou lancamento_id)
+    let dadosAnterior: any = null;
+    let agendamentoId: number;
 
-    if (!dadosAnterior) {
+    if (id) {
+      agendamentoId = parseInt(id);
+      const { data } = await supabase.from('agendamentos').select('*').eq('id', agendamentoId).single();
+      dadosAnterior = data;
+    } else {
+      const { data } = await supabase.from('agendamentos').select('*').eq('lancamento_id', lancamento_id).single();
+      dadosAnterior = data;
+      agendamentoId = dadosAnterior?.id;
+    }
+
+    if (!dadosAnterior || !agendamentoId) {
       return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
     }
 
