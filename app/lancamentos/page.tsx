@@ -472,19 +472,19 @@ export default function LancamentosPage() {
 
         const diaFiltro = formData.data; // YYYY-MM-DD
 
-        // Checar lançamentos existentes
+        // Checar lançamentos existentes (sem join para evitar problemas de RLS)
         const { data: lancExistentes } = await supabase
           .from('lancamentos')
-          .select('id, hora_inicio, hora_fim, clientes(nome)')
+          .select('id, hora_inicio, hora_fim, cliente_id')
           .eq('colaborador_id', validationData.colaborador_id)
           .gte('data', `${diaFiltro} 00:00:00`)
           .lte('data', `${diaFiltro} 23:59:59`)
           .neq('status', 'cancelado');
 
-        // Checar agendamentos existentes também
+        // Checar agendamentos existentes também (sem join)
         const { data: agendExistentes } = await supabase
           .from('agendamentos')
-          .select('id, data_hora, duracao_minutos, clientes(nome)')
+          .select('id, data_hora, duracao_minutos, cliente_id')
           .eq('colaborador_id', validationData.colaborador_id)
           .gte('data_hora', `${diaFiltro} 00:00:00`)
           .lte('data_hora', `${diaFiltro} 23:59:59`)
@@ -506,8 +506,8 @@ export default function LancamentosPage() {
         });
 
         if (conflitoLanc) {
-          const clienteNome = (conflitoLanc as any).clientes?.nome || 'outro cliente';
-          toast.error(`Conflito de horário: colaborador já tem lançamento das ${conflitoLanc.hora_inicio} às ${conflitoLanc.hora_fim || '?'} com ${clienteNome}`);
+          const clienteConflito = clientes.find(c => c.id === conflitoLanc.cliente_id);
+          toast.error(`Conflito de horário: colaborador já tem lançamento das ${conflitoLanc.hora_inicio} às ${conflitoLanc.hora_fim || '?'} com ${clienteConflito?.nome || 'outro cliente'}`);
           setIsSubmitting(false);
           return;
         }
@@ -522,10 +522,10 @@ export default function LancamentosPage() {
         });
 
         if (conflitoAgend) {
-          const clienteNome = (conflitoAgend as any).clientes?.nome || 'outro cliente';
+          const clienteConflito2 = clientes.find(c => c.id === conflitoAgend.cliente_id);
           const horMatch = conflitoAgend.data_hora?.match?.(/[T ](\d{2}):(\d{2})/);
           const horStr = horMatch ? `${horMatch[1]}:${horMatch[2]}` : '?';
-          toast.error(`Conflito de horário: colaborador já tem agendamento às ${horStr} com ${clienteNome}`);
+          toast.error(`Conflito de horário: colaborador já tem agendamento às ${horStr} com ${clienteConflito2?.nome || 'outro cliente'}`);
           setIsSubmitting(false);
           return;
         }
