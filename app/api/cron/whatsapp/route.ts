@@ -88,12 +88,14 @@ export async function GET(request: Request) {
   try {
     const quinzeMinAtras = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-    // Buscar agendamentos concluídos
+    // Buscar agendamentos concluídos dos últimos 3 dias (evitar enviar para antigos)
+    const tresDiasAtras = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
     const { data: agendConcluidos, error: agendErr } = await supabase
       .from('agendamentos')
       .select('id, data_hora, cliente_id, colaborador_id, lancamento_id')
       .eq('status', 'concluido')
-      .not('lancamento_id', 'is', null);
+      .not('lancamento_id', 'is', null)
+      .gte('data_hora', tresDiasAtras);
 
     // Buscar dados de clientes e colaboradores separadamente para evitar problemas de FK
     let clientesMap: Record<number, { id: number; nome: string; telefone: string }> = {};
@@ -142,6 +144,9 @@ export async function GET(request: Request) {
 
       resultado.pos_venda.encontrados = paraEnviar.length;
 
+      // Controle de telefones já enviados hoje (evitar duplicata por telefone)
+      const telefonesEnviadosHoje = new Set<string>();
+
       for (const agendamento of paraEnviar) {
         const cliente = clientesMap[agendamento.cliente_id];
         const colaborador = colaboradoresMap[agendamento.colaborador_id];
@@ -152,6 +157,11 @@ export async function GET(request: Request) {
 
         const telefoneNorm = normalizarTelefone(cliente.telefone);
         if (!validarTelefone(telefoneNorm)) {
+          continue;
+        }
+
+        // Não enviar pós-venda duplicado para o mesmo telefone na mesma execução
+        if (telefonesEnviadosHoje.has(telefoneNorm)) {
           continue;
         }
 
@@ -166,6 +176,7 @@ export async function GET(request: Request) {
             dataHora: agendamento.data_hora,
             dataProgramada: new Date(),
           });
+          telefonesEnviadosHoje.add(telefoneNorm);
           resultado.pos_venda.enviados++;
         } catch {
           resultado.pos_venda.erros++;
