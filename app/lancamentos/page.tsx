@@ -534,26 +534,44 @@ export default function LancamentosPage() {
       let lancamento: any = null;
       let lancError: any = null;
 
-      if (editingId) {
-        const res = await fetch(`/api/lancamentos/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lancamentoData),
-        });
-        const result = await res.json();
-        if (!res.ok) { lancError = { message: result.error }; } else { lancamento = result.data; }
-      } else {
-        const res = await fetch('/api/lancamentos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lancamentoData),
-        });
-        const result = await res.json();
-        if (!res.ok) { lancError = { message: result.error }; } else { lancamento = result.data; }
+      try {
+        if (editingId) {
+          const res = await fetch(`/api/lancamentos/${editingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lancamentoData),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            toast.error(`Erro ao atualizar: ${errText}`);
+            setIsSubmitting(false);
+            return;
+          }
+          const result = await res.json();
+          lancamento = result.data;
+        } else {
+          const res = await fetch('/api/lancamentos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lancamentoData),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            toast.error(`Erro ao criar: ${errText}`);
+            setIsSubmitting(false);
+            return;
+          }
+          const result = await res.json();
+          lancamento = result.data;
+        }
+      } catch (fetchErr: any) {
+        toast.error(`Erro de conexão: ${fetchErr.message}`);
+        setIsSubmitting(false);
+        return;
       }
 
-      if (lancError) {
-        toast.error(`Erro: ${lancError.message || 'Erro ao salvar lançamento'}`);
+      if (!lancamento) {
+        toast.error('Erro: lançamento não retornado pela API');
         setIsSubmitting(false);
         return;
       }
