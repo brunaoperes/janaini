@@ -304,6 +304,7 @@ export default function LancamentosPage() {
   async function handleSubmit() {
     setFormErrors('');
     setIsSubmitting(true);
+    console.error('[DEBUG] handleSubmit iniciado, editingId:', editingId);
 
     try {
       const servicosNomes = formData.servicos_ids
@@ -454,6 +455,7 @@ export default function LancamentosPage() {
           : null,
       };
 
+      console.error('[DEBUG] Dados do lançamento montados, verificando conflito...');
       // Verificar conflito de horário para o mesmo colaborador
       if (!formData.hora_inicio) {
         toast.error('Horário de início é obrigatório');
@@ -472,8 +474,9 @@ export default function LancamentosPage() {
 
         const diaFiltro = formData.data; // YYYY-MM-DD
 
+        console.error('[DEBUG] Buscando lancamentos existentes, dia:', diaFiltro, 'colab:', validationData.colaborador_id);
         // Checar lançamentos existentes (sem join para evitar problemas de RLS)
-        const { data: lancExistentes } = await supabase
+        const { data: lancExistentes, error: lancCheckErr } = await supabase
           .from('lancamentos')
           .select('id, hora_inicio, hora_fim, cliente_id')
           .eq('colaborador_id', validationData.colaborador_id)
@@ -481,8 +484,9 @@ export default function LancamentosPage() {
           .lte('data', `${diaFiltro} 23:59:59`)
           .neq('status', 'cancelado');
 
+        console.error('[DEBUG] Lancamentos encontrados:', lancExistentes?.length, 'erro:', lancCheckErr?.message);
         // Checar agendamentos existentes também (sem join)
-        const { data: agendExistentes } = await supabase
+        const { data: agendExistentes, error: agendCheckErr } = await supabase
           .from('agendamentos')
           .select('id, data_hora, duracao_minutos, cliente_id')
           .eq('colaborador_id', validationData.colaborador_id)
@@ -490,6 +494,7 @@ export default function LancamentosPage() {
           .lte('data_hora', `${diaFiltro} 23:59:59`)
           .neq('status', 'cancelado');
 
+        console.error('[DEBUG] Agendamentos encontrados:', agendExistentes?.length, 'erro:', agendCheckErr?.message);
         // Verificar conflito com lançamentos
         const conflitoLanc = lancExistentes?.find((ag: any) => {
           if (editingId && ag.id === editingId) return false;
@@ -534,6 +539,7 @@ export default function LancamentosPage() {
       let lancamento: any = null;
       let lancError: any = null;
 
+      console.error('[DEBUG] Sem conflito, salvando via API...', editingId ? 'EDITAR' : 'CRIAR');
       try {
         if (editingId) {
           const res = await fetch(`/api/lancamentos/${editingId}`, {
