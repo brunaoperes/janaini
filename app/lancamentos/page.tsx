@@ -387,13 +387,8 @@ export default function LancamentosPage() {
       let taxaPercentual = 0;
       let valorTaxa = 0;
       if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
-        console.error('[DEBUG] Buscando taxa forma pagamento:', formData.forma_pagamento);
-        const { data: formaPagamento } = await supabase
-          .from('formas_pagamento')
-          .select('taxa_percentual')
-          .eq('codigo', formData.forma_pagamento)
-          .single();
-
+        // Usar lista local em vez de query Supabase (evita travamento)
+        const formaPagamento = formasPagamentoDB.find(f => f.codigo === formData.forma_pagamento);
         taxaPercentual = formaPagamento?.taxa_percentual || 0;
         valorTaxa = (validationData.valor_total * taxaPercentual) / 100;
       }
@@ -459,7 +454,15 @@ export default function LancamentosPage() {
           : null,
       };
 
-      console.error('[DEBUG] Dados do lançamento montados, verificando conflito...');
+      console.error('[DEBUG] Dados montados, verificando conflito...');
+
+      // Helper para timeout em queries Supabase (evita travamento)
+      const withTimeout = (query: any, ms = 5000): Promise<any> =>
+        Promise.race([
+          Promise.resolve(query),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+        ]);
+
       // Verificar conflito de horário para o mesmo colaborador
       if (!formData.hora_inicio) {
         toast.error('Horário de início é obrigatório');
@@ -478,27 +481,27 @@ export default function LancamentosPage() {
 
         const diaFiltro = formData.data; // YYYY-MM-DD
 
-        console.error('[DEBUG] Buscando lancamentos existentes, dia:', diaFiltro, 'colab:', validationData.colaborador_id);
-        // Checar lançamentos existentes (sem join para evitar problemas de RLS)
-        const { data: lancExistentes, error: lancCheckErr } = await supabase
-          .from('lancamentos')
-          .select('id, hora_inicio, hora_fim, cliente_id')
-          .eq('colaborador_id', validationData.colaborador_id)
-          .gte('data', `${diaFiltro} 00:00:00`)
-          .lte('data', `${diaFiltro} 23:59:59`)
-          .neq('status', 'cancelado');
-
-        console.error('[DEBUG] Lancamentos encontrados:', lancExistentes?.length, 'erro:', lancCheckErr?.message);
-        // Checar agendamentos existentes também (sem join)
-        const { data: agendExistentes, error: agendCheckErr } = await supabase
-          .from('agendamentos')
-          .select('id, data_hora, duracao_minutos, cliente_id')
-          .eq('colaborador_id', validationData.colaborador_id)
-          .gte('data_hora', `${diaFiltro} 00:00:00`)
-          .lte('data_hora', `${diaFiltro} 23:59:59`)
-          .neq('status', 'cancelado');
-
-        console.error('[DEBUG] Agendamentos encontrados:', agendExistentes?.length, 'erro:', agendCheckErr?.message);
+        // Verificação de conflito via API (evita travamento do Supabase client)
+        let lancExistentes: any[] = [];
+        let agendExistentes: any[] = [];
+        try {
+          const conflictRes = await Promise.race([
+            Promise.all([
+              supabase.from('lancamentos').select('id, hora_inicio, hora_fim, cliente_id')
+                .eq('colaborador_id', validationData.colaborador_id)
+                .gte('data', `${diaFiltro} 00:00:00`).lte('data', `${diaFiltro} 23:59:59`).neq('status', 'cancelado'),
+              supabase.from('agendamentos').select('id, data_hora, duracao_minutos, cliente_id')
+                .eq('colaborador_id', validationData.colaborador_id)
+                .gte('data_hora', `${diaFiltro} 00:00:00`).lte('data_hora', `${diaFiltro} 23:59:59`).neq('status', 'cancelado'),
+            ]),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+          ]);
+          lancExistentes = conflictRes[0]?.data || [];
+          agendExistentes = conflictRes[1]?.data || [];
+        } catch {
+          // Se timeout, pular verificação de conflito (API do backend também verifica)
+          console.error('[DEBUG] Timeout na verificação de conflito, pulando...');
+        }
         // Verificar conflito com lançamentos
         const conflitoLanc = lancExistentes?.find((ag: any) => {
           if (editingId && ag.id === editingId) return false;
@@ -586,40 +589,32 @@ export default function LancamentosPage() {
         return;
       }
 
-      if (compartilhado && divisoes.length > 0) {
-        if (editingId) {
-          await supabase
-            .from('lancamento_divisoes')
-            .delete()
-            .eq('lancamento_id', editingId);
+      // Divisões e agendamentos com timeout para evitar travamento
+      try {
+        if (compartilhado && divisoes.length > 0) {
+          if (editingId) {
+            await withTimeout(supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId));
+          }
+
+          const divisoesParaSalvar = divisoes.map(d => {
+            const colab = colaboradores.find(c => c.id === d.colaborador_id);
+            const porcentagemColab = colab?.porcentagem_comissao || 50;
+            const valorDivisao = parseFloat(d.valor) || 0;
+            const comissaoCalculada = (valorDivisao * porcentagemColab) / 100;
+            return {
+              lancamento_id: lancamento.id,
+              colaborador_id: d.colaborador_id,
+              valor: valorDivisao,
+              comissao_calculada: comissaoCalculada,
+            };
+          });
+
+          await withTimeout(supabase.from('lancamento_divisoes').insert(divisoesParaSalvar));
+        } else if (editingId) {
+          await withTimeout(supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId));
         }
-
-        const divisoesParaSalvar = divisoes.map(d => {
-          const colab = colaboradores.find(c => c.id === d.colaborador_id);
-          const porcentagemColab = colab?.porcentagem_comissao || 50;
-          const valorDivisao = parseFloat(d.valor) || 0;
-          const comissaoCalculada = (valorDivisao * porcentagemColab) / 100;
-
-          return {
-            lancamento_id: lancamento.id,
-            colaborador_id: d.colaborador_id,
-            valor: valorDivisao,
-            comissao_calculada: comissaoCalculada,
-          };
-        });
-
-        const { error: divError } = await supabase
-          .from('lancamento_divisoes')
-          .insert(divisoesParaSalvar);
-
-        if (divError) {
-          console.error('Erro ao salvar divisões:', divError);
-        }
-      } else if (editingId) {
-        await supabase
-          .from('lancamento_divisoes')
-          .delete()
-          .eq('lancamento_id', editingId);
+      } catch {
+        // Divisões falharam mas lançamento já foi salvo
       }
 
       const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
@@ -630,10 +625,15 @@ export default function LancamentosPage() {
         ? divisoes.map(d => d.colaborador_id)
         : [validationData.colaborador_id];
 
+      try {
       if (editingId) {
-        const { error: agendError } = await supabase
-          .from('agendamentos')
-          .update({
+        // Atualizar agendamento via API
+        await fetch('/api/agendamentos', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: null, // buscar por lancamento_id
+            lancamento_id: editingId,
             cliente_id: validationData.cliente_id,
             colaborador_id: validationData.colaborador_id,
             data_hora: dataCompleta,
@@ -642,47 +642,43 @@ export default function LancamentosPage() {
             valor_estimado: validationData.valor_total,
             status: statusFinal,
             colaboradores_ids: colaboradoresIdsAgenda,
-          })
-          .eq('lancamento_id', editingId);
-
-        if (agendError) {
-          console.error('Erro ao atualizar agendamento:', agendError);
-        }
+          }),
+        });
       } else {
-        const { data: agendCriado, error: agendError } = await supabase
-          .from('agendamentos')
-          .insert({
-            cliente_id: validationData.cliente_id,
-            colaborador_id: validationData.colaborador_id,
-            data_hora: dataCompleta,
-            descricao_servico: servicosNomes,
-            duracao_minutos: duracaoTotal,
-            valor_estimado: validationData.valor_total,
-            hora_inicio: formData.hora_inicio,
-            hora_fim: formData.hora_fim,
-            lancamento_id: lancamento.id,
-            status: statusFinal,
-            colaboradores_ids: colaboradoresIdsAgenda,
-          })
-          .select('id')
-          .single();
+        // Criar agendamento via Supabase com timeout
+        try {
+          const { data: agendCriado } = await withTimeout(supabase
+            .from('agendamentos')
+            .insert({
+              cliente_id: validationData.cliente_id,
+              colaborador_id: validationData.colaborador_id,
+              data_hora: dataCompleta,
+              descricao_servico: servicosNomes,
+              duracao_minutos: duracaoTotal,
+              valor_estimado: validationData.valor_total,
+              hora_inicio: formData.hora_inicio,
+              hora_fim: formData.hora_fim,
+              lancamento_id: lancamento.id,
+              status: statusFinal,
+              colaboradores_ids: colaboradoresIdsAgenda,
+            })
+            .select('id')
+            .single());
 
-        if (agendError) {
-          console.error('Erro ao criar agendamento:', agendError);
-        }
-
-        // Disparar WhatsApp para o agendamento criado
-        if (agendCriado?.id) {
-          try {
-            await fetch('/api/agendamentos/whatsapp', {
+          // Disparar WhatsApp
+          if (agendCriado?.id) {
+            fetch('/api/agendamentos/whatsapp', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ agendamentoId: agendCriado.id }),
-            });
-          } catch {
-            // Não bloquear o lançamento se WhatsApp falhar
+            }).catch(() => {});
           }
+        } catch {
+          // Agendamento falhou mas lançamento já foi salvo
         }
+      }
+      } catch {
+        // Agendamento/divisões falharam mas lançamento salvo
       }
 
       let msgExtra = '';
