@@ -511,97 +511,72 @@ export default function LancamentosPage() {
         return;
       }
 
-      // Divisões e agendamentos com timeout para evitar travamento
-      try {
-        if (compartilhado && divisoes.length > 0) {
-          if (editingId) {
-            await withTimeout(supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId));
-          }
-
-          const divisoesParaSalvar = divisoes.map(d => {
-            const colab = colaboradores.find(c => c.id === d.colaborador_id);
-            const porcentagemColab = colab?.porcentagem_comissao || 50;
-            const valorDivisao = parseFloat(d.valor) || 0;
-            const comissaoCalculada = (valorDivisao * porcentagemColab) / 100;
-            return {
-              lancamento_id: lancamento.id,
-              colaborador_id: d.colaborador_id,
-              valor: valorDivisao,
-              comissao_calculada: comissaoCalculada,
-            };
-          });
-
-          await withTimeout(supabase.from('lancamento_divisoes').insert(divisoesParaSalvar));
-        } else if (editingId) {
-          await withTimeout(supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId));
-        }
-      } catch {
-        // Divisões falharam mas lançamento já foi salvo
-      }
-
+      // Operações secundárias em background (não bloqueiam o salvamento)
       const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
       const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
       const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
-
       const colaboradoresIdsAgenda = compartilhado
         ? divisoes.map(d => d.colaborador_id)
         : [validationData.colaborador_id];
 
-      try {
-      if (editingId) {
-        // Atualizar agendamento via API
-        await fetch('/api/agendamentos', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: null, // buscar por lancamento_id
-            lancamento_id: editingId,
-            cliente_id: validationData.cliente_id,
-            colaborador_id: validationData.colaborador_id,
-            data_hora: dataCompleta,
-            descricao_servico: servicosNomes,
-            duracao_minutos: duracaoTotal,
-            valor_estimado: validationData.valor_total,
-            status: statusFinal,
-            colaboradores_ids: colaboradoresIdsAgenda,
-          }),
-        });
-      } else {
-        // Criar agendamento via Supabase com timeout
+      // Fire-and-forget: divisões, agendamento e WhatsApp rodam em background
+      (async () => {
         try {
-          const { data: agendCriado } = await withTimeout(supabase
-            .from('agendamentos')
-            .insert({
-              cliente_id: validationData.cliente_id,
-              colaborador_id: validationData.colaborador_id,
-              data_hora: dataCompleta,
-              descricao_servico: servicosNomes,
-              duracao_minutos: duracaoTotal,
-              valor_estimado: validationData.valor_total,
-              hora_inicio: formData.hora_inicio,
-              hora_fim: formData.hora_fim,
-              lancamento_id: lancamento.id,
-              status: statusFinal,
-              colaboradores_ids: colaboradoresIdsAgenda,
-            })
-            .select('id')
-            .single());
+          // Divisões
+          if (compartilhado && divisoes.length > 0) {
+            if (editingId) {
+              await supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId);
+            }
+            const divisoesParaSalvar = divisoes.map(d => {
+              const colab = colaboradores.find(c => c.id === d.colaborador_id);
+              return {
+                lancamento_id: lancamento.id,
+                colaborador_id: d.colaborador_id,
+                valor: parseFloat(d.valor) || 0,
+                comissao_calculada: ((parseFloat(d.valor) || 0) * (colab?.porcentagem_comissao || 50)) / 100,
+              };
+            });
+            await supabase.from('lancamento_divisoes').insert(divisoesParaSalvar);
+          } else if (editingId) {
+            await supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId);
+          }
 
-          // Disparar WhatsApp
-          if (agendCriado?.id) {
-            fetch('/api/agendamentos/whatsapp', {
+          // Agendamento
+          if (editingId) {
+            await fetch('/api/agendamentos', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                lancamento_id: editingId,
+                cliente_id: validationData.cliente_id,
+                colaborador_id: validationData.colaborador_id,
+                data_hora: dataCompleta,
+                descricao_servico: servicosNomes,
+                duracao_minutos: duracaoTotal,
+                valor_estimado: validationData.valor_total,
+                status: statusFinal,
+                colaboradores_ids: colaboradoresIdsAgenda,
+              }),
+            });
+          } else {
+            const agendRes = await fetch('/api/agendamentos', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ agendamentoId: agendCriado.id }),
-            }).catch(() => {});
+              body: JSON.stringify({
+                colaborador_id: validationData.colaborador_id,
+                cliente_id: validationData.cliente_id,
+                data_hora: dataCompleta,
+                descricao_servico: servicosNomes,
+                duracao_minutos: duracaoTotal,
+                valor_estimado: validationData.valor_total,
+                hora_inicio: formData.hora_inicio,
+                hora_fim: formData.hora_fim || formData.hora_inicio,
+              }),
+            });
+            // WhatsApp �� disparado pela API de agendamentos automaticamente
           }
-        } catch {
-          // Agendamento falhou mas lançamento já foi salvo
-        }
-      }
-      } catch {
-        // Agendamento/divisões falharam mas lançamento salvo
-      }
+        } catch {}
+      })();
 
       let msgExtra = '';
       if (formData.is_fiado) {
