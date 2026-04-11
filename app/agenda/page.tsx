@@ -701,8 +701,8 @@ export default function AgendaPage() {
     let isTrocaGratis = false;
     let valorReferencia = '';
 
-    // Se concluído e tem lançamento, buscar dados financeiros
-    if (isConcluido && selectedAgendamento.lancamento_id) {
+    // Buscar dados financeiros do lançamento (concluído ou pendente)
+    if (selectedAgendamento.lancamento_id) {
       const { data: lancFresh, error } = await supabase
         .from('lancamentos')
         .select('*')
@@ -716,6 +716,8 @@ export default function AgendaPage() {
         isTrocaGratis = lancFresh.is_troca_gratis || false;
         valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
       }
+    } else if (selectedAgendamento.valor_estimado) {
+      valorTotal = selectedAgendamento.valor_estimado.toFixed(2);
     }
 
     // Setar colaborador selecionado para cálculo de comissão
@@ -801,7 +803,19 @@ export default function AgendaPage() {
         servicos_nomes: descricaoServicos,
       };
 
-      // Se é atendimento concluído, atualizar também dados financeiros
+      // Atualizar valor total sempre que preenchido
+      if (editData.valor_total) {
+        const valorAtualizado = parseFloat(editData.valor_total) || 0;
+        lancamentoUpdate.valor_total = valorAtualizado;
+
+        // Recalcular comissões com o novo valor
+        const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
+        const comissaoBruta = (valorAtualizado * porcentagem) / 100;
+        lancamentoUpdate.comissao_colaborador = comissaoBruta;
+        lancamentoUpdate.comissao_salao = valorAtualizado - comissaoBruta;
+      }
+
+      // Se é atendimento concluído, atualizar também dados de pagamento
       if (editIsCompleted) {
         // Validar forma de pagamento
         if (!editData.forma_pagamento && !editData.is_fiado && !editData.is_troca_gratis) {
@@ -3142,8 +3156,8 @@ export default function AgendaPage() {
                       />
                     </div>
 
-                    {/* Seção de Pagamento - apenas para atendimentos concluídos */}
-                    {editIsCompleted && selectedAgendamento?.lancamento_id && (
+                    {/* Seção de Valor e Pagamento */}
+                    {selectedAgendamento?.lancamento_id && (
                       <div className="bg-green-50 rounded-xl p-4 border border-green-200">
                         <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

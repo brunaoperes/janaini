@@ -717,6 +717,7 @@ export default function LancamentosPage() {
   }
 
   async function handleEdit(lanc: LancamentoComRelacoes) {
+    try {
     const { data: lancFresh, error } = await supabase
       .from('lancamentos')
       .select('*')
@@ -725,14 +726,14 @@ export default function LancamentosPage() {
 
     if (error || !lancFresh) {
       toast.error('Erro ao carregar dados do lançamento');
-      console.error('Erro ao buscar lançamento:', error);
       return;
     }
 
     const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
     const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
 
-    const dataStr = lancFresh.data.split('T')[0];
+    const dataMatch = lancFresh.data.match(/(\d{4}-\d{2}-\d{2})/);
+    const dataStr = dataMatch ? dataMatch[1] : lancFresh.data.split('T')[0];
     const horaInicio = lancFresh.hora_inicio ? lancFresh.hora_inicio.substring(0, 5) : '09:00';
     const horaFim = lancFresh.hora_fim ? lancFresh.hora_fim.substring(0, 5) : '10:00';
 
@@ -784,6 +785,9 @@ export default function LancamentosPage() {
     }
 
     setShowModal(true);
+    } catch (err: any) {
+      toast.error('Erro ao abrir edição: ' + (err.message || 'erro desconhecido'));
+    }
   }
 
   async function handleDelete(id: number) {
