@@ -716,6 +716,8 @@ export default function AgendaPage() {
         isTrocaGratis = lancFresh.is_troca_gratis || false;
         valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
       }
+    } else if ((selectedAgendamento as any).lancamento?.valor_total) {
+      valorTotal = (selectedAgendamento as any).lancamento.valor_total.toFixed(2);
     } else if (selectedAgendamento.valor_estimado) {
       valorTotal = selectedAgendamento.valor_estimado.toFixed(2);
     }
@@ -1818,13 +1820,17 @@ export default function AgendaPage() {
                                     <span>{formatarHorario(agendamento.data_hora)}</span>
                                   </div>
 
-                                  {/* Valor Estimado */}
-                                  {agendamento.valor_estimado && agendamento.valor_estimado > 0 && (
-                                    <div className="text-green-400 mt-2 flex items-center gap-2 font-semibold">
-                                      <span>R$</span>
-                                      <span>{agendamento.valor_estimado.toFixed(2)}</span>
-                                    </div>
-                                  )}
+                                  {/* Valor (lançamento real ou estimado) */}
+                                  {(() => {
+                                    const vReal = (agendamento as any).lancamento?.valor_total;
+                                    const v = vReal ?? agendamento.valor_estimado;
+                                    return v && v > 0 ? (
+                                      <div className="text-green-400 mt-2 flex items-center gap-2 font-semibold">
+                                        <span>R$</span>
+                                        <span>{v.toFixed(2)}</span>
+                                      </div>
+                                    ) : null;
+                                  })()}
 
                                   {/* Progresso */}
                                   {progresso > 0 && progresso < 100 && (
@@ -2549,15 +2555,19 @@ export default function AgendaPage() {
                     <div className="mt-2 text-lg font-semibold text-gray-800">
                       {getServicoIcon(selectedAgendamento.descricao_servico || '')} {selectedAgendamento.descricao_servico}
                     </div>
-                    {/* Valor Estimado */}
-                    {selectedAgendamento.valor_estimado && selectedAgendamento.valor_estimado > 0 && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-sm text-gray-500">Valor:</span>
-                        <span className="text-lg font-bold text-green-600">
-                          R$ {selectedAgendamento.valor_estimado.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+                    {/* Valor (usa lançamento se existir, senão valor_estimado) */}
+                    {(() => {
+                      const valorReal = (selectedAgendamento as any).lancamento?.valor_total;
+                      const valor = valorReal ?? selectedAgendamento.valor_estimado;
+                      return valor && valor > 0 ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-sm text-gray-500">Valor:</span>
+                          <span className="text-lg font-bold text-green-600">
+                            R$ {valor.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Observações */}
@@ -2584,12 +2594,15 @@ export default function AgendaPage() {
                         </label>
                         <button
                           onClick={() => {
-                            if (!isFinalizando && selectedAgendamento?.valor_estimado) {
-                              // Pré-preencher com o valor estimado
-                              setFinalizarData(prev => ({
-                                ...prev,
-                                valor_pago: selectedAgendamento.valor_estimado?.toFixed(2) || ''
-                              }));
+                            if (!isFinalizando) {
+                              // Pré-preencher com o valor real do lançamento ou estimado
+                              const valorPreench = (selectedAgendamento as any).lancamento?.valor_total ?? selectedAgendamento?.valor_estimado;
+                              if (valorPreench) {
+                                setFinalizarData(prev => ({
+                                  ...prev,
+                                  valor_pago: valorPreench.toFixed(2)
+                                }));
+                              }
                             }
                             setIsFinalizando(!isFinalizando);
                           }}

@@ -97,7 +97,8 @@ export async function GET(request: Request) {
         .select(`
           *,
           cliente:clientes!fk_agendamentos_cliente(*),
-          colaborador:colaboradores!fk_agendamentos_colaborador(*)
+          colaborador:colaboradores!fk_agendamentos_colaborador(*),
+          lancamento:lancamentos(id, valor_total, status, forma_pagamento, comissao_colaborador, comissao_salao)
         `)
         .gte('data_hora', `${data}T00:00:00`)
         .lte('data_hora', `${data}T23:59:59`)
