@@ -717,6 +717,7 @@ export default function LancamentosPage() {
   }
 
   async function handleEdit(lanc: LancamentoComRelacoes) {
+    toast('Carregando lançamento...', { icon: '⏳' });
     try {
     // Buscar dados frescos via API (bypass RLS)
     const response = await fetch(`/api/lancamentos/${lanc.id}`);
@@ -731,6 +732,8 @@ export default function LancamentosPage() {
       toast.error('Lançamento não encontrado');
       return;
     }
+
+    toast('Dados carregados, abrindo...', { icon: '✅' });
 
     const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
     const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
