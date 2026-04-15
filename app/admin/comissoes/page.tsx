@@ -83,6 +83,10 @@ export default function ComissoesPage() {
 
   async function loadData() {
     setLoading(true);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       const params = new URLSearchParams({
         dataInicio,
@@ -92,7 +96,9 @@ export default function ComissoesPage() {
 
       const response = await fetch(`/api/comissoes?${params}`, {
         cache: 'no-store',
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -106,9 +112,14 @@ export default function ComissoesPage() {
       setColaboradores(data.colaboradores || []);
       setIsAdmin(data._userProfile?.isAdmin || false);
       setUserColaboradorId(data._userProfile?.colaboradorId || null);
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar comissões:', error);
-      toast.error('Erro ao carregar dados');
+      if (error.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      } else {
+        toast.error('Erro ao carregar dados');
+      }
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import FaturamentoChart from '@/components/FaturamentoChart';
 import Header from '@/components/Header';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -156,6 +157,9 @@ export default function Dashboard() {
 
   // Função para carregar dados do dashboard
   const loadData = useCallback(async (dias?: string, dataInicio?: string, dataFim?: string, colaboradorId?: string) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       let url = '/api/dashboard';
       const params = new URLSearchParams();
@@ -176,15 +180,22 @@ export default function Dashboard() {
         url += '?' + params.toString();
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
       if (!response.ok) {
         throw new Error('Erro ao carregar dados');
       }
       const result = await response.json();
       setData(result);
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar dashboard:', err);
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      } else {
+        toast.error('Erro ao carregar dados do dashboard.');
+      }
+      setError(err.message || 'Erro ao carregar dados');
     }
   }, []);
 

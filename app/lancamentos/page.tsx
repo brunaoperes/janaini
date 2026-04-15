@@ -213,17 +213,22 @@ export default function LancamentosPage() {
   async function loadData(retryCount = 0, showLoading = true) {
     if (showLoading) setLoading(true);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       // Carregar todos os lançamentos (sem filtro de data na API)
       const url = `/api/lancamentos?filtro=todos&_t=${Date.now()}`;
 
       const response = await fetch(url, {
         cache: 'no-store',
+        signal: controller.signal,
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
         },
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         if (retryCount < 2) {
@@ -267,8 +272,14 @@ export default function LancamentosPage() {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar dados:', error);
+      if (error.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      } else {
+        toast.error('Erro ao carregar lançamentos.');
+      }
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import { supabase, Lancamento, Colaborador } from '@/lib/supabase';
 import { format, startOfWeek, endOfWeek, startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths, subWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import StatCard from '@/components/admin/StatCard';
 import ChartCard from '@/components/admin/ChartCard';
@@ -63,8 +64,11 @@ export default function RelatoriosPage() {
   }, [periodo, selectedDate, dataInicio, dataFim, selectedColaborador, selectedPagamento, colaboradores, incluirFiados, incluirTroca, incluirProjecao]);
 
   const loadColaboradores = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch('/api/admin?tabela=colaboradores');
+      const response = await fetch('/api/admin?tabela=colaboradores', { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
       const result = await response.json();
       if (result.data) setColaboradores(result.data);
 
@@ -79,13 +83,20 @@ export default function RelatoriosPage() {
           setFiltroTravado(true);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar colaboradores:', error);
+      if (error.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      }
     }
   };
 
   const loadLancamentos = async () => {
     setLoading(true);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     let startDate, endDate, startDateAnterior, endDateAnterior;
 
@@ -125,17 +136,25 @@ export default function RelatoriosPage() {
         incluirProjecao: incluirProjecao.toString(),
       });
 
-      const response = await fetch(`/api/relatorios?${params.toString()}`);
+      const response = await fetch(`/api/relatorios?${params.toString()}`, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
       const result = await response.json();
 
       if (result.lancamentos) setLancamentos(result.lancamentos);
       if (result.lancamentosAnterior) setLancamentosAnterior(result.lancamentosAnterior);
       if (result.totais) setTotaisExtras(result.totais);
       if (result._userProfile) setUserProfile(result._userProfile);
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar lançamentos:', error);
+      if (error.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      } else {
+        toast.error('Erro ao carregar relatórios.');
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const calcularEstatisticas = () => {

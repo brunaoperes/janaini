@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface AuditLog {
@@ -282,6 +283,9 @@ export default function LogsAuditoriaPage() {
     setLoading(true);
     setError(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       const params = new URLSearchParams({
         dataInicio,
@@ -293,7 +297,8 @@ export default function LogsAuditoriaPage() {
         offset: ((page - 1) * limit).toString(),
       });
 
-      const response = await fetch(`/api/audit?${params}`);
+      const response = await fetch(`/api/audit?${params}`, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const data = await response.json();
@@ -304,7 +309,13 @@ export default function LogsAuditoriaPage() {
       setLogs(data.logs || []);
       setTotal(data.total || 0);
     } catch (err: any) {
-      setError(err.message);
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+        setError('Tempo limite excedido. Tente atualizar a página.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

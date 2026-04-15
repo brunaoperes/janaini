@@ -198,9 +198,13 @@ export default function AgendaPage() {
   const loadData = async () => {
     setLoading(true);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       // Usar API para buscar dados (bypass RLS)
-      const response = await fetch(`/api/agenda?data=${selectedDate}`);
+      const response = await fetch(`/api/agenda?data=${selectedDate}`, { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timeoutId);
       if (!response.ok) {
         throw new Error('Erro ao carregar dados');
       }
@@ -232,8 +236,14 @@ export default function AgendaPage() {
           colaborador_id: colaboradorId.toString(),
         }));
       }
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Erro ao carregar dados:', error);
+      if (error.name === 'AbortError') {
+        toast.error('Carregamento demorou demais. Tente atualizar a página.');
+      } else {
+        toast.error('Erro ao carregar agenda.');
+      }
     } finally {
       setLoading(false);
     }
