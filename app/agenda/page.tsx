@@ -150,44 +150,49 @@ export default function AgendaPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Atualizar status dos agendamentos automaticamente
-  // Quando o horário chegar, muda de "pendente" para "executando"
+  // Atualizar status dos agendamentos automaticamente (a cada minuto)
   useEffect(() => {
     const atualizarStatusAgendamentos = async () => {
       const agora = new Date();
       const hoje = format(agora, 'yyyy-MM-dd');
 
-      // Só atualiza se estiver vendo o dia de hoje
       if (selectedDate !== hoje) return;
 
-      // Filtrar agendamentos pendentes cujo horário já passou
-      const agendamentosParaAtualizar = agendamentos.filter(ag => {
+      // Usar ref para evitar loop (não depender do state agendamentos)
+      const pendentes = agendamentos.filter(ag => {
         if (ag.status !== 'pendente') return false;
-
         const dataHoraAgendamento = parseAsLocalTime(ag.data_hora);
         return dataHoraAgendamento <= agora;
       });
 
-      // Atualizar status para "executando"
-      for (const ag of agendamentosParaAtualizar) {
+      if (pendentes.length === 0) return;
+
+      // Atualizar em background sem recarregar toda a página
+      for (const ag of pendentes) {
         await supabase
           .from('agendamentos')
           .update({ status: 'executando' })
           .eq('id', ag.id);
       }
 
-      // Se atualizou algum, recarregar dados
-      if (agendamentosParaAtualizar.length > 0) {
-        loadData();
-      }
+      // Atualizar state local sem reload completo
+      setAgendamentos(prev => prev.map(ag =>
+        pendentes.find(p => p.id === ag.id)
+          ? { ...ag, status: 'executando' }
+          : ag
+      ));
     };
 
-    // Executar imediatamente e a cada minuto
-    atualizarStatusAgendamentos();
     const timer = setInterval(atualizarStatusAgendamentos, 60000);
+    // Executar uma vez após 5 segundos (não imediatamente para evitar conflito com loadData)
+    const initialTimeout = setTimeout(atualizarStatusAgendamentos, 5000);
 
-    return () => clearInterval(timer);
-  }, [agendamentos, selectedDate]);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(initialTimeout);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   useEffect(() => {
     loadData();
