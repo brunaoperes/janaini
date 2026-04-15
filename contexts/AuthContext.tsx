@@ -106,16 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     let profileLoaded = false; // Flag para evitar carregamento duplicado
 
-    // Verificar sessão atual
+    // Verificar sessão atual com timeout curto
     const initAuth = async () => {
       try {
-        // Usar Promise.race com timeout de 15 segundos
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 15000)
-        );
-
-        const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        ]) as any;
 
         if (!isMounted) return;
 
@@ -125,36 +122,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user && !profileLoaded) {
           profileLoaded = true;
-          await loadProfile(session.user.id, session.user.email);
-          // Login funcionou, limpar flag de limpeza para futuras sessoes
-          try { sessionStorage.removeItem('auth_cleaned'); } catch {}
-        }
-      } catch (err) {
-        // Retry uma vez em caso de timeout
-        try {
-          const { data } = await supabase.auth.getSession();
-          if (!isMounted) return;
-          const session = data?.session;
-          setSession(session);
-          setUser(session?.user ?? null);
-          if (session?.user && !profileLoaded) {
-            profileLoaded = true;
-            await loadProfile(session.user.id, session.user.email);
+          // Profile com timeout separado de 5s
+          try {
+            await Promise.race([
+              loadProfile(session.user.id, session.user.email),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 5000))
+            ]);
+            try { sessionStorage.removeItem('auth_cleaned'); } catch {}
+          } catch {
+            // Profile falhou mas sessão ok — continuar sem profile
           }
-        } catch {
-          // Limpar storage corrompido e redirecionar para login
-          const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
-          if (!alreadyCleaned) {
-            sessionStorage.setItem('auth_cleaned', '1');
-            // Limpar dados do Supabase no localStorage
+        }
+      } catch {
+        // Timeout ou erro no getSession — limpar e ir pro login se necessário
+        if (!isMounted) return;
+        const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
+        if (!alreadyCleaned) {
+          sessionStorage.setItem('auth_cleaned', '1');
+          try {
             Object.keys(localStorage).forEach(key => {
               if (key.startsWith('sb-') || key.includes('supabase')) {
                 localStorage.removeItem(key);
               }
             });
-            window.location.href = '/login';
-            return;
-          }
+          } catch {}
+          window.location.href = '/login';
+          return;
         }
       } finally {
         if (isMounted) {

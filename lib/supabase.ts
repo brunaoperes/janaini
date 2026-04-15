@@ -4,7 +4,14 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Client para componentes do browser (use client)
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+// Lock para evitar conflito de refresh token entre abas
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: 'pkce',
+    detectSessionInUrl: false,
+    storageKey: 'navibelle-auth',
+  },
+});
 
 export type Cliente = {
   id: number;
