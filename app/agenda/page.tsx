@@ -49,6 +49,7 @@ const parseAsLocalTime = (dataHora: string): Date => {
 export default function AgendaPage() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
+  const [rankingMes, setRankingMes] = useState<{ id: number; nome: string; quantidade: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedAgendamento, setSelectedAgendamento] = useState<Agendamento | null>(null);
@@ -149,6 +150,21 @@ export default function AgendaPage() {
 
     return () => clearInterval(timer);
   }, []);
+
+  // Carregar ranking do mês quando muda o mês selecionado
+  useEffect(() => {
+    const mes = selectedDate.slice(0, 7); // YYYY-MM
+    const controller = new AbortController();
+
+    fetch(`/api/agenda/ranking-mes?mes=${mes}`, { signal: controller.signal, cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.ranking) setRankingMes(data.ranking);
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [selectedDate.slice(0, 7)]);
 
   // Atualizar status dos agendamentos automaticamente (a cada minuto)
   useEffect(() => {
@@ -1264,20 +1280,12 @@ export default function AgendaPage() {
     return Math.round((horasOcupadas / horasDisponiveis) * 100);
   };
 
-  // Ranking de colaboradoras
+  // Ranking de colaboradoras (mês inteiro — dados vêm de /api/agenda/ranking-mes)
   const getRankingColaboradoras = () => {
-    const ranking = colaboradores.map(colaborador => {
-      const agendamentosColab = agendamentos.filter(a =>
-        a.colaborador_id === colaborador.id ||
-        (a.colaboradores_ids && a.colaboradores_ids.includes(colaborador.id))
-      );
-      return {
-        nome: colaborador.nome,
-        quantidade: agendamentosColab.length,
-      };
-    }).sort((a, b) => b.quantidade - a.quantidade);
-
-    return ranking.slice(0, 3); // Top 3
+    return [...rankingMes]
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .filter(r => r.quantidade > 0)
+      .slice(0, 3);
   };
 
   // Calcular receita estimada (baseado em valores médios)
@@ -2061,28 +2069,39 @@ export default function AgendaPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-800">🏆 Top Colaboradoras</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">🏆 Top Colaboradoras</h3>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {parseAsLocalTime(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-3">
-                {getRankingColaboradoras().map((colab, index) => {
-                  const color = getColaboradorColor(index);
-                  const medals = ['🥇', '🥈', '🥉'];
+                {getRankingColaboradoras().length > 0 ? (
+                  getRankingColaboradoras().map((colab, index) => {
+                    const color = getColaboradorColor(index);
+                    const medals = ['🥇', '🥈', '🥉'];
 
-                  return (
-                    <div key={index} className={`flex items-center gap-3 p-3 rounded-xl ${color.bg} border ${color.border} transition-all hover:scale-105`}>
-                      <div className="text-2xl">{medals[index]}</div>
-                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${color.gradient} flex items-center justify-center text-white font-bold shadow-md`}>
-                        {colab.nome.charAt(0).toUpperCase()}
+                    return (
+                      <div key={colab.id} className={`flex items-center gap-3 p-3 rounded-xl ${color.bg} border ${color.border} transition-all hover:scale-105`}>
+                        <div className="text-2xl">{medals[index]}</div>
+                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${color.gradient} flex items-center justify-center text-white font-bold shadow-md`}>
+                          {colab.nome.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-800">{colab.nome}</div>
+                          <div className="text-xs text-gray-600">{colab.quantidade} agendamento{colab.quantidade === 1 ? '' : 's'}</div>
+                        </div>
+                        <div className={`text-2xl font-bold ${color.text}`}>{colab.quantidade}</div>
                       </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-800">{colab.nome}</div>
-                        <div className="text-xs text-gray-600">{colab.quantidade} agendamentos</div>
-                      </div>
-                      <div className={`text-2xl font-bold ${color.text}`}>{colab.quantidade}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-6 text-gray-400 text-sm">
+                    Nenhum agendamento neste mês
+                  </div>
+                )}
               </div>
             </div>
 
