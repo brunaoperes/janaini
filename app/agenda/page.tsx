@@ -50,6 +50,8 @@ export default function AgendaPage() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [rankingMes, setRankingMes] = useState<{ id: number; nome: string; quantidade: number }[]>([]);
+  const [horarioPicoMes, setHorarioPicoMes] = useState<{ hora: number; quantidade: number } | null>(null);
+  const [topServicosMes, setTopServicosMes] = useState<{ nome: string; quantidade: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedAgendamento, setSelectedAgendamento] = useState<Agendamento | null>(null);
@@ -159,7 +161,10 @@ export default function AgendaPage() {
     fetch(`/api/agenda/ranking-mes?mes=${mes}`, { signal: controller.signal, cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.ranking) setRankingMes(data.ranking);
+        if (!data) return;
+        setRankingMes(data.ranking || []);
+        setHorarioPicoMes(data.horarioPico || null);
+        setTopServicosMes(data.topServicos || []);
       })
       .catch(() => {});
 
@@ -1245,22 +1250,10 @@ export default function AgendaPage() {
     return Math.round(soma / duracoes.length);
   };
 
-  // Encontrar horário de pico
+  // Horário de pico do mês (dados de /api/agenda/ranking-mes)
   const encontrarHorarioPico = () => {
-    if (agendamentos.length === 0) return 'N/A';
-
-    const contagemPorHora: { [key: number]: number } = {};
-
-    agendamentos.forEach(agendamento => {
-      const hora = parseAsLocalTime(agendamento.data_hora).getHours();
-      contagemPorHora[hora] = (contagemPorHora[hora] || 0) + 1;
-    });
-
-    const horaMaisAgendada = Object.entries(contagemPorHora).reduce((a, b) =>
-      b[1] > a[1] ? b : a
-    );
-
-    return `${String(horaMaisAgendada[0]).padStart(2, '0')}:00 (${horaMaisAgendada[1]} agend.)`;
+    if (!horarioPicoMes) return 'N/A';
+    return `${String(horarioPicoMes.hora).padStart(2, '0')}:00 (${horarioPicoMes.quantidade} agend.)`;
   };
 
   // Calcular taxa de ocupação
@@ -1314,20 +1307,8 @@ export default function AgendaPage() {
     return receita;
   };
 
-  // Distribuição por tipo de serviço
-  const getDistribuicaoServicos = () => {
-    const distribuicao: { [key: string]: number } = {};
-
-    agendamentos.forEach(agendamento => {
-      const servico = agendamento.descricao_servico || 'Outros';
-      distribuicao[servico] = (distribuicao[servico] || 0) + 1;
-    });
-
-    return Object.entries(distribuicao)
-      .map(([nome, quantidade]) => ({ nome, quantidade }))
-      .sort((a, b) => b.quantidade - a.quantidade)
-      .slice(0, 5); // Top 5
-  };
+  // Distribuição por tipo de serviço no mês (dados de /api/agenda/ranking-mes)
+  const getDistribuicaoServicos = () => topServicosMes;
 
   // Salvar novo agendamento
   async function handleSalvarAgendamento(e: React.FormEvent) {
@@ -2113,7 +2094,12 @@ export default function AgendaPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-bold text-gray-800">💡 Insights</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">💡 Insights</h3>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {parseAsLocalTime(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -2142,15 +2128,19 @@ export default function AgendaPage() {
                     <span className="font-bold text-purple-900">Top Serviços</span>
                   </div>
                   <div className="space-y-2">
-                    {getDistribuicaoServicos().slice(0, 3).map((servico, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">{getServicoIcon(servico.nome)}</span>
-                          <span className="text-sm font-medium text-gray-700">{servico.nome}</span>
+                    {getDistribuicaoServicos().length > 0 ? (
+                      getDistribuicaoServicos().slice(0, 3).map((servico, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{getServicoIcon(servico.nome)}</span>
+                            <span className="text-sm font-medium text-gray-700">{servico.nome}</span>
+                          </div>
+                          <span className="text-sm font-bold text-purple-600">{servico.quantidade}x</span>
                         </div>
-                        <span className="text-sm font-bold text-purple-600">{servico.quantidade}x</span>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <div className="text-sm text-gray-400 text-center py-2">Nenhum agendamento neste mês</div>
+                    )}
                   </div>
                 </div>
               </div>
