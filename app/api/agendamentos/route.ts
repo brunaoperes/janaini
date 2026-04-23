@@ -60,6 +60,8 @@ export async function POST(request: Request) {
       hora_inicio,
       hora_fim,
       observacoes,
+      colaboradores_ids,
+      lancamento_id: existingLancamentoId, // se vier, NÃO cria novo lançamento
     } = body;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -135,8 +137,10 @@ export async function POST(request: Request) {
     }
 
     // Verificar conflito com lançamentos existentes
+    // Se foi passado um lancamento_id, ignora ele (é o próprio lançamento que acabou de ser criado)
     if (lancamentosExistentes && lancamentosExistentes.length > 0) {
       for (const lc of lancamentosExistentes) {
+        if (existingLancamentoId && lc.id === existingLancamentoId) continue;
         if (!lc.hora_inicio) continue;
         const [lcHI, lcMI] = lc.hora_inicio.split(':').map(Number);
         const lcInicioMin = lcHI * 60 + lcMI;
@@ -156,42 +160,49 @@ export async function POST(request: Request) {
       }
     }
 
-    // Buscar colaborador para calcular comissão
-    const { data: colaborador } = await supabase
-      .from('colaboradores')
-      .select('porcentagem_comissao')
-      .eq('id', colaborador_id)
-      .single();
+    // Se veio lancamento_id, reaproveita; senão cria um lançamento pendente
+    let lancamentoIdParaVincular: number;
 
-    const porcentagemComissao = colaborador?.porcentagem_comissao || 50;
-    const comissaoColaborador = (valor_estimado * porcentagemComissao) / 100;
-    const comissaoSalao = valor_estimado - comissaoColaborador;
+    if (existingLancamentoId) {
+      lancamentoIdParaVincular = existingLancamentoId;
+    } else {
+      // Buscar colaborador para calcular comissão
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('porcentagem_comissao')
+        .eq('id', colaborador_id)
+        .single();
 
-    // 1. Criar lançamento primeiro (pendente)
-    const { data: lancamento, error: lancError } = await supabase
-      .from('lancamentos')
-      .insert({
-        colaborador_id,
-        cliente_id,
-        valor_total: valor_estimado,
-        comissao_colaborador: comissaoColaborador,
-        comissao_salao: comissaoSalao,
-        data: data_hora,
-        hora_inicio,
-        hora_fim: hora_fim || hora_inicio,
-        servicos_nomes: descricao_servico,
-        status: 'pendente',
-        observacoes: observacoes || null,
-      })
-      .select()
-      .single();
+      const porcentagemComissao = colaborador?.porcentagem_comissao || 50;
+      const comissaoColaborador = (valor_estimado * porcentagemComissao) / 100;
+      const comissaoSalao = valor_estimado - comissaoColaborador;
 
-    if (lancError) {
-      console.error('[API/agendamentos] Erro ao criar lançamento:', lancError);
-      return NextResponse.json({ error: lancError.message }, { status: 500 });
+      const { data: lancamento, error: lancError } = await supabase
+        .from('lancamentos')
+        .insert({
+          colaborador_id,
+          cliente_id,
+          valor_total: valor_estimado,
+          comissao_colaborador: comissaoColaborador,
+          comissao_salao: comissaoSalao,
+          data: data_hora,
+          hora_inicio,
+          hora_fim: hora_fim || hora_inicio,
+          servicos_nomes: descricao_servico,
+          status: 'pendente',
+          observacoes: observacoes || null,
+        })
+        .select()
+        .single();
+
+      if (lancError) {
+        console.error('[API/agendamentos] Erro ao criar lançamento:', lancError);
+        return NextResponse.json({ error: lancError.message }, { status: 500 });
+      }
+      lancamentoIdParaVincular = lancamento.id;
     }
 
-    // 2. Criar agendamento vinculado ao lançamento
+    // Criar agendamento vinculado ao lançamento (novo ou existente)
     const { data: agendamento, error: agendError } = await supabase
       .from('agendamentos')
       .insert({
@@ -203,17 +214,20 @@ export async function POST(request: Request) {
         valor_estimado,
         hora_inicio: hora_inicio || null,
         hora_fim: hora_fim || hora_inicio || null,
-        lancamento_id: lancamento.id,
+        lancamento_id: lancamentoIdParaVincular,
         status: 'pendente',
         observacoes: observacoes || null,
+        colaboradores_ids: Array.isArray(colaboradores_ids) && colaboradores_ids.length > 0 ? colaboradores_ids : null,
       })
       .select()
       .single();
 
     if (agendError) {
       console.error('[API/agendamentos] Erro ao criar agendamento:', agendError);
-      // Rollback: deletar lançamento criado
-      await supabase.from('lancamentos').delete().eq('id', lancamento.id);
+      // Rollback só se criamos o lançamento aqui
+      if (!existingLancamentoId) {
+        await supabase.from('lancamentos').delete().eq('id', lancamentoIdParaVincular);
+      }
       return NextResponse.json({ error: agendError.message }, { status: 500 });
     }
 
@@ -225,7 +239,7 @@ export async function POST(request: Request) {
         modulo: 'Agenda',
         tabela: 'agendamentos',
         registroId: agendamento.id,
-        dadosNovo: { ...agendamento, lancamento_id: lancamento.id },
+        dadosNovo: { ...agendamento, lancamento_id: lancamentoIdParaVincular },
         metodo: 'POST',
         endpoint: '/api/agendamentos',
       });
@@ -319,7 +333,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       agendamento,
-      lancamento,
+      lancamento_id: lancamentoIdParaVincular,
     });
 
   } catch (error: any) {

@@ -574,6 +574,7 @@ export default function LancamentosPage() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                lancamento_id: lancamento.id, // reaproveita o lançamento recém-criado
                 colaborador_id: validationData.colaborador_id,
                 cliente_id: validationData.cliente_id,
                 data_hora: dataCompleta,
@@ -582,11 +583,20 @@ export default function LancamentosPage() {
                 valor_estimado: validationData.valor_total,
                 hora_inicio: formData.hora_inicio,
                 hora_fim: formData.hora_fim || formData.hora_inicio,
+                colaboradores_ids: colaboradoresIdsAgenda,
               }),
             });
+            if (!agendRes.ok) {
+              const errTxt = await agendRes.text().catch(() => '');
+              console.error('[lancamentos] agendamento não criado:', agendRes.status, errTxt);
+              toast.error('Lançamento salvo, mas não foi possível criar agendamento. Verifique a agenda.');
+            }
             // WhatsApp �� disparado pela API de agendamentos automaticamente
           }
-        } catch {}
+        } catch (err: any) {
+          console.error('[lancamentos] erro ao criar agendamento/divisões:', err);
+          toast.error('Lançamento salvo, mas ocorreu erro ao vincular à agenda.');
+        }
       })();
 
       let msgExtra = '';
