@@ -138,12 +138,23 @@ export async function GET(request: Request) {
   }
 }
 
+// Helper: calcula data de vencimento dentro de um mês de referência
+function dataVencimentoNoMes(mesReferencia: Date, diaVencimento: number): string {
+  const ano = mesReferencia.getFullYear();
+  const mes = mesReferencia.getMonth(); // 0-indexed
+  // Último dia do mês
+  const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+  const diaEfetivo = Math.min(diaVencimento, ultimoDia);
+  const data = new Date(ano, mes, diaEfetivo);
+  return data.toISOString().split('T')[0];
+}
+
 // POST - Criar novo pacote (venda)
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Validar com Zod
+    // Validar com Zod (discriminated union pelo campo "tipo")
     const validation = pacoteCreateSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
@@ -153,12 +164,13 @@ export async function POST(request: Request) {
     }
 
     const data = validation.data;
+    const tipo = data.tipo;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Buscar dados do serviço e colaborador
+    // Buscar dados do serviço, colaborador e forma de pagamento
     const [servicoRes, colaboradorRes, formaPgtoRes] = await Promise.all([
       supabase.from('servicos').select('nome, valor').eq('id', data.servico_id).single(),
       supabase.from('colaboradores').select('nome, porcentagem_comissao').eq('id', data.colaborador_vendedor_id).single(),
@@ -173,67 +185,133 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Serviço ou colaborador não encontrado' }, { status: 404 });
     }
 
-    // Calcular valores
-    const valorPorSessao = data.valor_total / data.quantidade_total;
     const porcentagemComissao = colaborador.porcentagem_comissao || 50;
-    const comissaoBruta = (data.valor_total * porcentagemComissao) / 100;
-    const valorTaxa = (comissaoBruta * taxaPercentual) / 100;
-    const comissaoVendedor = comissaoBruta - valorTaxa;
-    const comissaoSalao = data.valor_total - comissaoVendedor;
-
-    // Obter usuário autenticado
     const authUser = await getAuthUser(supabase);
 
-    // 1. Criar o lançamento financeiro (venda do pacote)
-    const lancamentoData = {
-      colaborador_id: data.colaborador_vendedor_id,
-      cliente_id: data.cliente_id,
-      valor_total: data.valor_total,
-      comissao_colaborador: comissaoVendedor,
-      comissao_salao: comissaoSalao,
-      taxa_pagamento: valorTaxa,
-      data: new Date().toISOString().split('T')[0],
-      servicos_ids: [data.servico_id],
-      servicos_nomes: `Venda Pacote: ${servico.nome} (${data.quantidade_total} sessões)`,
-      status: 'concluido',
-      forma_pagamento: data.forma_pagamento,
-      data_pagamento: new Date().toISOString(),
-      tipo_lancamento: 'pacote_venda',
-      observacoes: data.observacoes || null,
-    };
+    if (tipo === 'sessoes') {
+      // ===== PACOTE POR SESSÕES =====
+      const valorPorSessao = data.quantidade_total > 0
+        ? data.valor_total / data.quantidade_total
+        : 0;
+      const comissaoBruta = (data.valor_total * porcentagemComissao) / 100;
+      const valorTaxa = (comissaoBruta * taxaPercentual) / 100;
+      const comissaoVendedor = comissaoBruta - valorTaxa;
+      const comissaoSalao = data.valor_total - comissaoVendedor;
 
-    const { data: lancamento, error: lancError } = await supabase
-      .from('lancamentos')
-      .insert(lancamentoData)
-      .select()
-      .single();
+      const lancamentoData = {
+        colaborador_id: data.colaborador_vendedor_id,
+        cliente_id: data.cliente_id,
+        valor_total: data.valor_total,
+        comissao_colaborador: comissaoVendedor,
+        comissao_salao: comissaoSalao,
+        taxa_pagamento: valorTaxa,
+        data: new Date().toISOString().split('T')[0],
+        servicos_ids: [data.servico_id],
+        servicos_nomes: `Venda Pacote: ${servico.nome} (${data.quantidade_total} sessões)`,
+        status: 'concluido',
+        forma_pagamento: data.forma_pagamento,
+        data_pagamento: new Date().toISOString(),
+        tipo_lancamento: 'pacote_venda',
+        observacoes: data.observacoes || null,
+      };
 
-    if (lancError) {
-      console.error('[API/pacotes] Erro ao criar lançamento:', lancError);
-      return NextResponse.json({ error: lancError.message }, { status: 500 });
+      const { data: lancamento, error: lancError } = await supabase
+        .from('lancamentos')
+        .insert(lancamentoData)
+        .select()
+        .single();
+
+      if (lancError) {
+        console.error('[API/pacotes] Erro ao criar lançamento:', lancError);
+        return NextResponse.json({ error: lancError.message }, { status: 500 });
+      }
+
+      const nomePacote = `Pacote ${data.quantidade_total} Sessões - ${servico.nome}`;
+      const pacoteData = {
+        tipo: 'sessoes',
+        cliente_id: data.cliente_id,
+        servico_id: data.servico_id,
+        colaborador_vendedor_id: data.colaborador_vendedor_id,
+        lancamento_venda_id: lancamento.id,
+        nome: nomePacote,
+        quantidade_total: data.quantidade_total,
+        quantidade_usada: 0,
+        valor_total: data.valor_total,
+        valor_por_sessao: valorPorSessao,
+        desconto_percentual: data.desconto_percentual || 0,
+        comissao_vendedor: comissaoVendedor,
+        comissao_salao: comissaoSalao,
+        data_venda: new Date().toISOString().split('T')[0],
+        data_validade: data.data_validade || null,
+        status: 'ativo',
+        forma_pagamento: data.forma_pagamento,
+        observacoes: data.observacoes || null,
+      };
+
+      const { data: pacote, error: pacoteError } = await supabase
+        .from('pacotes')
+        .insert(pacoteData)
+        .select(`
+          *,
+          cliente:clientes(id, nome),
+          servico:servicos(id, nome),
+          colaborador_vendedor:colaboradores!pacotes_colaborador_vendedor_id_fkey(id, nome)
+        `)
+        .single();
+
+      if (pacoteError) {
+        await supabase.from('lancamentos').delete().eq('id', lancamento.id);
+        return NextResponse.json({ error: pacoteError.message }, { status: 500 });
+      }
+
+      await supabase.from('lancamentos').update({ pacote_id: pacote.id }).eq('id', lancamento.id);
+
+      if (authUser) {
+        await auditCreate({
+          ...authUser,
+          modulo: 'Lancamentos',
+          tabela: 'pacotes',
+          registroId: pacote.id,
+          dadosNovo: pacote,
+          metodo: 'POST',
+          endpoint: '/api/pacotes',
+        });
+      }
+
+      return NextResponse.json({ success: true, message: 'Pacote criado!', pacote, lancamento });
     }
 
-    // 2. Criar o pacote
-    const nomePacote = `Pacote ${data.quantidade_total} Sessões - ${servico.nome}`;
+    // ===== MENSALIDADE =====
+    // Cria o pacote sem lançamento financeiro inicial (cobranças mensais serão pagas individualmente)
+    const nomePacote = `Mensalidade ${servico.nome} (${data.sessoes_por_mes}/mês, ${data.duracao_meses} meses)`;
+    // quantidade_total = sessoes_por_mes × duracao_meses (limite total do contrato)
+    const quantidadeTotal = data.sessoes_por_mes * data.duracao_meses;
+    const valorContratoTotal = data.valor_mensal * data.duracao_meses;
 
     const pacoteData = {
+      tipo: 'mensalidade',
       cliente_id: data.cliente_id,
       servico_id: data.servico_id,
       colaborador_vendedor_id: data.colaborador_vendedor_id,
-      lancamento_venda_id: lancamento.id,
+      lancamento_venda_id: null,
       nome: nomePacote,
-      quantidade_total: data.quantidade_total,
+      quantidade_total: quantidadeTotal,
       quantidade_usada: 0,
-      valor_total: data.valor_total,
-      valor_por_sessao: valorPorSessao,
-      desconto_percentual: data.desconto_percentual || 0,
-      comissao_vendedor: comissaoVendedor,
-      comissao_salao: comissaoSalao,
+      valor_total: valorContratoTotal,
+      valor_por_sessao: data.valor_mensal / data.sessoes_por_mes,
+      desconto_percentual: 0,
+      comissao_vendedor: 0, // calculado a cada cobrança paga
+      comissao_salao: 0,
       data_venda: new Date().toISOString().split('T')[0],
-      data_validade: data.data_validade || null,
+      data_validade: null, // controlado por cobranças
       status: 'ativo',
       forma_pagamento: data.forma_pagamento,
       observacoes: data.observacoes || null,
+      // Campos mensalidade
+      valor_mensal: data.valor_mensal,
+      sessoes_por_mes: data.sessoes_por_mes,
+      duracao_meses: data.duracao_meses,
+      dia_vencimento: data.dia_vencimento,
     };
 
     const { data: pacote, error: pacoteError } = await supabase
@@ -248,26 +326,42 @@ export async function POST(request: Request) {
       .single();
 
     if (pacoteError) {
-      // Rollback: deletar lançamento
-      await supabase.from('lancamentos').delete().eq('id', lancamento.id);
-      console.error('[API/pacotes] Erro ao criar pacote:', pacoteError);
+      console.error('[API/pacotes] Erro ao criar mensalidade:', pacoteError);
       return NextResponse.json({ error: pacoteError.message }, { status: 500 });
     }
 
-    // Atualizar lançamento com o pacote_id
-    await supabase
-      .from('lancamentos')
-      .update({ pacote_id: pacote.id })
-      .eq('id', lancamento.id);
+    // Gerar cobranças mensais (uma por mês de contrato)
+    const hoje = new Date();
+    const cobrancas: any[] = [];
+    for (let i = 0; i < data.duracao_meses; i++) {
+      const mesRef = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+      const dataVenc = dataVencimentoNoMes(mesRef, data.dia_vencimento);
+      cobrancas.push({
+        pacote_id: pacote.id,
+        mes_referencia: mesRef.toISOString().split('T')[0],
+        data_vencimento: dataVenc,
+        valor: data.valor_mensal,
+        status: 'pendente',
+      });
+    }
 
-    // Registrar auditoria
+    const { error: cobError } = await supabase
+      .from('mensalidade_cobrancas')
+      .insert(cobrancas);
+
+    if (cobError) {
+      console.error('[API/pacotes] Erro ao gerar cobranças:', cobError);
+      await supabase.from('pacotes').delete().eq('id', pacote.id);
+      return NextResponse.json({ error: 'Erro ao gerar cobranças: ' + cobError.message }, { status: 500 });
+    }
+
     if (authUser) {
       await auditCreate({
         ...authUser,
         modulo: 'Lancamentos',
         tabela: 'pacotes',
         registroId: pacote.id,
-        dadosNovo: pacote,
+        dadosNovo: { ...pacote, cobrancas_geradas: cobrancas.length },
         metodo: 'POST',
         endpoint: '/api/pacotes',
       });
@@ -275,9 +369,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Pacote criado com sucesso!',
+      message: `Mensalidade criada com ${cobrancas.length} cobranças mensais!`,
       pacote,
-      lancamento,
     });
 
   } catch (error: unknown) {
@@ -324,8 +417,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Pacote não encontrado' }, { status: 404 });
     }
 
-    // Validar que quantidade_total >= quantidade_usada
-    if (data.quantidade_total < pacoteAtual.quantidade_usada) {
+    const tipoPacote = pacoteAtual.tipo || 'sessoes';
+
+    // Pacote por sessões: validar quantidade_total >= quantidade_usada
+    if (tipoPacote === 'sessoes' && typeof data.quantidade_total === 'number' && data.quantidade_total < pacoteAtual.quantidade_usada) {
       return NextResponse.json(
         { error: `Quantidade total não pode ser menor que as sessões já usadas (${pacoteAtual.quantidade_usada})` },
         { status: 400 }
@@ -347,27 +442,32 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Serviço ou colaborador não encontrado' }, { status: 404 });
     }
 
-    // Recalcular valores
-    const valorPorSessao = data.valor_total / data.quantidade_total;
     const porcentagemComissao = colaborador.porcentagem_comissao || 50;
-    const comissaoBruta = (data.valor_total * porcentagemComissao) / 100;
-    const valorTaxa = (comissaoBruta * taxaPercentual) / 100;
-    const comissaoVendedor = comissaoBruta - valorTaxa;
-    const comissaoSalao = data.valor_total - comissaoVendedor;
 
-    // Gerar nome
-    const nomePacote = `Pacote ${data.quantidade_total} Sessões - ${servico.nome}`;
+    // Montar update payload conforme o tipo
+    let updatePayload: Record<string, unknown>;
+    let nomePacote: string;
+    let valorTaxa = 0;
+    let comissaoVendedor = 0;
+    let comissaoSalao = 0;
 
-    // Atualizar pacote
-    const { data: pacoteAtualizado, error: updateError } = await supabase
-      .from('pacotes')
-      .update({
+    if (tipoPacote === 'sessoes') {
+      const valorTotal = data.valor_total || pacoteAtual.valor_total || 0;
+      const quantidadeTotal = data.quantidade_total || pacoteAtual.quantidade_total || 1;
+      const valorPorSessao = quantidadeTotal > 0 ? valorTotal / quantidadeTotal : 0;
+      const comissaoBruta = (valorTotal * porcentagemComissao) / 100;
+      valorTaxa = (comissaoBruta * taxaPercentual) / 100;
+      comissaoVendedor = comissaoBruta - valorTaxa;
+      comissaoSalao = valorTotal - comissaoVendedor;
+      nomePacote = `Pacote ${quantidadeTotal} Sessões - ${servico.nome}`;
+
+      updatePayload = {
         cliente_id: data.cliente_id,
         servico_id: data.servico_id,
         colaborador_vendedor_id: data.colaborador_vendedor_id,
         nome: nomePacote,
-        quantidade_total: data.quantidade_total,
-        valor_total: data.valor_total,
+        quantidade_total: quantidadeTotal,
+        valor_total: valorTotal,
         valor_por_sessao: valorPorSessao,
         desconto_percentual: data.desconto_percentual || 0,
         comissao_vendedor: comissaoVendedor,
@@ -375,7 +475,32 @@ export async function PUT(request: Request) {
         data_validade: data.data_validade || null,
         forma_pagamento: data.forma_pagamento,
         observacoes: data.observacoes || null,
-      })
+      };
+    } else {
+      // Mensalidade — atualiza só campos editáveis sem regenerar cobranças
+      const valorMensal = data.valor_mensal ?? pacoteAtual.valor_mensal ?? 0;
+      const sessoesPorMes = data.sessoes_por_mes ?? pacoteAtual.sessoes_por_mes ?? 0;
+      const duracaoMeses = data.duracao_meses ?? pacoteAtual.duracao_meses ?? 0;
+      nomePacote = `Mensalidade ${servico.nome} (${sessoesPorMes}/mês, ${duracaoMeses} meses)`;
+
+      updatePayload = {
+        cliente_id: data.cliente_id,
+        servico_id: data.servico_id,
+        colaborador_vendedor_id: data.colaborador_vendedor_id,
+        nome: nomePacote,
+        valor_mensal: valorMensal,
+        sessoes_por_mes: sessoesPorMes,
+        duracao_meses: duracaoMeses,
+        dia_vencimento: data.dia_vencimento ?? pacoteAtual.dia_vencimento,
+        forma_pagamento: data.forma_pagamento,
+        observacoes: data.observacoes || null,
+      };
+    }
+
+    // Atualizar pacote
+    const { data: pacoteAtualizado, error: updateError } = await supabase
+      .from('pacotes')
+      .update(updatePayload)
       .eq('id', data.pacote_id)
       .select(`
         *,
@@ -390,18 +515,20 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // Atualizar lançamento vinculado se existir
-    if (pacoteAtual.lancamento_venda_id) {
+    // Atualizar lançamento vinculado se existir (apenas pacote de sessões tem lancamento_venda_id)
+    if (tipoPacote === 'sessoes' && pacoteAtual.lancamento_venda_id) {
+      const valorTotal = data.valor_total || pacoteAtual.valor_total || 0;
+      const quantidadeTotal = data.quantidade_total || pacoteAtual.quantidade_total || 1;
       await supabase
         .from('lancamentos')
         .update({
           colaborador_id: data.colaborador_vendedor_id,
           cliente_id: data.cliente_id,
-          valor_total: data.valor_total,
+          valor_total: valorTotal,
           comissao_colaborador: comissaoVendedor,
           comissao_salao: comissaoSalao,
           taxa_pagamento: valorTaxa,
-          servicos_nomes: `Venda Pacote: ${servico.nome} (${data.quantidade_total} sessões)`,
+          servicos_nomes: `Venda Pacote: ${servico.nome} (${quantidadeTotal} sessões)`,
           forma_pagamento: data.forma_pagamento,
         })
         .eq('id', pacoteAtual.lancamento_venda_id);

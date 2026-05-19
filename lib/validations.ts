@@ -143,14 +143,22 @@ export function formatZodErrors(errors: z.ZodError | undefined | null): string {
 // SCHEMAS PARA PACOTES PRÉ-PAGOS
 // ============================================================================
 
-// Schema para criar Pacote (venda)
-export const pacoteCreateSchema = z.object({
+// Schema base — campos comuns aos dois tipos de pacote
+const pacoteBaseSchema = z.object({
   cliente_id: z.number({ message: 'Selecione um cliente' })
     .positive('Selecione um cliente válido'),
   servico_id: z.number({ message: 'Selecione um serviço' })
     .positive('Selecione um serviço válido'),
   colaborador_vendedor_id: z.number({ message: 'Selecione a vendedora' })
     .positive('Selecione uma vendedora válida'),
+  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
+    .min(1, 'Selecione uma forma de pagamento'),
+  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
+});
+
+// Pacote tradicional (por N sessões totais, valor fixo)
+export const pacoteSessoesCreateSchema = pacoteBaseSchema.extend({
+  tipo: z.literal('sessoes').default('sessoes'),
   quantidade_total: z.number({ message: 'Informe a quantidade de sessões' })
     .min(1, 'Quantidade mínima é 1 sessão')
     .max(100, 'Quantidade máxima é 100 sessões'),
@@ -167,14 +175,35 @@ export const pacoteCreateSchema = z.object({
       const parsedDate = new Date(date);
       return !isNaN(parsedDate.getTime()) && parsedDate > new Date();
     }, 'Data de validade deve ser futura'),
-  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
-    .min(1, 'Selecione uma forma de pagamento'),
-  observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
 });
 
-export type PacoteCreateFormData = z.infer<typeof pacoteCreateSchema>;
+// Pacote por mensalidade (recorrente, N sessões por mês, contrato de X meses)
+export const pacoteMensalidadeCreateSchema = pacoteBaseSchema.extend({
+  tipo: z.literal('mensalidade'),
+  valor_mensal: z.number({ message: 'Informe o valor mensal' })
+    .min(0, 'Valor não pode ser negativo'),
+  sessoes_por_mes: z.number({ message: 'Informe sessões por mês' })
+    .min(1, 'Mínimo 1 sessão por mês')
+    .max(100, 'Máximo 100 sessões por mês'),
+  duracao_meses: z.number({ message: 'Informe a duração do contrato em meses' })
+    .min(1, 'Mínimo 1 mês')
+    .max(60, 'Máximo 60 meses'),
+  dia_vencimento: z.number({ message: 'Informe o dia do mês para vencimento' })
+    .min(1, 'Dia entre 1 e 31')
+    .max(31, 'Dia entre 1 e 31'),
+});
 
-// Schema para atualizar Pacote (edição)
+// Union discriminada — backend valida pelo campo "tipo"
+export const pacoteCreateSchema = z.discriminatedUnion('tipo', [
+  pacoteSessoesCreateSchema,
+  pacoteMensalidadeCreateSchema,
+]);
+
+export type PacoteCreateFormData = z.infer<typeof pacoteCreateSchema>;
+export type PacoteSessoesFormData = z.infer<typeof pacoteSessoesCreateSchema>;
+export type PacoteMensalidadeFormData = z.infer<typeof pacoteMensalidadeCreateSchema>;
+
+// Schema para atualizar Pacote (edição) — aceita ambos os tipos
 export const pacoteUpdateSchema = z.object({
   pacote_id: z.number({ message: 'ID do pacote é obrigatório' })
     .positive('ID do pacote inválido'),
@@ -184,22 +213,41 @@ export const pacoteUpdateSchema = z.object({
     .positive('Selecione um serviço válido'),
   colaborador_vendedor_id: z.number({ message: 'Selecione a vendedora' })
     .positive('Selecione uma vendedora válida'),
-  quantidade_total: z.number({ message: 'Informe a quantidade de sessões' })
+  // Sessões (opcionais — pacote de mensalidade não usa esses)
+  quantidade_total: z.number()
     .min(1, 'Quantidade mínima é 1 sessão')
-    .max(100, 'Quantidade máxima é 100 sessões'),
-  valor_total: z.number({ message: 'Informe o valor total' })
-    .min(0, 'Valor não pode ser negativo'),
+    .max(100, 'Quantidade máxima é 100 sessões')
+    .optional(),
+  valor_total: z.number()
+    .min(0, 'Valor não pode ser negativo')
+    .optional(),
   desconto_percentual: z.number()
     .min(0, 'Desconto não pode ser negativo')
     .max(100, 'Desconto máximo é 100%')
     .optional(),
   data_validade: z.string().optional(),
+  // Mensalidade (opcionais — pacote de sessões não usa)
+  valor_mensal: z.number().min(0).optional(),
+  sessoes_por_mes: z.number().min(1).max(100).optional(),
+  duracao_meses: z.number().min(1).max(60).optional(),
+  dia_vencimento: z.number().min(1).max(31).optional(),
+  // Comuns
   forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
     .min(1, 'Selecione uma forma de pagamento'),
   observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
 });
 
 export type PacoteUpdateFormData = z.infer<typeof pacoteUpdateSchema>;
+
+// Schema para registrar pagamento de uma cobrança mensal
+export const mensalidadePagamentoSchema = z.object({
+  cobranca_id: z.number({ message: 'ID da cobrança é obrigatório' }).positive(),
+  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' }).min(1),
+  data_pagamento: z.string().optional(),
+  observacoes: z.string().max(500).optional(),
+});
+
+export type MensalidadePagamentoData = z.infer<typeof mensalidadePagamentoSchema>;
 
 // Schema para usar sessão do Pacote
 export const pacoteUsoSchema = z.object({

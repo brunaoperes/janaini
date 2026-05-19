@@ -14,6 +14,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>({});
   const [chartData, setChartData] = useState<any>({});
+  const [cobrancasAlerta, setCobrancasAlerta] = useState<any[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -131,6 +132,22 @@ export default function DashboardPage() {
       atendimentos: atendimentosChart,
     });
 
+    // Cobranças de mensalidade — alertas (próximos 7 dias + atrasadas)
+    try {
+      const [vencendoRes, atrasadasRes] = await Promise.all([
+        fetch('/api/pacotes/cobrancas?proximosDias=7'),
+        fetch('/api/pacotes/cobrancas?status=atrasada'),
+      ]);
+      const vencendo = (await vencendoRes.json()).cobrancas || [];
+      const atrasadas = (await atrasadasRes.json()).cobrancas || [];
+      // Merge sem duplicar
+      const idsAtrasadas = new Set(atrasadas.map((c: any) => c.id));
+      const combinado = [...atrasadas, ...vencendo.filter((c: any) => !idsAtrasadas.has(c.id))];
+      setCobrancasAlerta(combinado);
+    } catch {
+      setCobrancasAlerta([]);
+    }
+
     setLoading(false);
   };
 
@@ -225,6 +242,72 @@ export default function DashboardPage() {
             delay={300}
           />
         </div>
+
+        {/* Alerta de Mensalidades */}
+        {cobrancasAlerta.length > 0 && (
+          <div className="mb-8 bg-white/80 backdrop-blur-xl rounded-2xl p-6 border-2 border-orange-200 shadow-soft">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800">Mensalidades</h3>
+                  <p className="text-sm text-gray-600">
+                    {cobrancasAlerta.filter((c: any) => c.status === 'atrasada').length} atrasada(s), {' '}
+                    {cobrancasAlerta.filter((c: any) => c.status === 'pendente').length} vencendo nos próximos 7 dias
+                  </p>
+                </div>
+              </div>
+              <Link href="/admin/pacotes" className="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                Ver todos →
+              </Link>
+            </div>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {cobrancasAlerta.slice(0, 5).map((cob: any) => {
+                const venc = new Date(cob.data_vencimento + 'T00:00:00');
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+                const diff = Math.floor((venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                const isAtrasada = cob.status === 'atrasada';
+                return (
+                  <div key={cob.id} className={`flex items-center justify-between rounded-xl p-3 ${
+                    isAtrasada ? 'bg-red-50' : 'bg-orange-50'
+                  }`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-800 truncate">
+                        {cob.pacote?.cliente?.nome || 'Cliente'}
+                      </p>
+                      <p className="text-xs text-gray-600 truncate">
+                        {cob.pacote?.nome}
+                      </p>
+                    </div>
+                    <div className="text-right ml-3">
+                      <p className={`text-sm font-semibold ${isAtrasada ? 'text-red-600' : 'text-orange-600'}`}>
+                        R$ {Number(cob.valor).toFixed(2)}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {isAtrasada
+                          ? `Atrasada há ${Math.abs(diff)} dia(s)`
+                          : diff === 0
+                            ? 'Vence hoje'
+                            : `Vence em ${diff} dia(s)`}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {cobrancasAlerta.length > 5 && (
+                <p className="text-xs text-gray-500 text-center pt-2">
+                  + {cobrancasAlerta.length - 5} outras
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Destaques e Métricas Secundárias */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

@@ -37,6 +37,7 @@ interface Pacote {
   servico_id: number;
   colaborador_vendedor_id: number;
   nome: string;
+  tipo: 'sessoes' | 'mensalidade';
   quantidade_total: number;
   quantidade_usada: number;
   valor_total: number;
@@ -52,9 +53,27 @@ interface Pacote {
   valor_reembolso?: number;
   forma_pagamento?: string;
   observacoes?: string;
+  // Mensalidade
+  valor_mensal?: number;
+  sessoes_por_mes?: number;
+  duracao_meses?: number;
+  dia_vencimento?: number;
   cliente?: Cliente;
   servico?: Servico;
   colaborador_vendedor?: Colaborador;
+}
+
+interface MensalidadeCobranca {
+  id: number;
+  pacote_id: number;
+  mes_referencia: string;
+  data_vencimento: string;
+  valor: number;
+  data_pagamento?: string;
+  forma_pagamento?: string;
+  lancamento_id?: number;
+  status: 'pendente' | 'paga' | 'atrasada' | 'cancelada';
+  observacoes?: string;
 }
 
 interface PacoteUso {
@@ -100,14 +119,35 @@ export default function PacotesAdminPage() {
 
   // Formulário novo pacote
   const [formNovo, setFormNovo] = useState({
+    tipo: 'sessoes' as 'sessoes' | 'mensalidade',
     cliente_id: 0,
     servico_id: 0,
     colaborador_vendedor_id: 0,
+    // Sessões
     quantidade_total: 4,
     valor_total: 0,
     desconto_percentual: 0,
     data_validade: '',
+    // Mensalidade
+    valor_mensal: 0,
+    sessoes_por_mes: 4,
+    duracao_meses: 3,
+    dia_vencimento: 10,
+    // Comuns
     forma_pagamento: '',
+    observacoes: '',
+  });
+
+  // Cobranças do pacote selecionado (para modal de detalhes)
+  const [cobrancasPacote, setCobrancasPacote] = useState<MensalidadeCobranca[]>([]);
+  const [loadingCobrancas, setLoadingCobrancas] = useState(false);
+
+  // Modal de pagamento de cobrança
+  const [showPagamentoModal, setShowPagamentoModal] = useState(false);
+  const [cobrancaSelecionada, setCobrancaSelecionada] = useState<MensalidadeCobranca | null>(null);
+  const [formPagamento, setFormPagamento] = useState({
+    forma_pagamento: '',
+    data_pagamento: format(new Date(), 'yyyy-MM-dd'),
     observacoes: '',
   });
 
@@ -193,38 +233,46 @@ export default function PacotesAdminPage() {
     }
   };
 
-  // Calcular valor sugerido baseado no serviço
-  const calcularValorSugerido = (servicoId: number, quantidade: number, desconto: number) => {
+  // Calcular valor sugerido baseado no serviço (NÃO multiplica por sessões — valor fixo do pacote)
+  // Quantidade entra só pra aplicar desconto sobre o valor cheio
+  const calcularValorSugerido = (servicoId: number, desconto: number) => {
     const servico = servicos.find(s => s.id === servicoId);
     if (!servico) return 0;
-    const valorBruto = servico.valor * quantidade;
-    const valorComDesconto = valorBruto * (1 - desconto / 100);
+    const valorComDesconto = servico.valor * (1 - desconto / 100);
     return Math.round(valorComDesconto * 100) / 100;
   };
 
-  // Atualizar valor quando serviço ou quantidade muda
+  // Atualizar valor quando serviço ou desconto muda (apenas tipo sessões)
   useEffect(() => {
-    if (formNovo.servico_id && formNovo.quantidade_total) {
+    if (formNovo.tipo === 'sessoes' && formNovo.servico_id) {
       const valorSugerido = calcularValorSugerido(
         formNovo.servico_id,
-        formNovo.quantidade_total,
         formNovo.desconto_percentual
       );
       setFormNovo(prev => ({ ...prev, valor_total: valorSugerido }));
     }
-  }, [formNovo.servico_id, formNovo.quantidade_total, formNovo.desconto_percentual, servicos]);
+  }, [formNovo.tipo, formNovo.servico_id, formNovo.desconto_percentual, servicos]);
 
-  // Atualizar valor quando serviço ou quantidade muda (edição)
+  // Sugerir valor mensal = valor do serviço (admin pode ajustar)
   useEffect(() => {
-    if (showEditModal && formEdit.servico_id && formEdit.quantidade_total) {
+    if (formNovo.tipo === 'mensalidade' && formNovo.servico_id && formNovo.valor_mensal === 0) {
+      const servico = servicos.find(s => s.id === formNovo.servico_id);
+      if (servico) {
+        setFormNovo(prev => ({ ...prev, valor_mensal: servico.valor }));
+      }
+    }
+  }, [formNovo.tipo, formNovo.servico_id, servicos, formNovo.valor_mensal]);
+
+  // Atualizar valor quando serviço ou desconto muda (edição)
+  useEffect(() => {
+    if (showEditModal && formEdit.servico_id) {
       const valorSugerido = calcularValorSugerido(
         formEdit.servico_id,
-        formEdit.quantidade_total,
         formEdit.desconto_percentual
       );
       setFormEdit(prev => ({ ...prev, valor_total: valorSugerido }));
     }
-  }, [formEdit.servico_id, formEdit.quantidade_total, formEdit.desconto_percentual, showEditModal, servicos]);
+  }, [formEdit.servico_id, formEdit.desconto_percentual, showEditModal, servicos]);
 
   // Criar novo pacote
   const handleCriarPacote = async () => {
@@ -233,12 +281,42 @@ export default function PacotesAdminPage() {
       return;
     }
 
+    // Montar payload conforme o tipo
+    let payload: Record<string, unknown>;
+    if (formNovo.tipo === 'sessoes') {
+      payload = {
+        tipo: 'sessoes',
+        cliente_id: selectedClienteNovo.id,
+        servico_id: formNovo.servico_id,
+        colaborador_vendedor_id: formNovo.colaborador_vendedor_id,
+        quantidade_total: formNovo.quantidade_total,
+        valor_total: formNovo.valor_total,
+        desconto_percentual: formNovo.desconto_percentual,
+        data_validade: formNovo.data_validade || undefined,
+        forma_pagamento: formNovo.forma_pagamento,
+        observacoes: formNovo.observacoes,
+      };
+    } else {
+      payload = {
+        tipo: 'mensalidade',
+        cliente_id: selectedClienteNovo.id,
+        servico_id: formNovo.servico_id,
+        colaborador_vendedor_id: formNovo.colaborador_vendedor_id,
+        valor_mensal: formNovo.valor_mensal,
+        sessoes_por_mes: formNovo.sessoes_por_mes,
+        duracao_meses: formNovo.duracao_meses,
+        dia_vencimento: formNovo.dia_vencimento,
+        forma_pagamento: formNovo.forma_pagamento,
+        observacoes: formNovo.observacoes,
+      };
+    }
+
     try {
       setSalvando(true);
       const response = await fetch('/api/pacotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formNovo, cliente_id: selectedClienteNovo.id }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -248,10 +326,11 @@ export default function PacotesAdminPage() {
         return;
       }
 
-      toast.success('Pacote criado com sucesso!');
+      toast.success(data.message || 'Pacote criado!');
       setShowNovoModal(false);
       setSelectedClienteNovo(null);
       setFormNovo({
+        tipo: 'sessoes',
         cliente_id: 0,
         servico_id: 0,
         colaborador_vendedor_id: 0,
@@ -259,12 +338,79 @@ export default function PacotesAdminPage() {
         valor_total: 0,
         desconto_percentual: 0,
         data_validade: '',
+        valor_mensal: 0,
+        sessoes_por_mes: 4,
+        duracao_meses: 3,
+        dia_vencimento: 10,
         forma_pagamento: '',
         observacoes: '',
       });
       loadPacotes();
     } catch {
       toast.error('Erro ao criar pacote');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Carregar cobranças de um pacote (mensalidade)
+  const loadCobrancas = async (pacoteId: number) => {
+    try {
+      setLoadingCobrancas(true);
+      const response = await fetch(`/api/pacotes/cobrancas?pacoteId=${pacoteId}`);
+      const data = await response.json();
+      setCobrancasPacote(data.cobrancas || []);
+    } catch {
+      toast.error('Erro ao carregar cobranças');
+      setCobrancasPacote([]);
+    } finally {
+      setLoadingCobrancas(false);
+    }
+  };
+
+  // Abrir modal de pagamento de cobrança
+  const abrirPagamentoCobranca = (cobranca: MensalidadeCobranca) => {
+    setCobrancaSelecionada(cobranca);
+    setFormPagamento({
+      forma_pagamento: '',
+      data_pagamento: format(new Date(), 'yyyy-MM-dd'),
+      observacoes: '',
+    });
+    setShowPagamentoModal(true);
+  };
+
+  // Registrar pagamento da cobrança
+  const handleRegistrarPagamento = async () => {
+    if (!cobrancaSelecionada || !formPagamento.forma_pagamento) {
+      toast.error('Selecione a forma de pagamento');
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      const response = await fetch('/api/pacotes/cobrancas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cobranca_id: cobrancaSelecionada.id,
+          forma_pagamento: formPagamento.forma_pagamento,
+          data_pagamento: formPagamento.data_pagamento,
+          observacoes: formPagamento.observacoes || undefined,
+        }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
+      toast.success(data.message || 'Pagamento registrado!');
+      setShowPagamentoModal(false);
+      if (pacoteSelecionado) {
+        loadCobrancas(pacoteSelecionado.id);
+      }
+      loadPacotes();
+    } catch {
+      toast.error('Erro ao registrar pagamento');
     } finally {
       setSalvando(false);
     }
@@ -356,6 +502,11 @@ export default function PacotesAdminPage() {
   const abrirDetalhes = (pacote: Pacote) => {
     setPacoteSelecionado(pacote);
     loadUsos(pacote.id);
+    if (pacote.tipo === 'mensalidade') {
+      loadCobrancas(pacote.id);
+    } else {
+      setCobrancasPacote([]);
+    }
     setShowDetalhesModal(true);
   };
 
@@ -593,10 +744,17 @@ export default function PacotesAdminPage() {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     {/* Info principal */}
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className="font-bold text-gray-800">{pacote.nome}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pacote.status)}`}>
                           {getStatusText(pacote.status)}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          pacote.tipo === 'mensalidade'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {pacote.tipo === 'mensalidade' ? '🔄 Mensalidade' : '📦 Sessões'}
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
@@ -738,6 +896,32 @@ export default function PacotesAdminPage() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Tabs: Tipo de pacote */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFormNovo(prev => ({ ...prev, tipo: 'sessoes' }))}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    formNovo.tipo === 'sessoes'
+                      ? 'bg-white text-purple-700 shadow'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  📦 Pacote por Sessões
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormNovo(prev => ({ ...prev, tipo: 'mensalidade' }))}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    formNovo.tipo === 'mensalidade'
+                      ? 'bg-white text-purple-700 shadow'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  🔄 Mensalidade
+                </button>
+              </div>
+
               {/* Cliente */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Cliente *</label>
@@ -781,65 +965,149 @@ export default function PacotesAdminPage() {
                 </select>
               </div>
 
-              {/* Quantidade e Desconto */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Qtd. Sessões *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={formNovo.quantidade_total}
-                    onChange={(e) => setFormNovo(prev => ({ ...prev, quantidade_total: parseInt(e.target.value) || 1 }))}
-                    className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Desconto %</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formNovo.desconto_percentual}
-                    onChange={(e) => setFormNovo(prev => ({ ...prev, desconto_percentual: parseFloat(e.target.value) || 0 }))}
-                    className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  />
-                </div>
-              </div>
+              {/* ====== CAMPOS DO TIPO SESSÕES ====== */}
+              {formNovo.tipo === 'sessoes' && (
+                <>
+                  {/* Quantidade e Desconto */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Qtd. Sessões *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={formNovo.quantidade_total}
+                        onChange={(e) => setFormNovo(prev => ({ ...prev, quantidade_total: parseInt(e.target.value) || 1 }))}
+                        className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Desconto %</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formNovo.desconto_percentual}
+                        onChange={(e) => setFormNovo(prev => ({ ...prev, desconto_percentual: parseFloat(e.target.value) || 0 }))}
+                        className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                  </div>
 
-              {/* Valor total */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Valor Total *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formNovo.valor_total}
-                  onChange={(e) => setFormNovo(prev => ({ ...prev, valor_total: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-                {formNovo.valor_total > 0 && formNovo.quantidade_total > 0 && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    R$ {(formNovo.valor_total / formNovo.quantidade_total).toFixed(2)} por sessão
-                  </p>
-                )}
-              </div>
+                  {/* Valor total */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Valor Total do Pacote *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formNovo.valor_total}
+                      onChange={(e) => setFormNovo(prev => ({ ...prev, valor_total: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Valor único do pacote (não multiplica pelo nº de sessões). Cliente pode ir até {formNovo.quantidade_total}x dentro da validade.
+                    </p>
+                    {formNovo.valor_total > 0 && formNovo.quantidade_total > 0 && (
+                      <p className="text-xs text-purple-600 mt-1">
+                        R$ {(formNovo.valor_total / formNovo.quantidade_total).toFixed(2)} por sessão (referência interna)
+                      </p>
+                    )}
+                  </div>
 
-              {/* Data de validade */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Data de Validade</label>
-                <input
-                  type="date"
-                  value={formNovo.data_validade}
-                  onChange={(e) => setFormNovo(prev => ({ ...prev, data_validade: e.target.value }))}
-                  className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-                <p className="text-xs text-gray-500 mt-1">Deixe em branco para sem validade</p>
-              </div>
+                  {/* Data de validade */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Data de Validade</label>
+                    <input
+                      type="date"
+                      value={formNovo.data_validade}
+                      onChange={(e) => setFormNovo(prev => ({ ...prev, data_validade: e.target.value }))}
+                      className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Deixe em branco para sem validade</p>
+                  </div>
+                </>
+              )}
+
+              {/* ====== CAMPOS DO TIPO MENSALIDADE ====== */}
+              {formNovo.tipo === 'mensalidade' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Valor Mensal *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">R$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formNovo.valor_mensal}
+                          onChange={(e) => setFormNovo(prev => ({ ...prev, valor_mensal: parseFloat(e.target.value) || 0 }))}
+                          className="w-full pl-10 pr-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Sessões/Mês *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={formNovo.sessoes_por_mes}
+                        onChange={(e) => setFormNovo(prev => ({ ...prev, sessoes_por_mes: parseInt(e.target.value) || 1 }))}
+                        className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Duração (meses) *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="60"
+                        value={formNovo.duracao_meses}
+                        onChange={(e) => setFormNovo(prev => ({ ...prev, duracao_meses: parseInt(e.target.value) || 1 }))}
+                        className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Dia do Vencimento *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={formNovo.dia_vencimento}
+                        onChange={(e) => setFormNovo(prev => ({ ...prev, dia_vencimento: parseInt(e.target.value) || 1 }))}
+                        className="w-full px-4 py-3 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                  </div>
+
+                  {formNovo.valor_mensal > 0 && formNovo.duracao_meses > 0 && (
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-sm">
+                      <p className="text-purple-800">
+                        <strong>Resumo:</strong> Cliente paga R$ {formNovo.valor_mensal.toFixed(2)}/mês durante {formNovo.duracao_meses} meses,
+                        podendo usar até <strong>{formNovo.sessoes_por_mes} sessões/mês</strong>.
+                      </p>
+                      <p className="text-purple-700 mt-1">
+                        Total do contrato: <strong>R$ {(formNovo.valor_mensal * formNovo.duracao_meses).toFixed(2)}</strong>
+                        ({formNovo.sessoes_por_mes * formNovo.duracao_meses} sessões totais)
+                      </p>
+                      <p className="text-purple-600 text-xs mt-2">
+                        Sistema criará {formNovo.duracao_meses} cobranças mensais (uma por mês). Vencimento todo dia {formNovo.dia_vencimento}.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* Forma de pagamento */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Forma de Pagamento *</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  {formNovo.tipo === 'mensalidade' ? 'Forma de Pagamento padrão (das cobranças)' : 'Forma de Pagamento *'}
+                </label>
                 <select
                   value={formNovo.forma_pagamento}
                   onChange={(e) => setFormNovo(prev => ({ ...prev, forma_pagamento: e.target.value }))}
@@ -850,6 +1118,11 @@ export default function PacotesAdminPage() {
                     <option key={f.codigo} value={f.codigo}>{f.nome}</option>
                   ))}
                 </select>
+                {formNovo.tipo === 'mensalidade' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Pode ser alterada no momento de cada pagamento mensal
+                  </p>
+                )}
               </div>
 
               {/* Observações */}
@@ -1345,6 +1618,57 @@ export default function PacotesAdminPage() {
                 </div>
               </div>
 
+              {/* Cobranças mensais (apenas mensalidade) */}
+              {pacoteSelecionado.tipo === 'mensalidade' && (
+                <div className="mb-6">
+                  <h4 className="font-bold text-gray-800 mb-4">Cobranças Mensais</h4>
+                  {loadingCobrancas ? (
+                    <div className="flex justify-center py-4">
+                      <LoadingSpinner />
+                    </div>
+                  ) : cobrancasPacote.length === 0 ? (
+                    <p className="text-center text-gray-500 py-4">Nenhuma cobrança gerada</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {cobrancasPacote.map(cob => {
+                        const mesNome = new Date(cob.mes_referencia + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                        const statusCfg: Record<string, { label: string; cls: string }> = {
+                          pendente: { label: 'Pendente', cls: 'bg-yellow-100 text-yellow-700' },
+                          paga: { label: 'Paga', cls: 'bg-green-100 text-green-700' },
+                          atrasada: { label: 'Atrasada', cls: 'bg-red-100 text-red-700' },
+                          cancelada: { label: 'Cancelada', cls: 'bg-gray-100 text-gray-600' },
+                        };
+                        const cfg = statusCfg[cob.status] || statusCfg.pendente;
+                        return (
+                          <div key={cob.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium capitalize">{mesNome}</p>
+                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cfg.cls}`}>{cfg.label}</span>
+                              </div>
+                              <p className="text-sm text-gray-600">
+                                R$ {Number(cob.valor).toFixed(2)} · vence {format(new Date(cob.data_vencimento + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                                {cob.data_pagamento && (
+                                  <> · pago em {format(new Date(cob.data_pagamento), 'dd/MM/yyyy', { locale: ptBR })}</>
+                                )}
+                              </p>
+                            </div>
+                            {(cob.status === 'pendente' || cob.status === 'atrasada') && (
+                              <Button
+                                onClick={() => abrirPagamentoCobranca(cob)}
+                                className="!px-3 !py-1 text-sm"
+                              >
+                                Receber
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Histórico de usos */}
               <div>
                 <h4 className="font-bold text-gray-800 mb-4">Histórico de Usos</h4>
@@ -1384,6 +1708,89 @@ export default function PacotesAdminPage() {
               <div className="mt-6">
                 <Button variant="secondary" onClick={() => setShowDetalhesModal(false)} fullWidth>
                   Fechar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pagamento de Cobrança Mensal */}
+      {showPagamentoModal && cobrancaSelecionada && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-6 py-5 rounded-t-3xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Receber Mensalidade</h3>
+                <button
+                  onClick={() => setShowPagamentoModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Info da cobrança */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-sm text-gray-600">Referente a</p>
+                <p className="font-semibold text-gray-800 capitalize">
+                  {new Date(cobrancaSelecionada.mes_referencia + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                </p>
+                <p className="text-2xl font-bold text-green-600 mt-2">
+                  R$ {Number(cobrancaSelecionada.valor).toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Vencimento: {format(new Date(cobrancaSelecionada.data_vencimento + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                </p>
+              </div>
+
+              {/* Forma de pagamento */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Forma de pagamento *</label>
+                <select
+                  value={formPagamento.forma_pagamento}
+                  onChange={(e) => setFormPagamento(prev => ({ ...prev, forma_pagamento: e.target.value }))}
+                  className="w-full px-4 py-3 border border-green-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400"
+                >
+                  <option value="">Selecione</option>
+                  {formasPagamento.map(f => (
+                    <option key={f.codigo} value={f.codigo}>{f.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Data do pagamento */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Data do pagamento</label>
+                <input
+                  type="date"
+                  value={formPagamento.data_pagamento}
+                  onChange={(e) => setFormPagamento(prev => ({ ...prev, data_pagamento: e.target.value }))}
+                  className="w-full px-4 py-3 border border-green-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Observações</label>
+                <textarea
+                  value={formPagamento.observacoes}
+                  onChange={(e) => setFormPagamento(prev => ({ ...prev, observacoes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-4 py-3 border border-green-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="secondary" onClick={() => setShowPagamentoModal(false)} fullWidth>
+                  Cancelar
+                </Button>
+                <Button variant="success" onClick={handleRegistrarPagamento} isLoading={salvando} fullWidth>
+                  Confirmar Pagamento
                 </Button>
               </div>
             </div>

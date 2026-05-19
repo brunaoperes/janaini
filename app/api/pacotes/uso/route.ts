@@ -135,6 +135,28 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // Mensalidade: validar limite mensal
+    if (pacote.tipo === 'mensalidade' && pacote.sessoes_por_mes) {
+      const dataUsoObj = new Date(data.data_uso);
+      const inicioMes = new Date(dataUsoObj.getFullYear(), dataUsoObj.getMonth(), 1);
+      const fimMes = new Date(dataUsoObj.getFullYear(), dataUsoObj.getMonth() + 1, 0);
+      const inicioStr = inicioMes.toISOString().split('T')[0];
+      const fimStr = fimMes.toISOString().split('T')[0];
+
+      const { count: usosNoMes } = await supabase
+        .from('pacote_usos')
+        .select('id', { count: 'exact', head: true })
+        .eq('pacote_id', pacote.id)
+        .gte('data_uso', inicioStr)
+        .lte('data_uso', fimStr);
+
+      if ((usosNoMes || 0) >= pacote.sessoes_por_mes) {
+        return NextResponse.json({
+          error: `Limite mensal atingido: ${pacote.sessoes_por_mes} sessões neste mês já foram utilizadas`
+        }, { status: 400 });
+      }
+    }
+
     // Verificar validade
     if (pacote.data_validade) {
       const hoje = new Date();
