@@ -58,6 +58,16 @@ export const servicoSchema = z.object({
 
 export type ServicoFormData = z.infer<typeof servicoSchema>;
 
+// Schema para uma forma de pagamento individual dentro do recebimento
+export const pagamentoItemSchema = z.object({
+  forma_pagamento: z.string({ message: 'Selecione uma forma de pagamento' })
+    .min(1, 'Selecione uma forma de pagamento'),
+  valor: z.number({ message: 'Informe o valor desta forma' })
+    .positive('Valor deve ser maior que 0'),
+});
+
+export type PagamentoItem = z.infer<typeof pagamentoItemSchema>;
+
 // Schema para Lançamento (Unificado com Agendamento)
 export const lancamentoSchema = z.object({
   colaborador_id: z.number({ message: 'Selecione uma colaboradora' })
@@ -74,7 +84,8 @@ export const lancamentoSchema = z.object({
   servicos_nomes: z.string().optional(),
   valor_total: z.number({ message: 'Valor total é obrigatório' })
     .positive('Valor total deve ser maior que 0'),
-  forma_pagamento: z.enum(['dinheiro', 'pix', 'cartao_debito', 'cartao_credito']).optional(),
+  forma_pagamento: z.string().optional(),
+  pagamentos: z.array(pagamentoItemSchema).optional(),
   observacoes: z.string().max(500, 'Observações devem ter no máximo 500 caracteres').optional(),
   status: z.enum(['pendente', 'concluido', 'cancelado']).default('pendente'),
 });

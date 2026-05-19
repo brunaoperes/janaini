@@ -68,7 +68,14 @@ export async function GET(
       return NextResponse.json({ error: 'Lançamento não encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json({ data });
+    // Buscar pagamentos vinculados
+    const { data: pagamentos } = await supabase
+      .from('lancamento_pagamentos')
+      .select('forma_pagamento, valor, taxa_percentual, valor_taxa, comissao_colaborador, comissao_salao, ordem')
+      .eq('lancamento_id', lancamentoId)
+      .order('ordem');
+
+    return NextResponse.json({ data: { ...data, pagamentos: pagamentos || [] } });
   } catch (error: any) {
     return NextResponse.json({ error: 'Erro ao buscar lançamento' }, { status: 500 });
   }
@@ -91,6 +98,7 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const { pagamentos, ...lancamentoBody } = body;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
@@ -110,7 +118,7 @@ export async function PUT(
     // Atualizar lançamento
     const { data, error } = await supabase
       .from('lancamentos')
-      .update(body)
+      .update(lancamentoBody)
       .eq('id', lancamentoId)
       .select()
       .single();
@@ -118,6 +126,36 @@ export async function PUT(
     if (error) {
       console.error('[API/lancamentos] Erro ao atualizar:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Sincronizar formas de pagamento se enviadas (substitui as existentes)
+    if (Array.isArray(pagamentos)) {
+      await supabase
+        .from('lancamento_pagamentos')
+        .delete()
+        .eq('lancamento_id', lancamentoId);
+
+      if (pagamentos.length > 0) {
+        const pagamentosParaInserir = pagamentos.map((p: any, idx: number) => ({
+          lancamento_id: lancamentoId,
+          forma_pagamento: p.forma_pagamento,
+          valor: p.valor,
+          taxa_percentual: p.taxa_percentual || 0,
+          valor_taxa: p.valor_taxa || 0,
+          comissao_colaborador: p.comissao_colaborador || 0,
+          comissao_salao: p.comissao_salao || 0,
+          ordem: idx + 1,
+        }));
+
+        const { error: pagError } = await supabase
+          .from('lancamento_pagamentos')
+          .insert(pagamentosParaInserir);
+
+        if (pagError) {
+          console.error('[API/lancamentos] Erro ao atualizar pagamentos:', pagError);
+          return NextResponse.json({ error: 'Erro ao atualizar formas de pagamento: ' + pagError.message }, { status: 500 });
+        }
+      }
     }
 
     // Registrar auditoria

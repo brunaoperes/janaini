@@ -69,6 +69,7 @@ interface LancamentoComRelacoes {
   divisoes?: DivisaoColaborador[];
   is_fiado?: boolean;
   is_troca_gratis?: boolean;
+  pagamentos?: { forma_pagamento: string; valor: number; taxa_percentual?: number; ordem?: number }[];
 }
 
 interface UserProfile {
@@ -83,6 +84,11 @@ interface FormaPagamentoDB {
   icone: string;
   taxa_percentual: number;
   ativo: boolean;
+}
+
+interface PagamentoForm {
+  forma_pagamento: string;
+  valor: string;
 }
 
 type TabType = 'hoje' | 'pendentes' | 'finalizados' | 'futuros';
@@ -122,6 +128,7 @@ export default function LancamentosPage() {
     is_troca_gratis: false,
     valor_referencia: '',
   });
+  const [pagamentos, setPagamentos] = useState<PagamentoForm[]>([]);
 
   const [selectedColaborador, setSelectedColaborador] = useState<Colaborador | null>(null);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -322,10 +329,43 @@ export default function LancamentosPage() {
         .filter(Boolean)
         .join(' + ');
 
-      if (jaRealizado && !formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
-        setFormErrors('Selecione uma forma de pagamento');
+      const isRecebimentoMonetario = jaRealizado && !formData.is_fiado && !formData.is_troca_gratis;
+
+      if (isRecebimentoMonetario && pagamentos.length === 0) {
+        setFormErrors('Adicione pelo menos uma forma de pagamento');
         setIsSubmitting(false);
         return;
+      }
+
+      if (isRecebimentoMonetario) {
+        const valorTotalNum = parseFloat(formData.valor_total) || 0;
+        const somaPagamentos = pagamentos.reduce((acc, p) => acc + (parseFloat(p.valor) || 0), 0);
+        const formaVazia = pagamentos.some(p => !p.forma_pagamento);
+        const valorInvalido = pagamentos.some(p => !p.valor || parseFloat(p.valor) <= 0);
+        const formasDuplicadas = pagamentos.some((p, i) =>
+          pagamentos.findIndex(x => x.forma_pagamento === p.forma_pagamento) !== i
+        );
+
+        if (formaVazia) {
+          setFormErrors('Selecione a forma de pagamento em todas as linhas');
+          setIsSubmitting(false);
+          return;
+        }
+        if (valorInvalido) {
+          setFormErrors('Informe um valor maior que zero em cada forma de pagamento');
+          setIsSubmitting(false);
+          return;
+        }
+        if (formasDuplicadas) {
+          setFormErrors('Não repita a mesma forma de pagamento — some os valores em uma única linha');
+          setIsSubmitting(false);
+          return;
+        }
+        if (Math.abs(somaPagamentos - valorTotalNum) > 0.01) {
+          setFormErrors(`Soma dos pagamentos (R$ ${somaPagamentos.toFixed(2)}) deve ser igual ao valor total (R$ ${valorTotalNum.toFixed(2)})`);
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       if (compartilhado) {
@@ -370,6 +410,10 @@ export default function LancamentosPage() {
         statusFinal = 'concluido';
       }
 
+      const formaPagamentoPrincipal = isRecebimentoMonetario
+        ? (pagamentos.length === 1 ? pagamentos[0].forma_pagamento : 'multiplo')
+        : '';
+
       const validationData = {
         colaborador_id: Number(formData.colaborador_id),
         cliente_id: Number(formData.cliente_id),
@@ -381,7 +425,7 @@ export default function LancamentosPage() {
         valor_total: parseFloat(formData.valor_total),
         observacoes: formData.observacoes || undefined,
         status: statusFinal as 'pendente' | 'concluido',
-        forma_pagamento: jaRealizado ? formData.forma_pagamento as 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' : undefined,
+        forma_pagamento: jaRealizado ? formaPagamentoPrincipal : undefined,
       };
 
       const validation = lancamentoSchema.safeParse(validationData);
@@ -391,31 +435,41 @@ export default function LancamentosPage() {
         return;
       }
 
-      let taxaPercentual = 0;
+      // Calcular taxa, comissão por forma de pagamento e totais
+      const porcentagemColab = selectedColaborador?.porcentagem_comissao || 50;
       let valorTaxa = 0;
-      if (jaRealizado && formData.forma_pagamento && !formData.is_fiado && !formData.is_troca_gratis) {
-        // Usar lista local em vez de query Supabase (evita travamento)
-        const formaPagamento = formasPagamentoDB.find(f => f.codigo === formData.forma_pagamento);
-        taxaPercentual = formaPagamento?.taxa_percentual || 0;
-        valorTaxa = (validationData.valor_total * taxaPercentual) / 100;
-      }
-
       let comissaoColaborador = 0;
       let comissaoSalao = 0;
+      let pagamentosDetalhados: any[] = [];
 
       if (formData.is_troca_gratis) {
         comissaoColaborador = 0;
         comissaoSalao = 0;
       } else if (formData.is_fiado) {
-        const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
-        const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
+        const comissaoBruta = (validationData.valor_total * porcentagemColab) / 100;
         comissaoColaborador = comissaoBruta;
         comissaoSalao = validationData.valor_total - comissaoBruta;
-      } else {
-        const porcentagem = selectedColaborador?.porcentagem_comissao || 50;
-        const comissaoBruta = (validationData.valor_total * porcentagem) / 100;
-        comissaoColaborador = comissaoBruta - valorTaxa;
-        comissaoSalao = validationData.valor_total - comissaoBruta;
+      } else if (isRecebimentoMonetario) {
+        pagamentosDetalhados = pagamentos.map(p => {
+          const valor = parseFloat(p.valor) || 0;
+          const forma = formasPagamentoDB.find(f => f.codigo === p.forma_pagamento);
+          const taxaPct = forma?.taxa_percentual || 0;
+          const taxaValor = (valor * taxaPct) / 100;
+          const comissaoBrutaP = (valor * porcentagemColab) / 100;
+          const comissaoColabP = comissaoBrutaP - taxaValor;
+          const comissaoSalaoP = valor - comissaoBrutaP;
+          return {
+            forma_pagamento: p.forma_pagamento,
+            valor,
+            taxa_percentual: taxaPct,
+            valor_taxa: taxaValor,
+            comissao_colaborador: comissaoColabP,
+            comissao_salao: comissaoSalaoP,
+          };
+        });
+        valorTaxa = pagamentosDetalhados.reduce((a, p) => a + p.valor_taxa, 0);
+        comissaoColaborador = pagamentosDetalhados.reduce((a, p) => a + p.comissao_colaborador, 0);
+        comissaoSalao = pagamentosDetalhados.reduce((a, p) => a + p.comissao_salao, 0);
       }
 
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
@@ -423,8 +477,8 @@ export default function LancamentosPage() {
 
       const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
 
-      let formaPagamentoFinal = null;
-      let dataPagamentoFinal = null;
+      let formaPagamentoFinal: string | null = null;
+      let dataPagamentoFinal: string | null = null;
 
       if (formData.is_fiado) {
         formaPagamentoFinal = 'fiado';
@@ -432,8 +486,8 @@ export default function LancamentosPage() {
       } else if (formData.is_troca_gratis) {
         formaPagamentoFinal = 'troca_gratis';
         dataPagamentoFinal = new Date().toISOString();
-      } else if (jaRealizado && formData.forma_pagamento) {
-        formaPagamentoFinal = formData.forma_pagamento;
+      } else if (isRecebimentoMonetario) {
+        formaPagamentoFinal = formaPagamentoPrincipal;
         dataPagamentoFinal = new Date().toISOString();
       }
 
@@ -459,6 +513,8 @@ export default function LancamentosPage() {
         valor_referencia: formData.is_troca_gratis && formData.valor_referencia
           ? parseFloat(formData.valor_referencia)
           : null,
+        // Array enviado pra API persistir em lancamento_pagamentos
+        pagamentos: isRecebimentoMonetario ? pagamentosDetalhados : [],
       };
 
       // Validar horário obrigatório
@@ -604,8 +660,10 @@ export default function LancamentosPage() {
         msgExtra = ' - Marcado como FIADO (pendente)';
       } else if (formData.is_troca_gratis) {
         msgExtra = ' - Troca/Grátis registrado';
+      } else if (isRecebimentoMonetario && pagamentos.length > 1) {
+        msgExtra = ` - ${pagamentos.length} formas de pagamento`;
       } else if (valorTaxa > 0) {
-        msgExtra = ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})`;
+        msgExtra = ` (Taxa: -R$ ${valorTaxa.toFixed(2)})`;
       }
       toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgExtra);
       setShowModal(false);
@@ -654,6 +712,7 @@ export default function LancamentosPage() {
     setFiltroServico('');
     setCompartilhado(false);
     setDivisoes([]);
+    setPagamentos([]);
   }
 
   async function handleEdit(lanc: LancamentoComRelacoes) {
@@ -712,6 +771,22 @@ export default function LancamentosPage() {
     setEditingId(lancFresh.id);
     setCompartilhado(false);
     setDivisoes([]);
+
+    // Carregar pagamentos existentes (multi-pagamento)
+    if (Array.isArray(lancFresh.pagamentos) && lancFresh.pagamentos.length > 0) {
+      setPagamentos(lancFresh.pagamentos.map((p: any) => ({
+        forma_pagamento: p.forma_pagamento,
+        valor: Number(p.valor).toFixed(2),
+      })));
+    } else if (lancFresh.forma_pagamento && !lancFresh.is_fiado && !lancFresh.is_troca_gratis && lancFresh.forma_pagamento !== 'multiplo') {
+      // Lançamento antigo (forma única) — preencher como 1 pagamento
+      setPagamentos([{
+        forma_pagamento: lancFresh.forma_pagamento,
+        valor: Number(lancFresh.valor_total).toFixed(2),
+      }]);
+    } else {
+      setPagamentos([]);
+    }
 
     // Abrir modal ANTES de buscar divisões (para não travar se RLS bloquear)
     setShowModal(true);
@@ -970,13 +1045,28 @@ export default function LancamentosPage() {
                           {getStatusBadge(lanc.status, lanc)}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          {lanc.forma_pagamento && !lanc.is_fiado && !lanc.is_troca_gratis ? (
-                            <span className="text-gray-700">
-                              {formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome || lanc.forma_pagamento}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          {(() => {
+                            const pags = (lanc as any).pagamentos as { forma_pagamento: string; valor: number }[] | undefined;
+                            if (pags && pags.length > 0 && !lanc.is_fiado && !lanc.is_troca_gratis) {
+                              if (pags.length === 1) {
+                                return <span className="text-gray-700">{formasPagamentoDB.find(f => f.codigo === pags[0].forma_pagamento)?.nome || pags[0].forma_pagamento}</span>;
+                              }
+                              return (
+                                <div className="text-xs space-y-0.5">
+                                  {pags.map((p, i) => (
+                                    <div key={i} className="text-gray-700">
+                                      {formasPagamentoDB.find(f => f.codigo === p.forma_pagamento)?.nome || p.forma_pagamento}
+                                      <span className="text-gray-500"> · R$ {Number(p.valor).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            if (lanc.forma_pagamento && !lanc.is_fiado && !lanc.is_troca_gratis) {
+                              return <span className="text-gray-700">{formasPagamentoDB.find(f => f.codigo === lanc.forma_pagamento)?.nome || lanc.forma_pagamento}</span>;
+                            }
+                            return <span className="text-gray-400">-</span>;
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
@@ -1248,6 +1338,7 @@ export default function LancamentosPage() {
                             is_troca_gratis: false,
                             valor_referencia: '',
                           }));
+                          setPagamentos([]);
                         }
                       }}
                       className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
@@ -1258,46 +1349,21 @@ export default function LancamentosPage() {
                   {jaRealizado && (
                     <div className="mt-4 space-y-3">
                       <p className="text-sm text-gray-600">Como foi recebido o pagamento?</p>
-                      <div className="flex flex-wrap gap-2">
-                        {formasPagamentoDB
-                          .filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis')
-                          .map(forma => (
-                            <button
-                              key={forma.codigo}
-                              type="button"
-                              onClick={() => setFormData(prev => ({
-                                ...prev,
-                                forma_pagamento: forma.codigo,
-                                is_fiado: false,
-                                is_troca_gratis: false,
-                                valor_referencia: '',
-                              }))}
-                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                formData.forma_pagamento === forma.codigo && !formData.is_fiado && !formData.is_troca_gratis
-                                  ? 'bg-green-500 text-white'
-                                  : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
-                              }`}
-                            >
-                              <span>{forma.icone}</span>
-                              <span>{forma.nome}</span>
-                              {forma.taxa_percentual > 0 && (
-                                <span className={`text-xs ${formData.forma_pagamento === forma.codigo ? 'text-green-200' : 'text-red-500'}`}>
-                                  ({forma.taxa_percentual}%)
-                                </span>
-                              )}
-                            </button>
-                          ))
-                        }
 
+                      {/* Atalhos: Fiado / Troca-Grátis (mutuamente exclusivos com pagamentos[]) */}
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => setFormData(prev => ({
-                            ...prev,
-                            forma_pagamento: 'fiado',
-                            is_fiado: true,
-                            is_troca_gratis: false,
-                            valor_referencia: '',
-                          }))}
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              forma_pagamento: 'fiado',
+                              is_fiado: true,
+                              is_troca_gratis: false,
+                              valor_referencia: '',
+                            }));
+                            setPagamentos([]);
+                          }}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                             formData.is_fiado
                               ? 'bg-orange-500 text-white'
@@ -1310,13 +1376,16 @@ export default function LancamentosPage() {
 
                         <button
                           type="button"
-                          onClick={() => setFormData(prev => ({
-                            ...prev,
-                            forma_pagamento: 'troca_gratis',
-                            is_fiado: false,
-                            is_troca_gratis: true,
-                            valor_total: '0',
-                          }))}
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              forma_pagamento: 'troca_gratis',
+                              is_fiado: false,
+                              is_troca_gratis: true,
+                              valor_total: '0',
+                            }));
+                            setPagamentos([]);
+                          }}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                             formData.is_troca_gratis
                               ? 'bg-purple-500 text-white'
@@ -1327,6 +1396,115 @@ export default function LancamentosPage() {
                           <span>Troca / Grátis</span>
                         </button>
                       </div>
+
+                      {/* Multi-pagamento: lista de formas com valores */}
+                      {!formData.is_fiado && !formData.is_troca_gratis && (() => {
+                        const valorTotalNum = parseFloat(formData.valor_total) || 0;
+                        const somaPag = pagamentos.reduce((acc, p) => acc + (parseFloat(p.valor) || 0), 0);
+                        const restante = valorTotalNum - somaPag;
+                        const formasDisponiveis = formasPagamentoDB.filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis');
+                        const podeAdicionar = pagamentos.length < formasDisponiveis.length;
+
+                        const addPagamento = () => {
+                          const usadas = new Set(pagamentos.map(p => p.forma_pagamento));
+                          const proxima = formasDisponiveis.find(f => !usadas.has(f.codigo));
+                          if (!proxima) return;
+                          const novoValor = pagamentos.length === 0 && valorTotalNum > 0
+                            ? valorTotalNum.toFixed(2)
+                            : (restante > 0 ? restante.toFixed(2) : '');
+                          setPagamentos([...pagamentos, { forma_pagamento: proxima.codigo, valor: novoValor }]);
+                        };
+
+                        const updatePagamento = (idx: number, campo: keyof PagamentoForm, valor: string) => {
+                          setPagamentos(pagamentos.map((p, i) => i === idx ? { ...p, [campo]: valor } : p));
+                        };
+
+                        const removePagamento = (idx: number) => {
+                          setPagamentos(pagamentos.filter((_, i) => i !== idx));
+                        };
+
+                        return (
+                          <div className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                            {pagamentos.length === 0 && (
+                              <p className="text-sm text-gray-500 italic">Nenhuma forma adicionada. Clique em "+ Adicionar forma".</p>
+                            )}
+
+                            {pagamentos.map((pag, idx) => {
+                              const usadasOutras = new Set(pagamentos.filter((_, i) => i !== idx).map(p => p.forma_pagamento));
+                              return (
+                                <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                                  <select
+                                    value={pag.forma_pagamento}
+                                    onChange={(e) => updatePagamento(idx, 'forma_pagamento', e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                                  >
+                                    <option value="">Selecione...</option>
+                                    {formasDisponiveis
+                                      .filter(f => f.codigo === pag.forma_pagamento || !usadasOutras.has(f.codigo))
+                                      .map(f => (
+                                        <option key={f.codigo} value={f.codigo}>
+                                          {f.icone} {f.nome}{f.taxa_percentual > 0 ? ` (taxa ${f.taxa_percentual}%)` : ''}
+                                        </option>
+                                      ))}
+                                  </select>
+
+                                  <div className="relative w-full sm:w-40">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">R$</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={pag.valor}
+                                      onChange={(e) => updatePagamento(idx, 'valor', e.target.value)}
+                                      placeholder="0,00"
+                                      className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => removePagamento(idx)}
+                                    className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm"
+                                    title="Remover"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                              <button
+                                type="button"
+                                onClick={addPagamento}
+                                disabled={!podeAdicionar}
+                                className="text-sm px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                + Adicionar forma
+                              </button>
+
+                              {pagamentos.length > 0 && (
+                                <div className="text-xs text-gray-600">
+                                  Soma: <span className="font-semibold">R$ {somaPag.toFixed(2)}</span>
+                                  {valorTotalNum > 0 && (
+                                    <>
+                                      {' '}/ Total: <span className="font-semibold">R$ {valorTotalNum.toFixed(2)}</span>
+                                      {Math.abs(restante) > 0.01 && (
+                                        <span className={`ml-2 font-semibold ${restante > 0 ? 'text-orange-600' : 'text-red-600'}`}>
+                                          {restante > 0 ? `Falta R$ ${restante.toFixed(2)}` : `Excede R$ ${Math.abs(restante).toFixed(2)}`}
+                                        </span>
+                                      )}
+                                      {Math.abs(restante) <= 0.01 && (
+                                        <span className="ml-2 text-green-600 font-semibold">✓ OK</span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {formData.is_fiado && (
                         <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
@@ -1371,23 +1549,42 @@ export default function LancamentosPage() {
                         </div>
                       )}
 
-                      {formData.forma_pagamento && formData.valor_total && selectedColaborador &&
+                      {pagamentos.length > 0 && selectedColaborador &&
                        !formData.is_fiado && !formData.is_troca_gratis &&
                        (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (() => {
-                        const formaSelecionada = formasPagamentoDB.find(f => f.codigo === formData.forma_pagamento);
-                        const taxa = formaSelecionada?.taxa_percentual || 0;
-                        if (taxa <= 0) return null;
-                        const valorTotal = parseFloat(formData.valor_total);
-                        const valorTaxa = (valorTotal * taxa) / 100;
-                        const comissaoBruta = (valorTotal * selectedColaborador.porcentagem_comissao) / 100;
-                        const comissaoLiquida = comissaoBruta - valorTaxa;
+                        const porcentagem = selectedColaborador.porcentagem_comissao || 50;
+                        const detalhes = pagamentos.map(p => {
+                          const valor = parseFloat(p.valor) || 0;
+                          const forma = formasPagamentoDB.find(f => f.codigo === p.forma_pagamento);
+                          const taxaPct = forma?.taxa_percentual || 0;
+                          const valorTaxa = (valor * taxaPct) / 100;
+                          const comissaoBruta = (valor * porcentagem) / 100;
+                          return {
+                            nome: forma?.nome || p.forma_pagamento || '—',
+                            valor,
+                            taxaPct,
+                            valorTaxa,
+                            comissaoBruta,
+                            comissaoLiquida: comissaoBruta - valorTaxa,
+                          };
+                        });
+                        const totalTaxa = detalhes.reduce((a, d) => a + d.valorTaxa, 0);
+                        const totalComissao = detalhes.reduce((a, d) => a + d.comissaoLiquida, 0);
+                        if (totalTaxa <= 0 && pagamentos.length === 1) return null;
                         return (
                           <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
-                            <p className="text-yellow-800 font-medium">Taxa de {formaSelecionada?.nome}: {taxa}%</p>
-                            <ul className="text-yellow-700 mt-1 space-y-1">
-                              <li>Comissão bruta: R$ {comissaoBruta.toFixed(2)}</li>
-                              <li>Taxa descontada: -R$ {valorTaxa.toFixed(2)}</li>
-                              <li className="font-bold">Comissão líquida: R$ {comissaoLiquida.toFixed(2)}</li>
+                            <p className="text-yellow-800 font-medium mb-1">Resumo de comissão</p>
+                            <ul className="text-yellow-700 space-y-0.5">
+                              {detalhes.map((d, i) => (
+                                <li key={i}>
+                                  {d.nome}: R$ {d.valor.toFixed(2)}
+                                  {d.taxaPct > 0 && ` · taxa ${d.taxaPct}% (-R$ ${d.valorTaxa.toFixed(2)})`}
+                                </li>
+                              ))}
+                              {totalTaxa > 0 && (
+                                <li className="pt-1 border-t border-yellow-200">Total taxa: -R$ {totalTaxa.toFixed(2)}</li>
+                              )}
+                              <li className="font-bold">Comissão líquida total: R$ {totalComissao.toFixed(2)}</li>
                             </ul>
                           </div>
                         );

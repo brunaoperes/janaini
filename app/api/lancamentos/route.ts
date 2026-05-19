@@ -147,25 +147,41 @@ export async function GET(request: Request) {
     // Buscar divisões para lançamentos compartilhados
     const lancamentosIds = (lancamentos || []).map((l: any) => l.id);
     let divisoesMap: Record<number, any[]> = {};
+    let pagamentosMap: Record<number, any[]> = {};
 
     if (lancamentosIds.length > 0) {
-      const { data: divisoes } = await supabase
-        .from('lancamento_divisoes')
-        .select(`
-          lancamento_id,
-          colaborador_id,
-          valor,
-          comissao_calculada,
-          colaborador:colaboradores(id, nome, porcentagem_comissao)
-        `)
-        .in('lancamento_id', lancamentosIds);
+      const [divisoesRes, pagamentosRes] = await Promise.all([
+        supabase
+          .from('lancamento_divisoes')
+          .select(`
+            lancamento_id,
+            colaborador_id,
+            valor,
+            comissao_calculada,
+            colaborador:colaboradores(id, nome, porcentagem_comissao)
+          `)
+          .in('lancamento_id', lancamentosIds),
+        supabase
+          .from('lancamento_pagamentos')
+          .select('lancamento_id, forma_pagamento, valor, taxa_percentual, ordem')
+          .in('lancamento_id', lancamentosIds)
+          .order('ordem'),
+      ]);
 
       // Agrupar divisões por lançamento
-      (divisoes || []).forEach((div: any) => {
+      (divisoesRes.data || []).forEach((div: any) => {
         if (!divisoesMap[div.lancamento_id]) {
           divisoesMap[div.lancamento_id] = [];
         }
         divisoesMap[div.lancamento_id].push(div);
+      });
+
+      // Agrupar pagamentos por lançamento
+      (pagamentosRes.data || []).forEach((pag: any) => {
+        if (!pagamentosMap[pag.lancamento_id]) {
+          pagamentosMap[pag.lancamento_id] = [];
+        }
+        pagamentosMap[pag.lancamento_id].push(pag);
       });
     }
 
@@ -183,6 +199,7 @@ export async function GET(request: Request) {
           _canViewComissao: lanc.colaborador_id === userColaboradorId,
           compartilhado: divisoes.length > 0,
           divisoes: divisoesFiltradas,
+          pagamentos: pagamentosMap[lanc.id] || [],
         };
       });
     } else if (!isAdmin && !userColaboradorId) {
@@ -193,6 +210,7 @@ export async function GET(request: Request) {
         _canViewComissao: false,
         compartilhado: false,
         divisoes: [],
+        pagamentos: pagamentosMap[lanc.id] || [],
       }));
     } else {
       // Admin vê tudo
@@ -203,6 +221,7 @@ export async function GET(request: Request) {
           _canViewComissao: true,
           compartilhado: divisoes.length > 0,
           divisoes: divisoes,
+          pagamentos: pagamentosMap[lanc.id] || [],
         };
       });
     }
@@ -267,6 +286,7 @@ export async function POST(request: Request) {
     if (isAuthError(authResult)) return authResult;
 
     const body = await request.json();
+    const { pagamentos, ...lancamentoBody } = body;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -275,16 +295,41 @@ export async function POST(request: Request) {
       }
     });
 
-    // Inserir lançamento
+    // Inserir lançamento (sem o array de pagamentos)
     const { data: lancamento, error: lancError } = await supabase
       .from('lancamentos')
-      .insert(body)
+      .insert(lancamentoBody)
       .select()
       .single();
 
     if (lancError) {
       console.error('[API/lancamentos] Erro ao criar lançamento:', lancError);
       return NextResponse.json({ error: lancError.message }, { status: 500 });
+    }
+
+    // Persistir formas de pagamento se enviadas
+    if (Array.isArray(pagamentos) && pagamentos.length > 0) {
+      const pagamentosParaInserir = pagamentos.map((p: any, idx: number) => ({
+        lancamento_id: lancamento.id,
+        forma_pagamento: p.forma_pagamento,
+        valor: p.valor,
+        taxa_percentual: p.taxa_percentual || 0,
+        valor_taxa: p.valor_taxa || 0,
+        comissao_colaborador: p.comissao_colaborador || 0,
+        comissao_salao: p.comissao_salao || 0,
+        ordem: idx + 1,
+      }));
+
+      const { error: pagError } = await supabase
+        .from('lancamento_pagamentos')
+        .insert(pagamentosParaInserir);
+
+      if (pagError) {
+        console.error('[API/lancamentos] Erro ao inserir pagamentos:', pagError);
+        // Rollback: deletar lançamento
+        await supabase.from('lancamentos').delete().eq('id', lancamento.id);
+        return NextResponse.json({ error: 'Erro ao salvar formas de pagamento: ' + pagError.message }, { status: 500 });
+      }
     }
 
     // Registrar auditoria
@@ -295,7 +340,7 @@ export async function POST(request: Request) {
         modulo: 'Lancamentos',
         tabela: 'lancamentos',
         registroId: lancamento.id,
-        dadosNovo: lancamento,
+        dadosNovo: { ...lancamento, pagamentos },
         metodo: 'POST',
         endpoint: '/api/lancamentos',
       });
