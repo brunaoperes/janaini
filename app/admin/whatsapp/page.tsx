@@ -543,7 +543,7 @@ export default function AdminWhatsAppPage() {
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Fluxo de Automação</h2>
-                <p className="text-xs text-gray-400 mt-1">Mensagens são disparadas pela Agenda e pela tela de Lançamentos automaticamente.</p>
+                <p className="text-xs text-gray-400 mt-1">As mensagens entram numa fila e são enviadas de forma espaçada (uma a uma, com pausa) para proteger o número.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0">
@@ -560,7 +560,7 @@ export default function AdminWhatsAppPage() {
                     </div>
                     <div className="pb-6">
                       <h3 className="font-semibold text-gray-800">Confirmação de Agendamento</h3>
-                      <p className="text-sm text-gray-500">Enviada <span className="font-medium text-emerald-600">imediatamente</span> ao criar agendamento no futuro</p>
+                      <p className="text-sm text-gray-500">Entra na fila ao criar o agendamento e é enviada <span className="font-medium text-emerald-600">em instantes</span> (espaçada)</p>
                       <p className="text-xs text-gray-400 mt-1">Se o horário já passou, não envia confirmação (envia apenas pós-venda)</p>
                       <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         templates.find(t => t.tipo === 'confirmacao')?.ativo ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
@@ -659,6 +659,22 @@ export default function AdminWhatsAppPage() {
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Envio espaçado (anti-flood):</span> As mensagens saem uma a uma, com pausa entre cada, em vez de tudo de uma vez — protege o número contra bloqueio</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Limite diário:</span> Há um teto de mensagens por dia (ajustável em "Segurança de Envio"). Acima dele, o restante fica para o dia seguinte</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Janela de horário:</span> Mensagens só são enviadas dentro do horário configurado (nunca de madrugada)</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
+                  <p className="text-gray-600"><span className="font-medium text-gray-800">Botão de emergência:</span> Em "Segurança de Envio" dá pra desligar todo o envio na hora (kill switch)</p>
+                </div>
+                <div className="flex items-start gap-3 text-sm">
+                  <span className="text-green-500 mt-0.5">✓</span>
                   <p className="text-gray-600"><span className="font-medium text-gray-800">Agenda e Lançamentos:</span> Mensagens são disparadas tanto pela Agenda quanto pela tela de Lançamentos</p>
                 </div>
               </div>
@@ -674,9 +690,10 @@ export default function AdminWhatsAppPage() {
                   <div className="bg-gray-50 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-base">⏰</span>
-                      <p className="text-xs text-gray-500 font-medium">Cron de Processamento</p>
+                      <p className="text-xs text-gray-500 font-medium">Processamento de envio</p>
                     </div>
-                    <p className="text-sm font-semibold text-gray-800">{config?.cron_schedule || '1x por dia (08:00)'}</p>
+                    <p className="text-sm font-semibold text-gray-800">Contínuo (espaçado)</p>
+                    <p className="text-[11px] text-gray-400 mt-1">A fila é processada o tempo todo, uma a uma. O agendamento de lembretes roda 1x/dia às 21h.</p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
