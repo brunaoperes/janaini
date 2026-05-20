@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireAdmin, isAuthError } from '@/lib/api-auth';
-import { enviarMensagemWaha, normalizarTelefone, validarTelefone, verificarStatusInstancia } from '@/lib/whatsapp';
+import { enviarMensagemWaha, normalizarTelefone, validarTelefone, verificarStatusInstancia, getWhatsappConfig } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -62,6 +62,7 @@ export async function GET(request: Request) {
     const wahaKey = process.env.WAHA_API_KEY || '';
 
     const statusInstancia = await verificarStatusInstancia();
+    const cfg = await getWhatsappConfig();
 
     // Buscar o número conectado direto da sessão WAHA
     let numeroConectado = '';
@@ -88,10 +89,12 @@ export async function GET(request: Request) {
         waha_status: statusInstancia.status,
         waha_status_error: statusInstancia.error,
         waha_numero: numeroConectado,
-        // parâmetros de segurança/envio (atuais)
-        envio_ativo: process.env.WHATSAPP_ENVIO_ATIVO !== 'false',
-        limite_diario: parseInt(process.env.WHATSAPP_LIMITE_DIARIO || '80', 10),
-        janela_horario: `${process.env.WHATSAPP_HORA_INICIO || '7'}h às ${process.env.WHATSAPP_HORA_FIM || '22'}h (BRT)`,
+        // parâmetros de segurança/envio (editáveis — vêm da tabela whatsapp_config)
+        envio_ativo: cfg.envio_ativo,
+        limite_diario: cfg.limite_diario,
+        hora_inicio: cfg.hora_inicio,
+        hora_fim: cfg.hora_fim,
+        janela_horario: `${cfg.hora_inicio}h às ${cfg.hora_fim}h (BRT)`,
         throttle: 'Envio espaçado pelo worker da VPS (pausa humanizada entre mensagens)',
         cron_schedule: '1x por dia as 21h (BRT)',
         tempo_pos_venda: '15 minutos após conclusão',
@@ -142,13 +145,61 @@ export async function GET(request: Request) {
   });
 }
 
-// PUT: Atualizar template
+// PUT: Atualizar template OU config de envio
 export async function PUT(request: Request) {
   const authResult = await requireAdmin();
   if (isAuthError(authResult)) return authResult;
 
   const supabase = getSupabase();
   const body = await request.json();
+
+  // Salvar configuração de envio (kill switch, limite, horário)
+  if (body.secao === 'config') {
+    const updateConfig: Record<string, unknown> = {};
+    if (typeof body.envio_ativo === 'boolean') updateConfig.envio_ativo = body.envio_ativo;
+    if (body.limite_diario !== undefined) {
+      const lim = parseInt(body.limite_diario, 10);
+      if (isNaN(lim) || lim < 0 || lim > 1000) {
+        return NextResponse.json({ error: 'Limite diário inválido (0 a 1000)' }, { status: 400 });
+      }
+      updateConfig.limite_diario = lim;
+    }
+    if (body.hora_inicio !== undefined) {
+      const h = parseInt(body.hora_inicio, 10);
+      if (isNaN(h) || h < 0 || h > 23) {
+        return NextResponse.json({ error: 'Hora de início inválida (0 a 23)' }, { status: 400 });
+      }
+      updateConfig.hora_inicio = h;
+    }
+    if (body.hora_fim !== undefined) {
+      const h = parseInt(body.hora_fim, 10);
+      if (isNaN(h) || h < 1 || h > 24) {
+        return NextResponse.json({ error: 'Hora de fim inválida (1 a 24)' }, { status: 400 });
+      }
+      updateConfig.hora_fim = h;
+    }
+    if (Object.keys(updateConfig).length === 0) {
+      return NextResponse.json({ error: 'Nenhum dado de config para atualizar' }, { status: 400 });
+    }
+    if (updateConfig.hora_inicio !== undefined && updateConfig.hora_fim !== undefined &&
+        (updateConfig.hora_fim as number) <= (updateConfig.hora_inicio as number)) {
+      return NextResponse.json({ error: 'Hora de fim deve ser maior que a de início' }, { status: 400 });
+    }
+    updateConfig.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('whatsapp_config')
+      .update(updateConfig)
+      .eq('id', 1)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, config: data });
+  }
+
   const { id, template, ativo } = body;
 
   if (!id) {

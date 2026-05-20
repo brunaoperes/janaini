@@ -15,13 +15,46 @@ const WAHA_API_KEY = process.env.WAHA_API_KEY || '';
 // Número novo no WhatsApp toma ban fácil. Estas travas protegem o número.
 // ============================================================================
 
-// Kill switch geral: WHATSAPP_ENVIO_ATIVO=false desliga TODO envio na hora
-const ENVIO_ATIVO = process.env.WHATSAPP_ENVIO_ATIVO !== 'false';
-// Limite de mensagens por dia (aquecimento: começar baixo, subir gradual)
-const LIMITE_DIARIO = parseInt(process.env.WHATSAPP_LIMITE_DIARIO || '80', 10);
-// Janela de horário permitida (BRT). Cron das 21h precisa caber, então 7h–22h.
-const HORA_INICIO = parseInt(process.env.WHATSAPP_HORA_INICIO || '7', 10);
-const HORA_FIM = parseInt(process.env.WHATSAPP_HORA_FIM || '22', 10);
+// Config de envio: lida da tabela whatsapp_config (editável pela tela),
+// com fallback pras env vars caso a tabela não exista / erro.
+const FALLBACK_ENVIO_ATIVO = process.env.WHATSAPP_ENVIO_ATIVO !== 'false';
+const FALLBACK_LIMITE = parseInt(process.env.WHATSAPP_LIMITE_DIARIO || '40', 10);
+const FALLBACK_HORA_INICIO = parseInt(process.env.WHATSAPP_HORA_INICIO || '7', 10);
+const FALLBACK_HORA_FIM = parseInt(process.env.WHATSAPP_HORA_FIM || '22', 10);
+
+export interface WhatsappConfig {
+  envio_ativo: boolean;
+  limite_diario: number;
+  hora_inicio: number;
+  hora_fim: number;
+}
+
+export async function getWhatsappConfig(): Promise<WhatsappConfig> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from('whatsapp_config')
+      .select('envio_ativo, limite_diario, hora_inicio, hora_fim')
+      .eq('id', 1)
+      .single();
+    if (data) {
+      return {
+        envio_ativo: data.envio_ativo,
+        limite_diario: data.limite_diario,
+        hora_inicio: data.hora_inicio,
+        hora_fim: data.hora_fim,
+      };
+    }
+  } catch {
+    // tabela ausente / erro → usa fallback das env vars
+  }
+  return {
+    envio_ativo: FALLBACK_ENVIO_ATIVO,
+    limite_diario: FALLBACK_LIMITE,
+    hora_inicio: FALLBACK_HORA_INICIO,
+    hora_fim: FALLBACK_HORA_FIM,
+  };
+}
 
 function horaAtualBRT(): number {
   return parseInt(
@@ -44,16 +77,17 @@ async function contarEnviadasHoje(): Promise<number> {
 // Verifica todas as travas de segurança antes de um envio automático.
 // Retorna { ok: false, motivo } se NÃO deve enviar agora.
 export async function verificarLimitesEnvio(): Promise<{ ok: boolean; motivo?: string }> {
-  if (!ENVIO_ATIVO) {
-    return { ok: false, motivo: 'Envio desativado (WHATSAPP_ENVIO_ATIVO=false)' };
+  const cfg = await getWhatsappConfig();
+  if (!cfg.envio_ativo) {
+    return { ok: false, motivo: 'Envio desativado (kill switch)' };
   }
   const hora = horaAtualBRT();
-  if (hora < HORA_INICIO || hora >= HORA_FIM) {
-    return { ok: false, motivo: `Fora do horário permitido (${hora}h BRT; janela ${HORA_INICIO}h–${HORA_FIM}h)` };
+  if (hora < cfg.hora_inicio || hora >= cfg.hora_fim) {
+    return { ok: false, motivo: `Fora do horário permitido (${hora}h BRT; janela ${cfg.hora_inicio}h–${cfg.hora_fim}h)` };
   }
   const enviadas = await contarEnviadasHoje();
-  if (enviadas >= LIMITE_DIARIO) {
-    return { ok: false, motivo: `Limite diário atingido (${enviadas}/${LIMITE_DIARIO})` };
+  if (enviadas >= cfg.limite_diario) {
+    return { ok: false, motivo: `Limite diário atingido (${enviadas}/${cfg.limite_diario})` };
   }
   return { ok: true };
 }
@@ -323,8 +357,9 @@ export async function enviarMensagemWaha(telefone: string, mensagem: string): Pr
   }
 
   // Kill switch: bloqueia TODO envio (inclusive teste manual) instantaneamente
-  if (!ENVIO_ATIVO) {
-    throw new Error('Envio WhatsApp desativado (WHATSAPP_ENVIO_ATIVO=false)');
+  const cfgKill = await getWhatsappConfig();
+  if (!cfgKill.envio_ativo) {
+    throw new Error('Envio WhatsApp desativado (kill switch)');
   }
 
   const url = `${WAHA_URL}/api/sendText`;

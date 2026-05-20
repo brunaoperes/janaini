@@ -46,6 +46,8 @@ interface Config {
   waha_numero?: string;
   envio_ativo: boolean;
   limite_diario: number;
+  hora_inicio: number;
+  hora_fim: number;
   janela_horario: string;
   throttle: string;
   cron_schedule: string;
@@ -119,6 +121,10 @@ export default function AdminWhatsAppPage() {
   // Modal de edicao
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null);
   const [editText, setEditText] = useState('');
+  const [salvandoConfig, setSalvandoConfig] = useState(false);
+  const [limiteEdit, setLimiteEdit] = useState('');
+  const [horaInicioEdit, setHoraInicioEdit] = useState('');
+  const [horaFimEdit, setHoraFimEdit] = useState('');
 
   // Filtros do historico
   const [filtroTipo, setFiltroTipo] = useState('todos');
@@ -173,7 +179,12 @@ export default function AdminWhatsAppPage() {
 
       if (templatesData.templates) setTemplates(templatesData.templates);
       if (statsData.stats) setStats(statsData.stats);
-      if (configData.config) setConfig(configData.config);
+      if (configData.config) {
+        setConfig(configData.config);
+        setLimiteEdit(String(configData.config.limite_diario ?? ''));
+        setHoraInicioEdit(String(configData.config.hora_inicio ?? ''));
+        setHoraFimEdit(String(configData.config.hora_fim ?? ''));
+      }
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
     } finally {
@@ -227,6 +238,35 @@ export default function AdminWhatsAppPage() {
       showToast('Erro ao salvar template', 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function salvarConfig(novos: Partial<Pick<Config, 'envio_ativo' | 'limite_diario' | 'hora_inicio' | 'hora_fim'>>) {
+    setSalvandoConfig(true);
+    try {
+      const res = await fetch('/api/admin/whatsapp', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secao: 'config', ...novos }),
+      });
+      const data = await res.json();
+      if (res.ok && data.config) {
+        setConfig(prev => prev ? {
+          ...prev,
+          envio_ativo: data.config.envio_ativo,
+          limite_diario: data.config.limite_diario,
+          hora_inicio: data.config.hora_inicio,
+          hora_fim: data.config.hora_fim,
+          janela_horario: `${data.config.hora_inicio}h às ${data.config.hora_fim}h (BRT)`,
+        } : prev);
+        showToast('Configuração salva!', 'success');
+      } else {
+        showToast(data.error || 'Erro ao salvar configuração', 'error');
+      }
+    } catch {
+      showToast('Erro ao salvar configuração', 'error');
+    } finally {
+      setSalvandoConfig(false);
     }
   }
 
@@ -427,33 +467,73 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
-            {/* Segurança / Envio */}
+            {/* Segurança / Envio (EDITÁVEL) */}
             {config && (
               <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h2 className="text-lg font-bold text-gray-800">Segurança de Envio</h2>
-                  <p className="text-xs text-gray-400 mt-1">Proteções anti-bloqueio do número. Para alterar, edite as variáveis no Vercel (e o worker na VPS).</p>
+                  <p className="text-xs text-gray-400 mt-1">Proteções anti-bloqueio do número. Alterações valem na hora (Vercel e worker).</p>
                 </div>
-                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className={`rounded-xl p-4 border ${config.envio_ativo ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                    <p className="text-xs text-gray-500 font-medium mb-1">Envio (kill switch)</p>
-                    <p className={`text-sm font-bold ${config.envio_ativo ? 'text-emerald-700' : 'text-red-700'}`}>
-                      {config.envio_ativo ? 'ATIVO' : 'DESLIGADO'}
-                    </p>
-                    <p className="text-[11px] text-gray-400 mt-1">var: WHATSAPP_ENVIO_ATIVO</p>
+                <div className="p-6 space-y-5">
+                  {/* Kill switch — toggle */}
+                  <div className={`flex items-center justify-between rounded-xl p-4 border ${config.envio_ativo ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Envio de mensagens</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${config.envio_ativo ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {config.envio_ativo ? 'ATIVO — enviando normalmente' : 'DESLIGADO — nenhuma mensagem sai'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => salvarConfig({ envio_ativo: !config.envio_ativo })}
+                      disabled={salvandoConfig}
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors disabled:opacity-50 ${config.envio_ativo ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                      title={config.envio_ativo ? 'Desligar envio' : 'Ligar envio'}
+                    >
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${config.envio_ativo ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 font-medium mb-1">Limite diário</p>
-                    <p className="text-sm font-bold text-gray-700">{config.limite_diario} mensagens/dia</p>
-                    <p className="text-[11px] text-gray-400 mt-1">var: WHATSAPP_LIMITE_DIARIO</p>
+
+                  {/* Limite diário + horário */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 font-medium mb-1">Limite diário (mensagens)</label>
+                      <input
+                        type="number" min="0" max="1000" value={limiteEdit}
+                        onChange={e => setLimiteEdit(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 font-medium mb-1">Hora início (BRT)</label>
+                      <input
+                        type="number" min="0" max="23" value={horaInicioEdit}
+                        onChange={e => setHoraInicioEdit(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 font-medium mb-1">Hora fim (BRT)</label>
+                      <input
+                        type="number" min="1" max="24" value={horaFimEdit}
+                        onChange={e => setHoraFimEdit(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 font-medium mb-1">Janela de horário</p>
-                    <p className="text-sm font-bold text-gray-700">{config.janela_horario}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 font-medium mb-1">Ritmo de envio</p>
-                    <p className="text-sm text-gray-700">{config.throttle}</p>
+
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-xs text-gray-400">{config.throttle}</p>
+                    <button
+                      onClick={() => salvarConfig({
+                        limite_diario: parseInt(limiteEdit, 10),
+                        hora_inicio: parseInt(horaInicioEdit, 10),
+                        hora_fim: parseInt(horaFimEdit, 10),
+                      })}
+                      disabled={salvandoConfig}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      {salvandoConfig ? 'Salvando...' : 'Salvar limites'}
+                    </button>
                   </div>
                 </div>
               </div>
