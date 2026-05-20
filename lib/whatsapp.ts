@@ -5,14 +5,63 @@ import { ptBR } from 'date-fns/locale';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
-const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
-const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
+// WAHA (WhatsApp HTTP API) — substitui Z-API
+const WAHA_URL = (process.env.WAHA_URL || '').replace(/\/$/, '');
+const WAHA_SESSION = process.env.WAHA_SESSION || 'default';
+const WAHA_API_KEY = process.env.WAHA_API_KEY || '';
+
+// ============================================================================
+// SEGURANÇA ANTI-BAN / ANTI-FLOOD
+// Número novo no WhatsApp toma ban fácil. Estas travas protegem o número.
+// ============================================================================
+
+// Kill switch geral: WHATSAPP_ENVIO_ATIVO=false desliga TODO envio na hora
+const ENVIO_ATIVO = process.env.WHATSAPP_ENVIO_ATIVO !== 'false';
+// Limite de mensagens por dia (aquecimento: começar baixo, subir gradual)
+const LIMITE_DIARIO = parseInt(process.env.WHATSAPP_LIMITE_DIARIO || '80', 10);
+// Janela de horário permitida (BRT). Cron das 21h precisa caber, então 7h–22h.
+const HORA_INICIO = parseInt(process.env.WHATSAPP_HORA_INICIO || '7', 10);
+const HORA_FIM = parseInt(process.env.WHATSAPP_HORA_FIM || '22', 10);
+
+function horaAtualBRT(): number {
+  return parseInt(
+    new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour12: false, hour: '2-digit' }),
+    10
+  );
+}
+
+async function contarEnviadasHoje(): Promise<number> {
+  const supabase = getSupabaseClient();
+  const hojeBRT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const { count } = await supabase
+    .from('mensagens_whatsapp')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'enviado')
+    .gte('data_envio', `${hojeBRT}T00:00:00`);
+  return count || 0;
+}
+
+// Verifica todas as travas de segurança antes de um envio automático.
+// Retorna { ok: false, motivo } se NÃO deve enviar agora.
+export async function verificarLimitesEnvio(): Promise<{ ok: boolean; motivo?: string }> {
+  if (!ENVIO_ATIVO) {
+    return { ok: false, motivo: 'Envio desativado (WHATSAPP_ENVIO_ATIVO=false)' };
+  }
+  const hora = horaAtualBRT();
+  if (hora < HORA_INICIO || hora >= HORA_FIM) {
+    return { ok: false, motivo: `Fora do horário permitido (${hora}h BRT; janela ${HORA_INICIO}h–${HORA_FIM}h)` };
+  }
+  const enviadas = await contarEnviadasHoje();
+  if (enviadas >= LIMITE_DIARIO) {
+    return { ok: false, motivo: `Limite diário atingido (${enviadas}/${LIMITE_DIARIO})` };
+  }
+  return { ok: true };
+}
 
 type TipoMensagem = 'confirmacao' | 'lembrete' | 'pos_venda' | 'agenda_colaborador' | 'agenda_colaborador_vazia' | 'pendentes_colaborador';
 
-interface ZApiResponse {
-  zapiMessageId?: string;
+interface WahaResponse {
+  id?: string;
   messageId?: string;
   [key: string]: unknown;
 }
@@ -234,71 +283,72 @@ export async function gerarMensagemPendentesColaborador(
 }
 
 // ============================================================================
-// ENVIO VIA Z-API
+// ENVIO VIA WAHA
 // ============================================================================
 
 export async function verificarStatusInstancia(): Promise<{ connected: boolean; status: string; error?: string }> {
-  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-    return { connected: false, status: 'not_configured', error: 'Z-API não configurada: ZAPI_INSTANCE_ID ou ZAPI_TOKEN ausentes' };
+  if (!WAHA_URL || !WAHA_API_KEY) {
+    return { connected: false, status: 'not_configured', error: 'WAHA não configurada: WAHA_URL ou WAHA_API_KEY ausentes' };
   }
 
   try {
-    const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/status`;
+    const url = `${WAHA_URL}/api/sessions/${WAHA_SESSION}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Client-Token': ZAPI_CLIENT_TOKEN || '',
+        'X-Api-Key': WAHA_API_KEY,
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      return { connected: false, status: 'error', error: `Z-API erro ${response.status}: ${errorText}` };
+      return { connected: false, status: 'error', error: `WAHA erro ${response.status}: ${errorText}` };
     }
 
     const data = await response.json();
-    const connected = data.connected === true || data.status === 'connected';
+    const connected = data.status === 'WORKING';
     return {
       connected,
-      status: data.status || (connected ? 'connected' : 'disconnected'),
-      error: connected ? undefined : 'Instância Z-API desconectada. Conecte escaneando o QR Code em app.z-api.io',
+      status: data.status || 'unknown',
+      error: connected ? undefined : `Sessão WAHA em "${data.status}". Reconecte escaneando o QR Code.`,
     };
   } catch (err: any) {
     return { connected: false, status: 'error', error: `Erro ao verificar status: ${err.message}` };
   }
 }
 
-export async function enviarMensagemZApi(telefone: string, mensagem: string): Promise<ZApiResponse> {
-  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-    throw new Error('Z-API não configurada: ZAPI_INSTANCE_ID ou ZAPI_TOKEN ausentes');
+export async function enviarMensagemWaha(telefone: string, mensagem: string): Promise<WahaResponse> {
+  if (!WAHA_URL || !WAHA_API_KEY) {
+    throw new Error('WAHA não configurada: WAHA_URL ou WAHA_API_KEY ausentes');
   }
 
-  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+  // Kill switch: bloqueia TODO envio (inclusive teste manual) instantaneamente
+  if (!ENVIO_ATIVO) {
+    throw new Error('Envio WhatsApp desativado (WHATSAPP_ENVIO_ATIVO=false)');
+  }
+
+  const url = `${WAHA_URL}/api/sendText`;
+  const chatId = `${telefone}@c.us`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Client-Token': ZAPI_CLIENT_TOKEN || '',
+      'X-Api-Key': WAHA_API_KEY,
     },
     body: JSON.stringify({
-      phone: telefone,
-      message: mensagem,
+      session: WAHA_SESSION,
+      chatId,
+      text: mensagem,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Z-API erro ${response.status}: ${errorText}`);
+    throw new Error(`WAHA erro ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
-
-  // Z-API pode retornar 200 mas com erro no body
-  if (data.error) {
-    throw new Error(`Z-API: ${typeof data.error === 'string' ? data.error : JSON.stringify(data.error)}`);
-  }
-
   return data;
 }
 
@@ -318,15 +368,23 @@ export async function processarEnvio(mensagemId: number, telefone: string, mensa
 
   const tentativasAtual = (msgAtual?.tentativas || 0) + 1;
 
+  // Travas de segurança (kill switch, horário, limite diário).
+  // Se bloqueado, mantém a mensagem PENDENTE (não gasta tentativa) p/ próxima janela.
+  const limite = await verificarLimitesEnvio();
+  if (!limite.ok) {
+    console.warn(`[WhatsApp] Envio adiado (msg ${mensagemId}): ${limite.motivo}`);
+    return false;
+  }
+
   try {
-    const zapiResponse = await enviarMensagemZApi(telefone, mensagemTexto);
+    const wahaResponse = await enviarMensagemWaha(telefone, mensagemTexto);
 
     await supabase
       .from('mensagens_whatsapp')
       .update({
         status: 'enviado',
         data_envio: new Date().toISOString(),
-        zapi_response: zapiResponse,
+        zapi_response: wahaResponse,
         tentativas: tentativasAtual,
       })
       .eq('id', mensagemId);

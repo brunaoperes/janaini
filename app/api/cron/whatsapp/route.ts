@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemZApi, gerarMensagemAgendaColaborador, gerarMensagemPendentesColaborador, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemWaha, gerarMensagemAgendaColaborador, gerarMensagemPendentesColaborador, normalizarTelefone, validarTelefone, verificarLimitesEnvio } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -238,6 +238,13 @@ export async function GET(request: Request) {
     hojeBRT.setDate(hojeBRT.getDate() + 1);
     const diaStr = hojeBRT.toISOString().split('T')[0]; // YYYY-MM-DD
 
+    // Travas de segurança antes de disparar agenda dos colaboradores
+    const limiteAgenda = await verificarLimitesEnvio();
+    if (!limiteAgenda.ok) {
+      console.warn(`[Cron/WhatsApp] Passo D pulado: ${limiteAgenda.motivo}`);
+      return NextResponse.json({ success: true, timestamp: new Date().toISOString(), resultado, aviso: limiteAgenda.motivo });
+    }
+
     // Buscar colaboradores com telefone
     const { data: colaboradores } = await supabase
       .from('colaboradores')
@@ -331,7 +338,7 @@ export async function GET(request: Request) {
             }
           }
 
-          await enviarMensagemZApi(telefoneNorm, mensagemFinal);
+          await enviarMensagemWaha(telefoneNorm, mensagemFinal);
           resultado.agenda_colaboradores.enviados++;
         } catch (err: any) {
           resultado.agenda_colaboradores.erros++;
