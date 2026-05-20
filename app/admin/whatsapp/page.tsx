@@ -37,14 +37,18 @@ interface Stats {
 }
 
 interface Config {
-  zapi_instance_id: string;
-  zapi_token: string;
-  zapi_configurado: boolean;
-  zapi_connected: boolean;
-  zapi_status: string;
-  zapi_status_error?: string;
+  waha_url: string;
+  waha_session: string;
+  waha_configurado: boolean;
+  waha_connected: boolean;
+  waha_status: string;
+  waha_status_error?: string;
+  waha_numero?: string;
+  envio_ativo: boolean;
+  limite_diario: number;
+  janela_horario: string;
+  throttle: string;
   cron_schedule: string;
-  tempo_lembrete: string;
   tempo_pos_venda: string;
   max_tentativas: number;
 }
@@ -375,26 +379,27 @@ export default function AdminWhatsAppPage() {
         {/* ============================================================ */}
         {tabAtiva === 'painel' && (
           <div className="space-y-6">
-            {/* Status da Integração */}
+            {/* Status da Integração (WAHA) */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800">Status da Integração</h2>
+                <h2 className="text-lg font-bold text-gray-800">Status do WhatsApp</h2>
+                <p className="text-xs text-gray-400 mt-1">Integração via WAHA (servidor próprio)</p>
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-6">
                   <div className={`w-4 h-4 rounded-full ${
-                    config?.zapi_connected ? 'bg-emerald-500 animate-pulse' :
-                    config?.zapi_configurado ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+                    config?.waha_connected ? 'bg-emerald-500 animate-pulse' :
+                    config?.waha_configurado ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
                   }`} />
                   <div>
                     <p className="font-semibold text-gray-800">
-                      {config?.zapi_connected ? 'Z-API Conectado' :
-                       config?.zapi_configurado ? 'Z-API Desconectado' : 'Z-API Não Configurado'}
+                      {config?.waha_connected ? 'WhatsApp Conectado' :
+                       config?.waha_configurado ? 'WhatsApp Desconectado' : 'WhatsApp Não Configurado'}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {config?.zapi_connected ? 'Pronto para enviar mensagens' :
-                       config?.zapi_configurado ? (config.zapi_status_error || 'Conecte escaneando o QR Code em app.z-api.io') :
-                       'Configure as credenciais no Vercel'}
+                      {config?.waha_connected ? `Pronto para enviar${config?.waha_numero ? ` — número ${config.waha_numero}` : ''}` :
+                       config?.waha_configurado ? (config.waha_status_error || 'Sessão desconectada. Reconecte escaneando o QR Code.') :
+                       'Configure as variáveis WAHA_* no Vercel'}
                     </p>
                   </div>
                 </div>
@@ -402,17 +407,57 @@ export default function AdminWhatsAppPage() {
                 {config && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-xs text-gray-500 font-medium mb-1">Instance ID</p>
-                      <p className="text-sm font-mono text-gray-700">{config.zapi_instance_id}</p>
+                      <p className="text-xs text-gray-500 font-medium mb-1">Número conectado</p>
+                      <p className="text-sm font-mono text-gray-700">{config.waha_numero || '—'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-xs text-gray-500 font-medium mb-1">Token</p>
-                      <p className="text-sm font-mono text-gray-700">{config.zapi_token}</p>
+                      <p className="text-xs text-gray-500 font-medium mb-1">Status da sessão</p>
+                      <p className="text-sm font-mono text-gray-700">{config.waha_status}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-500 font-medium mb-1">Servidor</p>
+                      <p className="text-sm font-mono text-gray-700 break-all">{config.waha_url}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-500 font-medium mb-1">Sessão</p>
+                      <p className="text-sm font-mono text-gray-700">{config.waha_session}</p>
                     </div>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Segurança / Envio */}
+            {config && (
+              <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h2 className="text-lg font-bold text-gray-800">Segurança de Envio</h2>
+                  <p className="text-xs text-gray-400 mt-1">Proteções anti-bloqueio do número. Para alterar, edite as variáveis no Vercel (e o worker na VPS).</p>
+                </div>
+                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className={`rounded-xl p-4 border ${config.envio_ativo ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Envio (kill switch)</p>
+                    <p className={`text-sm font-bold ${config.envio_ativo ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {config.envio_ativo ? 'ATIVO' : 'DESLIGADO'}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1">var: WHATSAPP_ENVIO_ATIVO</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Limite diário</p>
+                    <p className="text-sm font-bold text-gray-700">{config.limite_diario} mensagens/dia</p>
+                    <p className="text-[11px] text-gray-400 mt-1">var: WHATSAPP_LIMITE_DIARIO</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Janela de horário</p>
+                    <p className="text-sm font-bold text-gray-700">{config.janela_horario}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Ritmo de envio</p>
+                    <p className="text-sm text-gray-700">{config.throttle}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Fluxo de Automação */}
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
@@ -565,7 +610,7 @@ export default function AdminWhatsAppPage() {
                       <span className="text-base">📱</span>
                       <p className="text-xs text-gray-500 font-medium">Provedor</p>
                     </div>
-                    <p className="text-sm font-semibold text-gray-800">Z-API</p>
+                    <p className="text-sm font-semibold text-gray-800">WAHA (próprio)</p>
                   </div>
                 </div>
               </div>
@@ -814,7 +859,7 @@ export default function AdminWhatsAppPage() {
             <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Enviar Mensagem de Teste</h2>
-                <p className="text-sm text-gray-500 mt-0.5">Envie uma mensagem para verificar se a integração Z-API está funcionando</p>
+                <p className="text-sm text-gray-500 mt-0.5">Envie uma mensagem para verificar se a integração WhatsApp está funcionando</p>
               </div>
               <div className="p-6 space-y-5">
                 <div>

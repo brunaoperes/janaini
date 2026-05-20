@@ -55,23 +55,45 @@ export async function GET(request: Request) {
     });
   }
 
-  // CONFIG (status real da sessão WAHA)
+  // CONFIG (status real da sessão WAHA + parâmetros de envio)
   if (secao === 'config') {
     const wahaUrl = process.env.WAHA_URL || '';
     const wahaSession = process.env.WAHA_SESSION || 'default';
+    const wahaKey = process.env.WAHA_API_KEY || '';
 
     const statusInstancia = await verificarStatusInstancia();
 
+    // Buscar o número conectado direto da sessão WAHA
+    let numeroConectado = '';
+    if (wahaUrl && wahaKey) {
+      try {
+        const r = await fetch(`${wahaUrl.replace(/\/$/, '')}/api/sessions/${wahaSession}`, {
+          headers: { 'X-Api-Key': wahaKey },
+        });
+        if (r.ok) {
+          const s = await r.json();
+          const id = s?.me?.id || '';
+          numeroConectado = id ? id.replace('@c.us', '') : '';
+        }
+      } catch { /* ignora */ }
+    }
+
     return NextResponse.json({
       config: {
-        zapi_instance_id: wahaUrl ? `${wahaUrl} (sessão: ${wahaSession})` : 'Não configurado',
-        zapi_token: wahaUrl ? 'WAHA (chave protegida)' : 'Não configurado',
-        zapi_configurado: !!wahaUrl,
-        zapi_connected: statusInstancia.connected,
-        zapi_status: statusInstancia.status,
-        zapi_status_error: statusInstancia.error,
+        // dados WAHA
+        waha_url: wahaUrl || 'Não configurado',
+        waha_session: wahaSession,
+        waha_configurado: !!wahaUrl,
+        waha_connected: statusInstancia.connected,
+        waha_status: statusInstancia.status,
+        waha_status_error: statusInstancia.error,
+        waha_numero: numeroConectado,
+        // parâmetros de segurança/envio (atuais)
+        envio_ativo: process.env.WHATSAPP_ENVIO_ATIVO !== 'false',
+        limite_diario: parseInt(process.env.WHATSAPP_LIMITE_DIARIO || '80', 10),
+        janela_horario: `${process.env.WHATSAPP_HORA_INICIO || '7'}h às ${process.env.WHATSAPP_HORA_FIM || '22'}h (BRT)`,
+        throttle: 'Envio espaçado pelo worker da VPS (pausa humanizada entre mensagens)',
         cron_schedule: '1x por dia as 21h (BRT)',
-        tempo_lembrete: 'As 21h do dia anterior',
         tempo_pos_venda: '15 minutos após conclusão',
         max_tentativas: 3,
       },
