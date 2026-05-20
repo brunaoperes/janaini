@@ -8,6 +8,8 @@ import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 import WhatsAppStatusBanner from '@/components/WhatsAppStatusBanner';
+import MultiPagamento from '@/components/MultiPagamento';
+import { PagamentoForm, calcularPagamentos, validarPagamentos } from '@/lib/pagamento-utils';
 import toast from 'react-hot-toast';
 
 // Paleta de cores para colaboradores
@@ -92,6 +94,8 @@ export default function AgendaPage() {
     is_troca_gratis: false,
     valor_referencia: '',
   });
+  // Múltiplas formas de pagamento na finalização
+  const [pagamentosFinal, setPagamentosFinal] = useState<PagamentoForm[]>([]);
 
   // Estados para serviço compartilhado na finalização
   const [compartilhadoFinal, setCompartilhadoFinal] = useState(false);
@@ -116,6 +120,8 @@ export default function AgendaPage() {
     is_troca_gratis: false,
     valor_referencia: '',
   });
+  // Múltiplas formas de pagamento na edição de atendimento concluído
+  const [pagamentosEdit, setPagamentosEdit] = useState<PagamentoForm[]>([]);
 
   // Estado do formulário de novo agendamento
   const [formData, setFormData] = useState({
@@ -736,6 +742,7 @@ export default function AgendaPage() {
     let isFiado = false;
     let isTrocaGratis = false;
     let valorReferencia = '';
+    let pagamentosCarregados: PagamentoForm[] = [];
 
     // Buscar dados financeiros do lançamento (via API para bypass RLS)
     if (selectedAgendamento.lancamento_id) {
@@ -750,6 +757,16 @@ export default function AgendaPage() {
             isFiado = lancFresh.is_fiado || false;
             isTrocaGratis = lancFresh.is_troca_gratis || false;
             valorReferencia = lancFresh.valor_referencia ? lancFresh.valor_referencia.toString() : '';
+            // Carregar formas de pagamento (multi)
+            if (Array.isArray(lancFresh.pagamentos) && lancFresh.pagamentos.length > 0) {
+              pagamentosCarregados = lancFresh.pagamentos.map((p: any) => ({
+                forma_pagamento: p.forma_pagamento,
+                valor: Number(p.valor).toFixed(2),
+              }));
+            } else if (formaPagamento && !isFiado && !isTrocaGratis && formaPagamento !== 'multiplo') {
+              // Lançamento antigo (forma única) — preencher como 1 pagamento
+              pagamentosCarregados = [{ forma_pagamento: formaPagamento, valor: valorTotal }];
+            }
           }
         }
       } catch {}
@@ -778,6 +795,7 @@ export default function AgendaPage() {
       is_troca_gratis: isTrocaGratis,
       valor_referencia: valorReferencia,
     });
+    setPagamentosEdit(pagamentosCarregados);
     setServicosSelecionadosEdit(servicosExistentes);
     setIsEditMode(true);
   };
@@ -859,69 +877,52 @@ export default function AgendaPage() {
 
       // Se é atendimento concluído, atualizar também dados de pagamento
       if (editIsCompleted) {
-        // Validar forma de pagamento
-        if (!editData.forma_pagamento && !editData.is_fiado && !editData.is_troca_gratis) {
-          toast.error('Selecione uma forma de pagamento!');
-          return;
-        }
-
         const valorTotal = editData.is_troca_gratis ? 0 : parseFloat(editData.valor_total) || 0;
+        const isRecebimentoMonetario = !editData.is_fiado && !editData.is_troca_gratis;
 
-        if (!editData.is_fiado && !editData.is_troca_gratis && valorTotal <= 0) {
+        if (isRecebimentoMonetario && valorTotal <= 0) {
           toast.error('O valor total deve ser maior que zero!');
           return;
         }
 
-        // Buscar taxa da forma de pagamento
-        let taxaPercentual = 0;
-        let valorTaxa = 0;
-        if (!editData.is_fiado && !editData.is_troca_gratis && editData.forma_pagamento) {
-          const { data: formaPagamento } = await supabase
-            .from('formas_pagamento')
-            .select('taxa_percentual')
-            .eq('codigo', editData.forma_pagamento)
-            .single();
-
-          taxaPercentual = formaPagamento?.taxa_percentual || 0;
-          valorTaxa = (valorTotal * taxaPercentual) / 100;
+        // Validar múltiplas formas de pagamento
+        if (isRecebimentoMonetario) {
+          const erroPag = validarPagamentos(pagamentosEdit, valorTotal);
+          if (erroPag) {
+            toast.error(erroPag);
+            return;
+          }
         }
 
-        // Calcular comissões
+        const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
+
+        // Calcular comissões / taxa / formas detalhadas
+        let valorTaxa = 0;
         let comissaoColaborador = 0;
         let comissaoSalao = 0;
-
-        if (editData.is_troca_gratis) {
-          comissaoColaborador = 0;
-          comissaoSalao = 0;
-        } else if (editData.is_fiado) {
-          const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
-          const comissaoBruta = (valorTotal * porcentagem) / 100;
-          comissaoColaborador = comissaoBruta;
-          comissaoSalao = valorTotal - comissaoBruta;
-        } else {
-          const porcentagem = selectedColaboradorEdit?.porcentagem_comissao || 50;
-          const comissaoBruta = (valorTotal * porcentagem) / 100;
-          comissaoColaborador = comissaoBruta - valorTaxa;
-          comissaoSalao = valorTotal - comissaoBruta;
-        }
-
-        // Determinar forma_pagamento_final, data_pagamento, status
-        let formaPagamentoFinal = null;
-        let dataPagamentoFinal = null;
+        let pagamentosDetalhados: ReturnType<typeof calcularPagamentos>['detalhados'] = [];
+        let formaPagamentoFinal: string | null = null;
+        let dataPagamentoFinal: string | null = null;
         let statusFinal = 'concluido';
 
         if (editData.is_fiado) {
+          const comissaoBruta = (valorTotal * porcentagem) / 100;
+          comissaoColaborador = comissaoBruta;
+          comissaoSalao = valorTotal - comissaoBruta;
           formaPagamentoFinal = 'fiado';
           dataPagamentoFinal = null;
           statusFinal = 'pendente';
         } else if (editData.is_troca_gratis) {
           formaPagamentoFinal = 'troca_gratis';
           dataPagamentoFinal = new Date().toISOString();
-          statusFinal = 'concluido';
         } else {
-          formaPagamentoFinal = editData.forma_pagamento;
+          const calc = calcularPagamentos(pagamentosEdit, porcentagem, formasPagamentoDB);
+          pagamentosDetalhados = calc.detalhados;
+          valorTaxa = calc.valorTaxa;
+          comissaoColaborador = calc.comissaoColaborador;
+          comissaoSalao = calc.comissaoSalao;
+          formaPagamentoFinal = calc.formaPrincipal;
           dataPagamentoFinal = new Date().toISOString();
-          statusFinal = 'concluido';
         }
 
         lancamentoUpdate.valor_total = valorTotal;
@@ -936,6 +937,8 @@ export default function AgendaPage() {
         lancamentoUpdate.valor_referencia = editData.is_troca_gratis && editData.valor_referencia
           ? parseFloat(editData.valor_referencia)
           : null;
+        // Array de pagamentos enviado pra API persistir em lancamento_pagamentos
+        lancamentoUpdate.pagamentos = isRecebimentoMonetario ? pagamentosDetalhados : [];
 
         // Atualizar status do agendamento se mudou (ex: fiado → pendente)
         const novoStatus = editData.is_fiado ? 'pendente' : 'concluido';
@@ -964,6 +967,7 @@ export default function AgendaPage() {
     setEditIsCompleted(false);
     setSelectedColaboradorEdit(null);
     setSelectedAgendamento(null);
+    setPagamentosEdit([]);
     setFiltroServico('');
     // Se mudou a data, atualizar selectedDate
     if (editData.data !== selectedDate) {
@@ -1011,10 +1015,17 @@ export default function AgendaPage() {
       return;
     }
 
-    // Validação: se não é fiado nem troca/grátis, precisa de forma de pagamento e valor
-    if (!finalizarData.is_fiado && !finalizarData.is_troca_gratis) {
-      if (!finalizarData.forma_pagamento || !finalizarData.valor_pago) {
-        toast.error('Preencha a forma de pagamento e o valor');
+    const isRecebimentoMonetario = !finalizarData.is_fiado && !finalizarData.is_troca_gratis;
+
+    // Validação: se não é fiado nem troca/grátis, precisa de valor e formas de pagamento
+    if (isRecebimentoMonetario) {
+      if (!finalizarData.valor_pago || parseFloat(finalizarData.valor_pago) <= 0) {
+        toast.error('Preencha o valor pago');
+        return;
+      }
+      const erroPag = validarPagamentos(pagamentosFinal, parseFloat(finalizarData.valor_pago) || 0);
+      if (erroPag) {
+        toast.error(erroPag);
         return;
       }
     }
@@ -1043,59 +1054,41 @@ export default function AgendaPage() {
       // Fiado = pendente, Troca/Grátis = concluido, Normal = concluido
       const statusFinal = finalizarData.is_fiado ? 'pendente' : 'concluido';
 
-      // Buscar taxa da forma de pagamento (apenas para pagamentos normais)
+      // Buscar porcentagem do colaborador (usada em fiado e recebimento normal)
+      const { data: colaborador } = await supabase
+        .from('colaboradores')
+        .select('porcentagem_comissao')
+        .eq('id', selectedAgendamento.colaborador_id)
+        .single();
+      const porcentagem = colaborador?.porcentagem_comissao || 50;
+
+      // Calcular comissões, taxa e formas detalhadas
       let taxaPercentual = 0;
       let valorTaxa = 0;
-      if (!finalizarData.is_fiado && !finalizarData.is_troca_gratis) {
-        const { data: formaPagamento } = await supabase
-          .from('formas_pagamento')
-          .select('taxa_percentual')
-          .eq('codigo', finalizarData.forma_pagamento)
-          .single();
-
-        taxaPercentual = formaPagamento?.taxa_percentual || 0;
-        valorTaxa = (valorPago * taxaPercentual) / 100;
-      }
-
-      // Calcular comissões
       let comissaoColaborador = 0;
       let comissaoSalao = 0;
-
-      if (finalizarData.is_troca_gratis) {
-        // Troca/Grátis: comissões são zero
-        comissaoColaborador = 0;
-        comissaoSalao = 0;
-      } else {
-        // Buscar porcentagem do colaborador
-        const { data: colaborador } = await supabase
-          .from('colaboradores')
-          .select('porcentagem_comissao')
-          .eq('id', selectedAgendamento.colaborador_id)
-          .single();
-
-        const porcentagem = colaborador?.porcentagem_comissao || 50;
-        const comissaoBruta = (valorPago * porcentagem) / 100;
-
-        if (finalizarData.is_fiado) {
-          // Fiado: comissões são calculadas mas não confirmadas até pagar
-          comissaoColaborador = comissaoBruta;
-          comissaoSalao = valorPago - comissaoBruta;
-        } else {
-          // Normal: taxa é descontada da comissão do colaborador
-          comissaoColaborador = comissaoBruta - valorTaxa;
-          comissaoSalao = valorPago - comissaoBruta;
-        }
-      }
-
-      // Determinar forma de pagamento e data de pagamento
+      let pagamentosDetalhados: ReturnType<typeof calcularPagamentos>['detalhados'] = [];
       let formaPagamentoFinal = finalizarData.forma_pagamento;
       let dataPagamentoFinal: string | null = new Date().toISOString();
 
-      if (finalizarData.is_fiado) {
+      if (finalizarData.is_troca_gratis) {
+        comissaoColaborador = 0;
+        comissaoSalao = 0;
+        formaPagamentoFinal = 'troca_gratis';
+      } else if (finalizarData.is_fiado) {
+        const comissaoBruta = (valorPago * porcentagem) / 100;
+        comissaoColaborador = comissaoBruta;
+        comissaoSalao = valorPago - comissaoBruta;
         formaPagamentoFinal = 'fiado';
         dataPagamentoFinal = null;
-      } else if (finalizarData.is_troca_gratis) {
-        formaPagamentoFinal = 'troca_gratis';
+      } else {
+        // Recebimento normal: múltiplas formas
+        const calc = calcularPagamentos(pagamentosFinal, porcentagem, formasPagamentoDB);
+        pagamentosDetalhados = calc.detalhados;
+        valorTaxa = calc.valorTaxa;
+        comissaoColaborador = calc.comissaoColaborador;
+        comissaoSalao = calc.comissaoSalao;
+        formaPagamentoFinal = calc.formaPrincipal;
       }
 
       // Se o agendamento já tem lançamento vinculado, atualizar
@@ -1151,6 +1144,29 @@ export default function AgendaPage() {
 
         if (lancError) throw lancError;
         lancamentoId = novoLancamento.id;
+      }
+
+      // Salvar múltiplas formas de pagamento (substitui as existentes)
+      if (lancamentoId) {
+        await supabase.from('lancamento_pagamentos').delete().eq('lancamento_id', lancamentoId);
+        if (isRecebimentoMonetario && pagamentosDetalhados.length > 0) {
+          const pagamentosParaSalvar = pagamentosDetalhados.map((p, idx) => ({
+            lancamento_id: lancamentoId,
+            forma_pagamento: p.forma_pagamento,
+            valor: p.valor,
+            taxa_percentual: p.taxa_percentual,
+            valor_taxa: p.valor_taxa,
+            comissao_colaborador: p.comissao_colaborador,
+            comissao_salao: p.comissao_salao,
+            ordem: idx + 1,
+          }));
+          const { error: pagError } = await supabase
+            .from('lancamento_pagamentos')
+            .insert(pagamentosParaSalvar);
+          if (pagError) {
+            console.error('[agenda] Erro ao salvar formas de pagamento:', pagError);
+          }
+        }
       }
 
       // Salvar divisões se for serviço compartilhado
@@ -1216,8 +1232,10 @@ export default function AgendaPage() {
         msg += 'Serviço marcado como FIADO! Aguardando pagamento.';
       } else if (finalizarData.is_troca_gratis) {
         msg += 'Troca/Grátis registrado com sucesso!';
+      } else if (pagamentosFinal.length > 1) {
+        msg += `Serviço concluído com ${pagamentosFinal.length} formas de pagamento!`;
       } else {
-        const msgTaxa = taxaPercentual > 0 ? ` (Taxa ${taxaPercentual}%: -R$ ${valorTaxa.toFixed(2)})` : '';
+        const msgTaxa = valorTaxa > 0 ? ` (Taxa: -R$ ${valorTaxa.toFixed(2)})` : '';
         msg += `Serviço concluído com sucesso!${msgTaxa}`;
       }
 
@@ -1225,6 +1243,7 @@ export default function AgendaPage() {
       setSelectedAgendamento(null);
       setIsFinalizando(false);
       setFinalizarData({ forma_pagamento: 'pix', valor_pago: '', is_fiado: false, is_troca_gratis: false, valor_referencia: '' });
+      setPagamentosFinal([]);
       setCompartilhadoFinal(false);
       setDivisoesFinal([]);
       await loadData();
@@ -2629,6 +2648,9 @@ export default function AgendaPage() {
                                   valor_pago: valorPreench.toFixed(2)
                                 }));
                               }
+                            } else {
+                              // Ao cancelar, limpar formas de pagamento
+                              setPagamentosFinal([]);
                             }
                             setIsFinalizando(!isFinalizando);
                           }}
@@ -2644,48 +2666,26 @@ export default function AgendaPage() {
 
                       {isFinalizando && (
                         <div className="space-y-4 mt-4 pt-4 border-t border-green-200">
-                          {/* Forma de Pagamento */}
+                          {/* Como foi recebido o pagamento? */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Forma de Pagamento
+                              Como foi recebido o pagamento?
                             </label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {/* Formas de pagamento normais */}
-                              {[
-                                { value: 'pix', label: 'PIX', icon: '📱' },
-                                { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-                                { value: 'cartao_debito', label: 'Débito', icon: '💳' },
-                                { value: 'cartao_credito', label: 'Crédito', icon: '💳' },
-                              ].map(forma => (
-                                <button
-                                  key={forma.value}
-                                  onClick={() => setFinalizarData(prev => ({
-                                    ...prev,
-                                    forma_pagamento: forma.value,
-                                    is_fiado: false,
-                                    is_troca_gratis: false,
-                                    valor_referencia: '',
-                                  }))}
-                                  className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
-                                    finalizarData.forma_pagamento === forma.value && !finalizarData.is_fiado && !finalizarData.is_troca_gratis
-                                      ? 'bg-green-500 text-white'
-                                      : 'bg-white border border-gray-200 hover:border-green-300'
-                                  }`}
-                                >
-                                  {forma.icon} {forma.label}
-                                </button>
-                              ))}
-
+                            <div className="flex flex-wrap gap-2">
                               {/* Botão FIADO */}
                               <button
-                                onClick={() => setFinalizarData(prev => ({
-                                  ...prev,
-                                  forma_pagamento: 'fiado',
-                                  is_fiado: true,
-                                  is_troca_gratis: false,
-                                  valor_referencia: '',
-                                }))}
-                                className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                type="button"
+                                onClick={() => {
+                                  setFinalizarData(prev => ({
+                                    ...prev,
+                                    forma_pagamento: 'fiado',
+                                    is_fiado: true,
+                                    is_troca_gratis: false,
+                                    valor_referencia: '',
+                                  }));
+                                  setPagamentosFinal([]);
+                                }}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                                   finalizarData.is_fiado
                                     ? 'bg-orange-500 text-white'
                                     : 'bg-white border border-gray-200 hover:border-orange-300'
@@ -2696,14 +2696,18 @@ export default function AgendaPage() {
 
                               {/* Botão TROCA/GRÁTIS */}
                               <button
-                                onClick={() => setFinalizarData(prev => ({
-                                  ...prev,
-                                  forma_pagamento: 'troca_gratis',
-                                  is_fiado: false,
-                                  is_troca_gratis: true,
-                                  valor_pago: '0',
-                                }))}
-                                className={`px-4 py-3 md:px-3 md:py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                                type="button"
+                                onClick={() => {
+                                  setFinalizarData(prev => ({
+                                    ...prev,
+                                    forma_pagamento: 'troca_gratis',
+                                    is_fiado: false,
+                                    is_troca_gratis: true,
+                                    valor_pago: '0',
+                                  }));
+                                  setPagamentosFinal([]);
+                                }}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                                   finalizarData.is_troca_gratis
                                     ? 'bg-purple-500 text-white'
                                     : 'bg-white border border-gray-200 hover:border-purple-300'
@@ -2776,6 +2780,23 @@ export default function AgendaPage() {
                                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                 />
                               </div>
+                            </div>
+                          )}
+
+                          {/* Múltiplas formas de pagamento (recebimento normal) */}
+                          {!finalizarData.is_fiado && !finalizarData.is_troca_gratis && (
+                            <div>
+                              <p className="text-sm font-medium text-gray-700 mb-2">Formas de pagamento</p>
+                              <MultiPagamento
+                                pagamentos={pagamentosFinal}
+                                setPagamentos={setPagamentosFinal}
+                                valorTotal={parseFloat(finalizarData.valor_pago) || 0}
+                                formasPagamentoDB={formasPagamentoDB}
+                                porcentagemComissao={
+                                  colaboradores.find(c => c.id === selectedAgendamento?.colaborador_id)?.porcentagem_comissao
+                                }
+                                canViewComissao
+                              />
                             </div>
                           )}
 
@@ -3221,48 +3242,21 @@ export default function AgendaPage() {
                           </div>
                         </div>
 
-                        {/* Formas de Pagamento */}
-                        <p className="text-sm text-gray-600 mb-2">Forma de pagamento:</p>
+                        {/* Como foi recebido o pagamento? */}
+                        <p className="text-sm text-gray-600 mb-2">Como foi recebido o pagamento?</p>
                         <div className="flex flex-wrap gap-2">
-                          {formasPagamentoDB
-                            .filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis')
-                            .map(forma => (
-                              <button
-                                key={forma.codigo}
-                                type="button"
-                                onClick={() => setEditData(prev => ({
-                                  ...prev,
-                                  forma_pagamento: forma.codigo,
-                                  is_fiado: false,
-                                  is_troca_gratis: false,
-                                  valor_referencia: '',
-                                }))}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                  editData.forma_pagamento === forma.codigo && !editData.is_fiado && !editData.is_troca_gratis
-                                    ? 'bg-green-500 text-white'
-                                    : 'bg-white border border-gray-200 text-gray-700 hover:border-green-300'
-                                }`}
-                              >
-                                <span>{forma.icone}</span>
-                                <span>{forma.nome}</span>
-                                {forma.taxa_percentual > 0 && (
-                                  <span className={`text-xs ${editData.forma_pagamento === forma.codigo ? 'text-green-200' : 'text-red-500'}`}>
-                                    ({forma.taxa_percentual}%)
-                                  </span>
-                                )}
-                              </button>
-                            ))
-                          }
-
                           <button
                             type="button"
-                            onClick={() => setEditData(prev => ({
-                              ...prev,
-                              forma_pagamento: 'fiado',
-                              is_fiado: true,
-                              is_troca_gratis: false,
-                              valor_referencia: '',
-                            }))}
+                            onClick={() => {
+                              setEditData(prev => ({
+                                ...prev,
+                                forma_pagamento: 'fiado',
+                                is_fiado: true,
+                                is_troca_gratis: false,
+                                valor_referencia: '',
+                              }));
+                              setPagamentosEdit([]);
+                            }}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                               editData.is_fiado
                                 ? 'bg-orange-500 text-white'
@@ -3275,13 +3269,16 @@ export default function AgendaPage() {
 
                           <button
                             type="button"
-                            onClick={() => setEditData(prev => ({
-                              ...prev,
-                              forma_pagamento: 'troca_gratis',
-                              is_fiado: false,
-                              is_troca_gratis: true,
-                              valor_total: '0',
-                            }))}
+                            onClick={() => {
+                              setEditData(prev => ({
+                                ...prev,
+                                forma_pagamento: 'troca_gratis',
+                                is_fiado: false,
+                                is_troca_gratis: true,
+                                valor_total: '0',
+                              }));
+                              setPagamentosEdit([]);
+                            }}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                               editData.is_troca_gratis
                                 ? 'bg-purple-500 text-white'
@@ -3292,6 +3289,20 @@ export default function AgendaPage() {
                             <span>Troca / Grátis</span>
                           </button>
                         </div>
+
+                        {/* Múltiplas formas de pagamento (recebimento normal) */}
+                        {!editData.is_fiado && !editData.is_troca_gratis && (
+                          <div className="mt-3">
+                            <MultiPagamento
+                              pagamentos={pagamentosEdit}
+                              setPagamentos={setPagamentosEdit}
+                              valorTotal={parseFloat(editData.valor_total) || 0}
+                              formasPagamentoDB={formasPagamentoDB}
+                              porcentagemComissao={selectedColaboradorEdit?.porcentagem_comissao}
+                              canViewComissao
+                            />
+                          </div>
+                        )}
 
                         {editData.is_fiado && (
                           <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
@@ -3336,27 +3347,6 @@ export default function AgendaPage() {
                           </div>
                         )}
 
-                        {/* Preview de comissão em tempo real */}
-                        {editData.forma_pagamento && editData.valor_total && selectedColaboradorEdit &&
-                         !editData.is_fiado && !editData.is_troca_gratis && (() => {
-                          const formaSelecionada = formasPagamentoDB.find(f => f.codigo === editData.forma_pagamento);
-                          const taxa = formaSelecionada?.taxa_percentual || 0;
-                          if (taxa <= 0) return null;
-                          const valorTotal = parseFloat(editData.valor_total);
-                          const valorTaxa = (valorTotal * taxa) / 100;
-                          const comissaoBruta = (valorTotal * selectedColaboradorEdit.porcentagem_comissao) / 100;
-                          const comissaoLiquida = comissaoBruta - valorTaxa;
-                          return (
-                            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
-                              <p className="text-yellow-800 font-medium">Taxa de {formaSelecionada?.nome}: {taxa}%</p>
-                              <ul className="text-yellow-700 mt-1 space-y-1">
-                                <li>Comissão bruta: R$ {comissaoBruta.toFixed(2)}</li>
-                                <li>Taxa descontada: -R$ {valorTaxa.toFixed(2)}</li>
-                                <li className="font-bold">Comissão líquida: R$ {comissaoLiquida.toFixed(2)}</li>
-                              </ul>
-                            </div>
-                          );
-                        })()}
                       </div>
                     )}
                   </div>
@@ -3374,7 +3364,7 @@ export default function AgendaPage() {
                     </button>
 
                     <button
-                      onClick={() => { setIsEditMode(false); setEditIsCompleted(false); setSelectedColaboradorEdit(null); setFiltroServico(''); }}
+                      onClick={() => { setIsEditMode(false); setEditIsCompleted(false); setSelectedColaboradorEdit(null); setPagamentosEdit([]); setFiltroServico(''); }}
                       className="w-full px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
