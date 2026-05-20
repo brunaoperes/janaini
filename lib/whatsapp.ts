@@ -460,8 +460,6 @@ export async function agendarOuEnviarMensagem(params: AgendarMensagemParams): Pr
     return;
   }
 
-  // Se data_programada <= agora, enviar imediatamente
-  if (mensagem && params.dataProgramada <= new Date()) {
-    await processarEnvio(mensagem.id, telefoneNormalizado, mensagemTexto);
-  }
+  // NÃO envia aqui. O worker de throttle na VPS consome a fila e envia
+  // espaçado (anti-ban). Mensagem fica 'pendente' e o worker pega em ~1min.
 }

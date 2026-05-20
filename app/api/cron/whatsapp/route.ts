@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { processarEnvio, agendarOuEnviarMensagem, enviarMensagemWaha, gerarMensagemAgendaColaborador, gerarMensagemPendentesColaborador, normalizarTelefone, validarTelefone, verificarLimitesEnvio } from '@/lib/whatsapp';
+import { agendarOuEnviarMensagem, enviarMensagemWaha, gerarMensagemAgendaColaborador, gerarMensagemPendentesColaborador, normalizarTelefone, validarTelefone, verificarLimitesEnvio } from '@/lib/whatsapp';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -31,22 +31,23 @@ export async function GET(request: Request) {
   };
 
   // ========================================================================
-  // PASSO A: Enviar mensagens pendentes cuja data_programada já chegou
+  // PASSO A: Cancelar pendentes de agendamentos que já passaram
+  // (O ENVIO em si é feito pelo worker de throttle na VPS, não aqui.)
   // ========================================================================
   try {
     const { data: pendentes } = await supabase
       .from('mensagens_whatsapp')
-      .select('*')
+      .select('id, tipo, agendamento_id')
       .eq('status', 'pendente')
       .lte('data_programada', new Date().toISOString())
       .order('data_programada', { ascending: true })
-      .limit(50);
+      .limit(100);
 
     resultado.pendentes.encontrados = pendentes?.length || 0;
 
     if (pendentes) {
       for (const msg of pendentes) {
-        // Não enviar confirmação/lembrete de agendamentos que já passaram
+        // Cancelar confirmação/lembrete de agendamentos que já passaram
         if (msg.tipo === 'confirmacao' || msg.tipo === 'lembrete') {
           const { data: agendamento } = await supabase
             .from('agendamentos')
@@ -54,7 +55,6 @@ export async function GET(request: Request) {
             .eq('id', msg.agendamento_id)
             .single();
 
-          // Comparar em BRT: data_hora é horário local, somar 3h para UTC
           const agMatch = agendamento?.data_hora?.match?.(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
           const agPassou = agMatch ? new Date(Date.UTC(
             parseInt(agMatch[1]), parseInt(agMatch[2]) - 1, parseInt(agMatch[3]),
@@ -66,20 +66,13 @@ export async function GET(request: Request) {
               .from('mensagens_whatsapp')
               .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })
               .eq('id', msg.id);
-            continue;
           }
         }
-
-        const sucesso = await processarEnvio(msg.id, msg.telefone_destino, msg.mensagem);
-        if (sucesso) {
-          resultado.pendentes.enviados++;
-        } else {
-          resultado.pendentes.erros++;
-        }
       }
+      // As mensagens válidas ficam 'pendente' e o worker da VPS envia com throttle.
     }
   } catch (error) {
-    console.error('[Cron/WhatsApp] Erro no passo A (pendentes):', error);
+    console.error('[Cron/WhatsApp] Erro no passo A (cancelamento):', error);
   }
 
   // ========================================================================
@@ -191,15 +184,20 @@ export async function GET(request: Request) {
   }
 
   // ========================================================================
-  // PASSO C: Retry de mensagens com erro (max 3 tentativas)
+  // PASSO C: Resetar erros recuperáveis recentes para 'pendente'
+  // (O worker da VPS reenvia; respeita a trava anti-mensagem-velha.)
+  // Só erros das últimas 6h, pra não ressuscitar mensagens antigas.
   // ========================================================================
   try {
+    const seisHorasAtras = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: comErro } = await supabase
       .from('mensagens_whatsapp')
-      .select('*')
+      .select('id')
       .eq('status', 'erro')
       .lt('tentativas', 3)
       .not('erro_mensagem', 'like', 'Cancelado:%')
+      .not('erro_mensagem', 'like', 'Expirada:%')
+      .gte('data_programada', seisHorasAtras)
       .order('created_at', { ascending: true })
       .limit(20);
 
@@ -207,22 +205,15 @@ export async function GET(request: Request) {
 
     if (comErro) {
       for (const msg of comErro) {
-        // Resetar status para permitir nova tentativa
         await supabase
           .from('mensagens_whatsapp')
           .update({ status: 'pendente' })
           .eq('id', msg.id);
-
-        const sucesso = await processarEnvio(msg.id, msg.telefone_destino, msg.mensagem);
-        if (sucesso) {
-          resultado.retry.enviados++;
-        } else {
-          resultado.retry.erros++;
-        }
+        resultado.retry.enviados++;
       }
     }
   } catch (error) {
-    console.error('[Cron/WhatsApp] Erro no passo C (retry):', error);
+    console.error('[Cron/WhatsApp] Erro no passo C (reset retry):', error);
   }
 
   // ========================================================================
