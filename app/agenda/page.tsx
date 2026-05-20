@@ -9,6 +9,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
 import WhatsAppStatusBanner from '@/components/WhatsAppStatusBanner';
 import MultiPagamento from '@/components/MultiPagamento';
+import NovoLancamentoModal from '@/components/NovoLancamentoModal';
 import { PagamentoForm, calcularPagamentos, validarPagamentos } from '@/lib/pagamento-utils';
 import toast from 'react-hot-toast';
 
@@ -122,6 +123,9 @@ export default function AgendaPage() {
   });
   // Múltiplas formas de pagamento na edição de atendimento concluído
   const [pagamentosEdit, setPagamentosEdit] = useState<PagamentoForm[]>([]);
+
+  // Modal "Novo Lançamento" (mesmo componente da tela de Lançamentos — walk-in)
+  const [showNovoLancamento, setShowNovoLancamento] = useState(false);
 
   // Estado do formulário de novo agendamento
   const [formData, setFormData] = useState({
@@ -1494,10 +1498,31 @@ export default function AgendaPage() {
               >
                 {loading ? '⏳ Carregando...' : '✨ Novo'}
               </button>
+              <button
+                onClick={() => setShowNovoLancamento(true)}
+                disabled={loading}
+                className="px-4 py-2 bg-white border-2 border-green-400 text-green-700 rounded-xl font-semibold shadow-md hover:shadow-lg hover:border-green-500 transform hover:scale-105 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                title="Lançar atendimento avulso (walk-in), igual à tela de Lançamentos"
+              >
+                💵 Lançamento
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Modal Novo Lançamento (mesmo componente da tela de Lançamentos) */}
+      <NovoLancamentoModal
+        isOpen={showNovoLancamento}
+        onClose={() => setShowNovoLancamento(false)}
+        onSaved={() => loadData()}
+        colaboradores={colaboradores}
+        clientes={clientes}
+        servicos={servicos}
+        formasPagamentoDB={formasPagamentoDB}
+        userProfile={userProfile}
+        initialData={selectedDate}
+      />
 
       <div className="container mx-auto px-4 md:px-6 py-4 md:py-8">
 
