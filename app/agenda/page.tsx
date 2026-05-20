@@ -1063,7 +1063,6 @@ export default function AgendaPage() {
       const porcentagem = colaborador?.porcentagem_comissao || 50;
 
       // Calcular comissões, taxa e formas detalhadas
-      let taxaPercentual = 0;
       let valorTaxa = 0;
       let comissaoColaborador = 0;
       let comissaoSalao = 0;
