@@ -9,6 +9,8 @@ import { lancamentoSchema, formatZodErrors } from '@/lib/validations';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ClienteAutocomplete from '@/components/ClienteAutocomplete';
+import MultiPagamento from '@/components/MultiPagamento';
+import { PagamentoForm, calcularPagamentos, validarPagamentos } from '@/lib/pagamento-utils';
 
 // Função para parsear data/hora sem conversão de timezone
 const parseAsLocalTime = (dataHora: string): Date => {
@@ -84,11 +86,6 @@ interface FormaPagamentoDB {
   icone: string;
   taxa_percentual: number;
   ativo: boolean;
-}
-
-interface PagamentoForm {
-  forma_pagamento: string;
-  valor: string;
 }
 
 type TabType = 'hoje' | 'pendentes' | 'finalizados' | 'futuros';
@@ -331,38 +328,10 @@ export default function LancamentosPage() {
 
       const isRecebimentoMonetario = jaRealizado && !formData.is_fiado && !formData.is_troca_gratis;
 
-      if (isRecebimentoMonetario && pagamentos.length === 0) {
-        setFormErrors('Adicione pelo menos uma forma de pagamento');
-        setIsSubmitting(false);
-        return;
-      }
-
       if (isRecebimentoMonetario) {
-        const valorTotalNum = parseFloat(formData.valor_total) || 0;
-        const somaPagamentos = pagamentos.reduce((acc, p) => acc + (parseFloat(p.valor) || 0), 0);
-        const formaVazia = pagamentos.some(p => !p.forma_pagamento);
-        const valorInvalido = pagamentos.some(p => !p.valor || parseFloat(p.valor) <= 0);
-        const formasDuplicadas = pagamentos.some((p, i) =>
-          pagamentos.findIndex(x => x.forma_pagamento === p.forma_pagamento) !== i
-        );
-
-        if (formaVazia) {
-          setFormErrors('Selecione a forma de pagamento em todas as linhas');
-          setIsSubmitting(false);
-          return;
-        }
-        if (valorInvalido) {
-          setFormErrors('Informe um valor maior que zero em cada forma de pagamento');
-          setIsSubmitting(false);
-          return;
-        }
-        if (formasDuplicadas) {
-          setFormErrors('Não repita a mesma forma de pagamento — some os valores em uma única linha');
-          setIsSubmitting(false);
-          return;
-        }
-        if (Math.abs(somaPagamentos - valorTotalNum) > 0.01) {
-          setFormErrors(`Soma dos pagamentos (R$ ${somaPagamentos.toFixed(2)}) deve ser igual ao valor total (R$ ${valorTotalNum.toFixed(2)})`);
+        const erroPag = validarPagamentos(pagamentos, parseFloat(formData.valor_total) || 0);
+        if (erroPag) {
+          setFormErrors(erroPag);
           setIsSubmitting(false);
           return;
         }
@@ -410,9 +379,30 @@ export default function LancamentosPage() {
         statusFinal = 'concluido';
       }
 
-      const formaPagamentoPrincipal = isRecebimentoMonetario
-        ? (pagamentos.length === 1 ? pagamentos[0].forma_pagamento : 'multiplo')
-        : '';
+      // Calcular taxa, comissão por forma de pagamento e totais
+      const porcentagemColab = selectedColaborador?.porcentagem_comissao || 50;
+      let valorTaxa = 0;
+      let comissaoColaborador = 0;
+      let comissaoSalao = 0;
+      let pagamentosDetalhados: any[] = [];
+      let formaPagamentoPrincipal = '';
+
+      if (formData.is_troca_gratis) {
+        comissaoColaborador = 0;
+        comissaoSalao = 0;
+      } else if (formData.is_fiado) {
+        const valorTotalNum = parseFloat(formData.valor_total) || 0;
+        const comissaoBruta = (valorTotalNum * porcentagemColab) / 100;
+        comissaoColaborador = comissaoBruta;
+        comissaoSalao = valorTotalNum - comissaoBruta;
+      } else if (isRecebimentoMonetario) {
+        const calc = calcularPagamentos(pagamentos, porcentagemColab, formasPagamentoDB);
+        pagamentosDetalhados = calc.detalhados;
+        valorTaxa = calc.valorTaxa;
+        comissaoColaborador = calc.comissaoColaborador;
+        comissaoSalao = calc.comissaoSalao;
+        formaPagamentoPrincipal = calc.formaPrincipal;
+      }
 
       const validationData = {
         colaborador_id: Number(formData.colaborador_id),
@@ -433,43 +423,6 @@ export default function LancamentosPage() {
         setFormErrors(formatZodErrors(validation.error));
         setIsSubmitting(false);
         return;
-      }
-
-      // Calcular taxa, comissão por forma de pagamento e totais
-      const porcentagemColab = selectedColaborador?.porcentagem_comissao || 50;
-      let valorTaxa = 0;
-      let comissaoColaborador = 0;
-      let comissaoSalao = 0;
-      let pagamentosDetalhados: any[] = [];
-
-      if (formData.is_troca_gratis) {
-        comissaoColaborador = 0;
-        comissaoSalao = 0;
-      } else if (formData.is_fiado) {
-        const comissaoBruta = (validationData.valor_total * porcentagemColab) / 100;
-        comissaoColaborador = comissaoBruta;
-        comissaoSalao = validationData.valor_total - comissaoBruta;
-      } else if (isRecebimentoMonetario) {
-        pagamentosDetalhados = pagamentos.map(p => {
-          const valor = parseFloat(p.valor) || 0;
-          const forma = formasPagamentoDB.find(f => f.codigo === p.forma_pagamento);
-          const taxaPct = forma?.taxa_percentual || 0;
-          const taxaValor = (valor * taxaPct) / 100;
-          const comissaoBrutaP = (valor * porcentagemColab) / 100;
-          const comissaoColabP = comissaoBrutaP - taxaValor;
-          const comissaoSalaoP = valor - comissaoBrutaP;
-          return {
-            forma_pagamento: p.forma_pagamento,
-            valor,
-            taxa_percentual: taxaPct,
-            valor_taxa: taxaValor,
-            comissao_colaborador: comissaoColabP,
-            comissao_salao: comissaoSalaoP,
-          };
-        });
-        valorTaxa = pagamentosDetalhados.reduce((a, p) => a + p.valor_taxa, 0);
-        comissaoColaborador = pagamentosDetalhados.reduce((a, p) => a + p.comissao_colaborador, 0);
-        comissaoSalao = pagamentosDetalhados.reduce((a, p) => a + p.comissao_salao, 0);
       }
 
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
@@ -1398,113 +1351,16 @@ export default function LancamentosPage() {
                       </div>
 
                       {/* Multi-pagamento: lista de formas com valores */}
-                      {!formData.is_fiado && !formData.is_troca_gratis && (() => {
-                        const valorTotalNum = parseFloat(formData.valor_total) || 0;
-                        const somaPag = pagamentos.reduce((acc, p) => acc + (parseFloat(p.valor) || 0), 0);
-                        const restante = valorTotalNum - somaPag;
-                        const formasDisponiveis = formasPagamentoDB.filter(f => f.codigo !== 'fiado' && f.codigo !== 'troca_gratis');
-                        const podeAdicionar = pagamentos.length < formasDisponiveis.length;
-
-                        const addPagamento = () => {
-                          const usadas = new Set(pagamentos.map(p => p.forma_pagamento));
-                          const proxima = formasDisponiveis.find(f => !usadas.has(f.codigo));
-                          if (!proxima) return;
-                          const novoValor = pagamentos.length === 0 && valorTotalNum > 0
-                            ? valorTotalNum.toFixed(2)
-                            : (restante > 0 ? restante.toFixed(2) : '');
-                          setPagamentos([...pagamentos, { forma_pagamento: proxima.codigo, valor: novoValor }]);
-                        };
-
-                        const updatePagamento = (idx: number, campo: keyof PagamentoForm, valor: string) => {
-                          setPagamentos(pagamentos.map((p, i) => i === idx ? { ...p, [campo]: valor } : p));
-                        };
-
-                        const removePagamento = (idx: number) => {
-                          setPagamentos(pagamentos.filter((_, i) => i !== idx));
-                        };
-
-                        return (
-                          <div className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
-                            {pagamentos.length === 0 && (
-                              <p className="text-sm text-gray-500 italic">Nenhuma forma adicionada. Clique em "+ Adicionar forma".</p>
-                            )}
-
-                            {pagamentos.map((pag, idx) => {
-                              const usadasOutras = new Set(pagamentos.filter((_, i) => i !== idx).map(p => p.forma_pagamento));
-                              return (
-                                <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                                  <select
-                                    value={pag.forma_pagamento}
-                                    onChange={(e) => updatePagamento(idx, 'forma_pagamento', e.target.value)}
-                                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                                  >
-                                    <option value="">Selecione...</option>
-                                    {formasDisponiveis
-                                      .filter(f => f.codigo === pag.forma_pagamento || !usadasOutras.has(f.codigo))
-                                      .map(f => (
-                                        <option key={f.codigo} value={f.codigo}>
-                                          {f.icone} {f.nome}{f.taxa_percentual > 0 ? ` (taxa ${f.taxa_percentual}%)` : ''}
-                                        </option>
-                                      ))}
-                                  </select>
-
-                                  <div className="relative w-full sm:w-40">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">R$</span>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={pag.valor}
-                                      onChange={(e) => updatePagamento(idx, 'valor', e.target.value)}
-                                      placeholder="0,00"
-                                      className="w-full pl-9 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => removePagamento(idx)}
-                                    className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm"
-                                    title="Remover"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              );
-                            })}
-
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
-                              <button
-                                type="button"
-                                onClick={addPagamento}
-                                disabled={!podeAdicionar}
-                                className="text-sm px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                + Adicionar forma
-                              </button>
-
-                              {pagamentos.length > 0 && (
-                                <div className="text-xs text-gray-600">
-                                  Soma: <span className="font-semibold">R$ {somaPag.toFixed(2)}</span>
-                                  {valorTotalNum > 0 && (
-                                    <>
-                                      {' '}/ Total: <span className="font-semibold">R$ {valorTotalNum.toFixed(2)}</span>
-                                      {Math.abs(restante) > 0.01 && (
-                                        <span className={`ml-2 font-semibold ${restante > 0 ? 'text-orange-600' : 'text-red-600'}`}>
-                                          {restante > 0 ? `Falta R$ ${restante.toFixed(2)}` : `Excede R$ ${Math.abs(restante).toFixed(2)}`}
-                                        </span>
-                                      )}
-                                      {Math.abs(restante) <= 0.01 && (
-                                        <span className="ml-2 text-green-600 font-semibold">✓ OK</span>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      {!formData.is_fiado && !formData.is_troca_gratis && (
+                        <MultiPagamento
+                          pagamentos={pagamentos}
+                          setPagamentos={setPagamentos}
+                          valorTotal={parseFloat(formData.valor_total) || 0}
+                          formasPagamentoDB={formasPagamentoDB}
+                          porcentagemComissao={selectedColaborador?.porcentagem_comissao}
+                          canViewComissao={!!selectedColaborador && (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id)}
+                        />
+                      )}
 
                       {formData.is_fiado && (
                         <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
@@ -1549,46 +1405,6 @@ export default function LancamentosPage() {
                         </div>
                       )}
 
-                      {pagamentos.length > 0 && selectedColaborador &&
-                       !formData.is_fiado && !formData.is_troca_gratis &&
-                       (userProfile?.isAdmin || userProfile?.colaboradorId === selectedColaborador.id) && (() => {
-                        const porcentagem = selectedColaborador.porcentagem_comissao || 50;
-                        const detalhes = pagamentos.map(p => {
-                          const valor = parseFloat(p.valor) || 0;
-                          const forma = formasPagamentoDB.find(f => f.codigo === p.forma_pagamento);
-                          const taxaPct = forma?.taxa_percentual || 0;
-                          const valorTaxa = (valor * taxaPct) / 100;
-                          const comissaoBruta = (valor * porcentagem) / 100;
-                          return {
-                            nome: forma?.nome || p.forma_pagamento || '—',
-                            valor,
-                            taxaPct,
-                            valorTaxa,
-                            comissaoBruta,
-                            comissaoLiquida: comissaoBruta - valorTaxa,
-                          };
-                        });
-                        const totalTaxa = detalhes.reduce((a, d) => a + d.valorTaxa, 0);
-                        const totalComissao = detalhes.reduce((a, d) => a + d.comissaoLiquida, 0);
-                        if (totalTaxa <= 0 && pagamentos.length === 1) return null;
-                        return (
-                          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
-                            <p className="text-yellow-800 font-medium mb-1">Resumo de comissão</p>
-                            <ul className="text-yellow-700 space-y-0.5">
-                              {detalhes.map((d, i) => (
-                                <li key={i}>
-                                  {d.nome}: R$ {d.valor.toFixed(2)}
-                                  {d.taxaPct > 0 && ` · taxa ${d.taxaPct}% (-R$ ${d.valorTaxa.toFixed(2)})`}
-                                </li>
-                              ))}
-                              {totalTaxa > 0 && (
-                                <li className="pt-1 border-t border-yellow-200">Total taxa: -R$ {totalTaxa.toFixed(2)}</li>
-                              )}
-                              <li className="font-bold">Comissão líquida total: R$ {totalComissao.toFixed(2)}</li>
-                            </ul>
-                          </div>
-                        );
-                      })()}
                     </div>
                   )}
                 </div>
