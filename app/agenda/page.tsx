@@ -1492,19 +1492,12 @@ export default function AgendaPage() {
                 <span className="hidden sm:inline">Serviços</span>
               </Link>
               <button
-                onClick={() => setShowNovoAgendamento(true)}
-                disabled={loading}
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {loading ? '⏳ Carregando...' : '✨ Novo'}
-              </button>
-              <button
                 onClick={() => setShowNovoLancamento(true)}
                 disabled={loading}
-                className="px-4 py-2 bg-white border-2 border-green-400 text-green-700 rounded-xl font-semibold shadow-md hover:shadow-lg hover:border-green-500 transform hover:scale-105 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                title="Lançar atendimento avulso (walk-in), igual à tela de Lançamentos"
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                title="Novo lançamento / agendamento"
               >
-                💵 Lançamento
+                {loading ? '⏳ Carregando...' : '💵 Lançamento'}
               </button>
             </div>
           </div>
