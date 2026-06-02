@@ -102,6 +102,7 @@ export async function GET(request: Request) {
         `)
         .gte('data_hora', `${data}T00:00:00`)
         .lte('data_hora', `${data}T23:59:59`)
+        .neq('status', 'cancelado')
         .order('data_hora', { ascending: true });
 
       if (error) {

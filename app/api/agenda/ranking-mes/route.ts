@@ -65,7 +65,8 @@ export async function GET(request: Request) {
         .from('agendamentos')
         .select('colaborador_id, colaboradores_ids, data_hora, descricao_servico')
         .gte('data_hora', inicio)
-        .lte('data_hora', fim),
+        .lte('data_hora', fim)
+        .neq('status', 'cancelado'),
     ]);
 
     const colaboradores = colaboradoresRes.data || [];
@@ -88,8 +89,10 @@ export async function GET(request: Request) {
       return { id: c.id, nome: c.nome, quantidade };
     });
 
-    // Horário de pico (hora do dia com mais agendamentos no mês)
+    // Horário(s) de pico — hora(s) do dia com mais agendamentos no mês.
+    // Pode haver empate: devolve TODAS as horas com a contagem máxima.
     let horarioPico: { hora: number; quantidade: number } | null = null;
+    let horariosPico: number[] = [];
     if (agendamentos.length > 0) {
       const contagem: Record<number, number> = {};
       agendamentos.forEach((a: any) => {
@@ -99,10 +102,11 @@ export async function GET(request: Request) {
         const hora = parseInt(match[1], 10);
         contagem[hora] = (contagem[hora] || 0) + 1;
       });
-      const entries = Object.entries(contagem);
+      const entries = Object.entries(contagem).map(([h, q]) => [parseInt(h, 10), q] as [number, number]);
       if (entries.length > 0) {
-        const [hora, quantidade] = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
-        horarioPico = { hora: parseInt(hora, 10), quantidade };
+        const max = Math.max(...entries.map(([, q]) => q));
+        horariosPico = entries.filter(([, q]) => q === max).map(([h]) => h).sort((a, b) => a - b);
+        horarioPico = { hora: horariosPico[0], quantidade: max }; // compat: primeiro do empate
       }
     }
 
@@ -117,7 +121,7 @@ export async function GET(request: Request) {
       .sort((a, b) => b.quantidade - a.quantidade)
       .slice(0, 5);
 
-    return jsonResponse({ ranking, horarioPico, topServicos });
+    return jsonResponse({ ranking, horarioPico, horariosPico, topServicos });
   } catch (error: any) {
     console.error('Erro no ranking-mes:', error);
     return errorResponse(error.message, 500);
