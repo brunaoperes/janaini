@@ -44,6 +44,24 @@ const FORM_VAZIO = {
   valor_referencia: '',
 };
 
+// Horários de início selecionáveis por toque (chips) — 07:00 às 21:00 de 30 em 30 min
+const TIME_SLOTS: string[] = (() => {
+  const out: string[] = [];
+  for (let m = 7 * 60; m <= 21 * 60; m += 30) {
+    out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+  }
+  return out;
+})();
+
+// Soma minutos a um horário "HH:MM" e devolve "HH:MM" (limitado ao mesmo dia)
+const somaMinutos = (hhmm: string, min: number): string => {
+  const [h, m] = (hhmm || '00:00').split(':').map(Number);
+  let t = h * 60 + m + min;
+  if (t > 23 * 60 + 59) t = 23 * 60 + 59;
+  if (t < 0) t = 0;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
 export default function NovoLancamentoModal({
   isOpen,
   onClose,
@@ -178,11 +196,35 @@ export default function NovoLancamentoModal({
     return servicosIds.reduce((total, id) => total + (servicos.find(s => s.id === id)?.valor || 0), 0);
   }
 
+  // Duração total dos serviços selecionados (soma duracao_minutos; mínimo 30min)
+  function calcularDuracaoTotal(ids: number[]): number {
+    const total = ids.reduce((acc, id) => {
+      const s = servicos.find(x => x.id === id);
+      return acc + (s?.duracao_minutos && s.duracao_minutos > 0 ? s.duracao_minutos : 0);
+    }, 0);
+    return total > 0 ? total : 30;
+  }
+
+  // Ao escolher o início (chip ou campo), recalcula o Fim pela duração dos serviços
+  function handleHoraInicioChange(novoInicio: string) {
+    setFormData(prev => ({
+      ...prev,
+      hora_inicio: novoInicio,
+      hora_fim: somaMinutos(novoInicio, calcularDuracaoTotal(prev.servicos_ids)),
+    }));
+  }
+
   function handleServicoToggle(servicoId: number) {
     const novos = formData.servicos_ids.includes(servicoId)
       ? formData.servicos_ids.filter(id => id !== servicoId)
       : [...formData.servicos_ids, servicoId];
-    setFormData(prev => ({ ...prev, servicos_ids: novos, valor_total: calcularValorTotal(novos).toFixed(2) }));
+    setFormData(prev => ({
+      ...prev,
+      servicos_ids: novos,
+      valor_total: calcularValorTotal(novos).toFixed(2),
+      // Fim recalculado automaticamente pela duração dos serviços
+      hora_fim: somaMinutos(prev.hora_inicio, calcularDuracaoTotal(novos)),
+    }));
   }
 
   function handleColaboradorChange(colaboradorId: string) {
@@ -467,14 +509,14 @@ export default function NovoLancamentoModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-100">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 border-b border-gray-100">
           <h2 className="text-2xl font-bold text-gray-800">{editingId ? 'Editar Lançamento' : 'Novo Lançamento'}</h2>
           <p className="text-gray-500 text-sm">{editingId ? 'Modifique os dados do atendimento' : 'Preencha os dados do atendimento'}</p>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           {formErrors && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm whitespace-pre-line">{formErrors}</div>
           )}
@@ -507,22 +549,44 @@ export default function NovoLancamentoModal({
             />
           </div>
 
-          {/* Data e Horários */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Data *</label>
-              <input type="date" value={formData.data} onChange={(e) => setFormData(prev => ({ ...prev, data: e.target.value }))} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
+          {/* Data */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Data *</label>
+            <input type="date" value={formData.data} onChange={(e) => setFormData(prev => ({ ...prev, data: e.target.value }))} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
+          </div>
+
+          {/* Início — escolha por toque (chips de 30 em 30 min) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Início *</label>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-2 border border-gray-200 rounded-xl">
+              {TIME_SLOTS.map(slot => (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => handleHoraInicioChange(slot)}
+                  className={`px-2 py-2 rounded-lg text-sm font-semibold transition-all ${formData.hora_inicio === slot ? 'bg-purple-500 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-purple-100'}`}
+                >
+                  {slot}
+                </button>
+              ))}
             </div>
-            <div className="grid grid-cols-2 sm:contents gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Início *</label>
-                <input type="time" value={formData.hora_inicio} onChange={(e) => setFormData(prev => ({ ...prev, hora_inicio: e.target.value }))} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Fim *</label>
-                <input type="time" value={formData.hora_fim} onChange={(e) => setFormData(prev => ({ ...prev, hora_fim: e.target.value }))} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
-              </div>
+            <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+              <span>Outro horário:</span>
+              <input
+                type="time"
+                value={formData.hora_inicio}
+                onChange={(e) => handleHoraInicioChange(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
             </div>
+          </div>
+
+          {/* Fim — calculado automaticamente pela duração do serviço (ajustável) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Fim <span className="text-xs font-normal text-gray-400">— automático ({calcularDuracaoTotal(formData.servicos_ids)}min); ajuste se precisar</span>
+            </label>
+            <input type="time" value={formData.hora_fim} onChange={(e) => setFormData(prev => ({ ...prev, hora_fim: e.target.value }))} className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
           </div>
 
           {/* Serviços */}
