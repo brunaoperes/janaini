@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { auditCreate, auditUpdate } from '@/lib/audit';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { agendarOuEnviarMensagem, normalizarTelefone, validarTelefone } from '@/lib/whatsapp';
+import { horarioInvalido } from '@/lib/horario';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -64,6 +65,11 @@ export async function POST(request: Request) {
       lancamento_id: existingLancamentoId, // se vier, NÃO cria novo lançamento
       apenasVerificar, // se true, só checa conflito de horário e retorna (não cria nada)
     } = body;
+
+    // Blindagem: término não pode ser <= início
+    if (horarioInvalido(hora_inicio, hora_fim)) {
+      return NextResponse.json({ error: 'Horário inválido: o término deve ser depois do início.' }, { status: 400 });
+    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -355,6 +361,11 @@ export async function PUT(request: Request) {
 
     if (!id && !lancamento_id) {
       return NextResponse.json({ error: 'ID do agendamento ou lancamento_id é obrigatório' }, { status: 400 });
+    }
+
+    // Blindagem: término não pode ser <= início
+    if (horarioInvalido(updateData.hora_inicio, updateData.hora_fim)) {
+      return NextResponse.json({ error: 'Horário inválido: o término deve ser depois do início.' }, { status: 400 });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {

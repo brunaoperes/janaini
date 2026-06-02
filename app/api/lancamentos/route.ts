@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { auditCreate } from '@/lib/audit';
+import { horarioInvalido } from '@/lib/horario';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -287,6 +288,11 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { pagamentos, ...lancamentoBody } = body;
+
+    // Blindagem: término não pode ser <= início (evita duração negativa, ex.: 16:30 -> 10:00)
+    if (horarioInvalido(lancamentoBody.hora_inicio, lancamentoBody.hora_fim)) {
+      return NextResponse.json({ error: 'Horário inválido: o término deve ser depois do início.' }, { status: 400 });
+    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {

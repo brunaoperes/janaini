@@ -24,10 +24,43 @@ async function handle(request: Request) {
   const { searchParams } = new URL(request.url);
   const dry = searchParams.get('dry') === '1';
   const reparar = searchParams.get('repararDataHora') === '1';
+  const repararHF = searchParams.get('repararHoraFim') === '1';
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  // ── Modo reparo: registros com hora_fim <= hora_inicio (duração negativa).
+  // Corrige hora_fim = hora_inicio + 30min em lançamento E agendamento. Só UPDATE.
+  if (repararHF) {
+    const mm = (v?: string | null): number | null => {
+      if (!v || !/^\d{2}:\d{2}/.test(v)) return null;
+      const [h, m] = v.slice(0, 5).split(':').map(Number); return h * 60 + m;
+    };
+    const { data: lancs, error: lErr } = await supabase
+      .from('lancamentos').select('id, hora_inicio, hora_fim')
+      .not('hora_inicio', 'is', null).not('hora_fim', 'is', null);
+    if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
+
+    const invalidos = (lancs || []).filter((l: any) => {
+      const hi = mm(l.hora_inicio), hf = mm(l.hora_fim);
+      return hi != null && hf != null && hf <= hi;
+    });
+
+    const rel: any[] = [];
+    let corrigidos = 0;
+    for (const l of invalidos as any[]) {
+      const hi = String(l.hora_inicio).slice(0, 5);
+      const fimMin = (mm(hi) as number) + 30;
+      const novoHF = `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}`;
+      if (dry) { rel.push({ lancamento_id: l.id, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigiria' }); continue; }
+      const { error: e1 } = await supabase.from('lancamentos').update({ hora_fim: novoHF }).eq('id', l.id);
+      const { error: e2 } = await supabase.from('agendamentos').update({ hora_fim: novoHF, duracao_minutos: 30 }).eq('lancamento_id', l.id);
+      if (e1 || e2) { rel.push({ lancamento_id: l.id, acao: 'ERRO', erro: (e1 || e2)?.message }); }
+      else { corrigidos++; rel.push({ lancamento_id: l.id, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigido' }); }
+    }
+    return NextResponse.json({ modo: 'repararHoraFim', dry, invalidos_encontrados: invalidos.length, corrigidos, relatorio: rel });
+  }
 
   // ── Modo reparo: agendamentos cujo data_hora ficou em 00:00:00 mas têm
   // hora_inicio válida (some da agenda porque a grade posiciona por data_hora).
