@@ -72,91 +72,85 @@ export async function POST(request: Request) {
       }
     });
 
-    // Verificar conflito de horário para o mesmo colaborador
-    const hiNovo = hora_inicio || data_hora.match(/[T ](\d{2}:\d{2})/)?.[1] || '00:00';
-    const hfNovo = hora_fim || hiNovo;
-    const [hIN, mIN] = hiNovo.split(':').map(Number);
-    const [hFN, mFN] = hfNovo.split(':').map(Number);
-    const inicioNovoMin = hIN * 60 + mIN;
-    let fimNovoMin = hFN * 60 + mFN;
-    if (fimNovoMin <= inicioNovoMin) {
-      fimNovoMin = inicioNovoMin + (duracao_minutos || 60);
-    }
-
-    // Extrair dia — data_hora pode ser "2026-04-10 16:00:00" ou "2026-04-10T16:00:00"
+    // ── Verificação de conflito de horário ───────────────────────────────
+    // (1) o mesmo COLABORADOR não pode ter dois horários sobrepostos;
+    // (2) a mesma CLIENTE não pode estar em dois lugares ao mesmo tempo
+    //     (mesmo com colaboradores diferentes).
     const diaMatch = data_hora.match(/(\d{4}-\d{2}-\d{2})/);
     const diaStr = diaMatch ? diaMatch[1] : data_hora.split('T')[0];
 
-    // Buscar agendamentos do mesmo colaborador no mesmo dia
-    const { data: agendamentosExistentes } = await supabase
-      .from('agendamentos')
-      .select('id, data_hora, duracao_minutos, hora_inicio, hora_fim, clientes(nome)')
-      .eq('colaborador_id', colaborador_id)
-      .gte('data_hora', `${diaStr} 00:00:00`)
-      .lte('data_hora', `${diaStr} 23:59:59`)
-      .neq('status', 'cancelado');
+    // Converte um registro em [inícioMin, fimMin]. Duração inválida (<=0) = 60min.
+    const intervalo = (hi?: string | null, hf?: string | null, dur?: number | null, dh?: string | null): [number, number] | null => {
+      let ini: number | null = null;
+      if (hi && /^\d{2}:\d{2}/.test(hi)) { const [h, m] = hi.slice(0, 5).split(':').map(Number); ini = h * 60 + m; }
+      else if (dh) { const mm = dh.match(/[T ](\d{2}):(\d{2})/); if (mm) ini = parseInt(mm[1]) * 60 + parseInt(mm[2]); }
+      if (ini == null) return null;
+      let fim = ini + (dur && dur > 0 ? dur : 60);
+      if (hf && /^\d{2}:\d{2}/.test(hf)) { const [h, m] = hf.slice(0, 5).split(':').map(Number); const f = h * 60 + m; if (f > ini) fim = f; }
+      return [ini, fim];
+    };
 
-    // Buscar lançamentos do mesmo colaborador no mesmo dia
-    const { data: lancamentosExistentes } = await supabase
-      .from('lancamentos')
-      .select('id, hora_inicio, hora_fim, data, clientes(nome)')
-      .eq('colaborador_id', colaborador_id)
-      .gte('data', `${diaStr} 00:00:00`)
-      .lte('data', `${diaStr} 23:59:59`)
-      .neq('status', 'cancelado');
+    const novoInt = intervalo(hora_inicio, hora_fim, duracao_minutos, data_hora);
+    const inicioNovoMin = novoInt ? novoInt[0] : 0;
+    const fimNovoMin = novoInt ? novoInt[1] : 60;
+    const sobrepoe = (iv: [number, number] | null) => iv != null && inicioNovoMin < iv[1] && fimNovoMin > iv[0];
 
-    // Verificar conflito com agendamentos existentes
-    if (agendamentosExistentes && agendamentosExistentes.length > 0) {
-      for (const ag of agendamentosExistentes) {
-        let agInicioMin: number;
-        if (ag.hora_inicio) {
-          const [aHI, aMI] = ag.hora_inicio.split(':').map(Number);
-          agInicioMin = aHI * 60 + aMI;
-        } else {
-          const horMatch = ag.data_hora.match(/[T ](\d{2}):(\d{2})/);
-          if (!horMatch) continue;
-          agInicioMin = parseInt(horMatch[1]) * 60 + parseInt(horMatch[2]);
-        }
+    // agendamentos tem 2 FKs p/ clientes e p/ colaboradores: embed sem FK explícita
+    // dá erro PGRST201 e a query volta vazia (era por isso que o check falhava).
+    const SEL_AG = 'id, data_hora, duracao_minutos, hora_inicio, hora_fim, lancamento_id, clientes!fk_agendamentos_cliente(nome), colaboradores!fk_agendamentos_colaborador(nome)';
 
-        let agFimMin: number;
-        if (ag.hora_fim && ag.hora_fim !== ag.hora_inicio) {
-          const [aHF, aMF] = ag.hora_fim.split(':').map(Number);
-          agFimMin = aHF * 60 + aMF;
-          if (agFimMin <= agInicioMin) agFimMin = agInicioMin + (ag.duracao_minutos || 60);
-        } else {
-          agFimMin = agInicioMin + (ag.duracao_minutos || 60);
-        }
+    // (1) Conflito com o mesmo COLABORADOR (agendamentos + lançamentos)
+    const [{ data: agColab }, { data: lcColab }] = await Promise.all([
+      supabase.from('agendamentos').select(SEL_AG)
+        .eq('colaborador_id', colaborador_id)
+        .gte('data_hora', `${diaStr} 00:00:00`).lte('data_hora', `${diaStr} 23:59:59`)
+        .neq('status', 'cancelado'),
+      supabase.from('lancamentos').select('id, hora_inicio, hora_fim, data, clientes(nome)')
+        .eq('colaborador_id', colaborador_id)
+        .gte('data', `${diaStr} 00:00:00`).lte('data', `${diaStr} 23:59:59`)
+        .neq('status', 'cancelado'),
+    ]);
 
-        if (inicioNovoMin < agFimMin && fimNovoMin > agInicioMin) {
-          const clienteNome = (ag.clientes as any)?.nome || 'outro cliente';
-          const horStr = ag.hora_inicio || `${String(Math.floor(agInicioMin / 60)).padStart(2, '0')}:${String(agInicioMin % 60).padStart(2, '0')}`;
-          return NextResponse.json({
-            error: `Conflito de horario: este colaborador ja tem agendamento as ${horStr} com ${clienteNome}`,
-          }, { status: 409 });
-        }
+    for (const ag of (agColab || []) as any[]) {
+      if (existingLancamentoId && ag.lancamento_id === existingLancamentoId) continue;
+      if (sobrepoe(intervalo(ag.hora_inicio, ag.hora_fim, ag.duracao_minutos, ag.data_hora))) {
+        const nome = ag.clientes?.nome || 'outro cliente';
+        return NextResponse.json({ error: `Conflito de horário: este colaborador já tem agendamento às ${ag.hora_inicio || ''} com ${nome}` }, { status: 409 });
+      }
+    }
+    for (const lc of (lcColab || []) as any[]) {
+      if (existingLancamentoId && lc.id === existingLancamentoId) continue;
+      if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
+        const nome = lc.clientes?.nome || 'outro cliente';
+        return NextResponse.json({ error: `Conflito de horário: este colaborador já tem lançamento às ${lc.hora_inicio} com ${nome}` }, { status: 409 });
       }
     }
 
-    // Verificar conflito com lançamentos existentes
-    // Se foi passado um lancamento_id, ignora ele (é o próprio lançamento que acabou de ser criado)
-    if (lancamentosExistentes && lancamentosExistentes.length > 0) {
-      for (const lc of lancamentosExistentes) {
-        if (existingLancamentoId && lc.id === existingLancamentoId) continue;
-        if (!lc.hora_inicio) continue;
-        const [lcHI, lcMI] = lc.hora_inicio.split(':').map(Number);
-        const lcInicioMin = lcHI * 60 + lcMI;
-        let lcFimMin = lcInicioMin + 60;
-        if (lc.hora_fim) {
-          const [lcHF, lcMF] = lc.hora_fim.split(':').map(Number);
-          lcFimMin = lcHF * 60 + lcMF;
-          if (lcFimMin <= lcInicioMin) lcFimMin = lcInicioMin + 60;
-        }
+    // (2) Conflito com a mesma CLIENTE (em qualquer colaborador)
+    if (cliente_id) {
+      const [{ data: agCli }, { data: lcCli }] = await Promise.all([
+        supabase.from('agendamentos').select(SEL_AG)
+          .eq('cliente_id', cliente_id)
+          .gte('data_hora', `${diaStr} 00:00:00`).lte('data_hora', `${diaStr} 23:59:59`)
+          .neq('status', 'cancelado'),
+        supabase.from('lancamentos').select('id, hora_inicio, hora_fim, data, colaboradores(nome)')
+          .eq('cliente_id', cliente_id)
+          .gte('data', `${diaStr} 00:00:00`).lte('data', `${diaStr} 23:59:59`)
+          .neq('status', 'cancelado'),
+      ]);
 
-        if (inicioNovoMin < lcFimMin && fimNovoMin > lcInicioMin) {
-          const clienteNome = (lc.clientes as any)?.nome || 'outro cliente';
-          return NextResponse.json({
-            error: `Conflito de horario: este colaborador ja tem lancamento as ${lc.hora_inicio} com ${clienteNome}`,
-          }, { status: 409 });
+      for (const ag of (agCli || []) as any[]) {
+        if (existingLancamentoId && ag.lancamento_id === existingLancamentoId) continue;
+        if (sobrepoe(intervalo(ag.hora_inicio, ag.hora_fim, ag.duracao_minutos, ag.data_hora))) {
+          const nome = ag.colaboradores?.nome || 'outro colaborador';
+          return NextResponse.json({ error: `Conflito: esta cliente já está agendada às ${ag.hora_inicio || ''} com ${nome}` }, { status: 409 });
+        }
+      }
+      for (const lc of (lcCli || []) as any[]) {
+        if (existingLancamentoId && lc.id === existingLancamentoId) continue;
+        if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
+          const nome = lc.colaboradores?.nome || 'outro colaborador';
+          return NextResponse.json({ error: `Conflito: esta cliente já tem lançamento às ${lc.hora_inicio} com ${nome}` }, { status: 409 });
         }
       }
     }

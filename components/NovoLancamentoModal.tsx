@@ -260,6 +260,18 @@ export default function NovoLancamentoModal({
 
       if (!formData.hora_inicio) { toast.error('Horário de início é obrigatório'); setIsSubmitting(false); return; }
 
+      // Horário de fim precisa ser depois do início (evita duração negativa, ex.: 16:30 → 10:00)
+      if (formData.hora_fim) {
+        const [hi, mi] = formData.hora_inicio.split(':').map(Number);
+        const [hf, mf] = formData.hora_fim.split(':').map(Number);
+        if ((hf * 60 + mf) <= (hi * 60 + mi)) {
+          setFormErrors('O horário de término deve ser depois do horário de início.');
+          toast.error('Horário de término deve ser depois do início.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const horaInicioFormatada = formData.hora_inicio.length === 5 ? `${formData.hora_inicio}:00` : formData.hora_inicio;
       const dataCompleta = `${formData.data} ${horaInicioFormatada}`;
       const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
@@ -279,6 +291,7 @@ export default function NovoLancamentoModal({
             body: JSON.stringify({
               apenasVerificar: true,
               colaborador_id: validationData.colaborador_id,
+              cliente_id: validationData.cliente_id,
               data_hora: dataCompleta,
               hora_inicio: formData.hora_inicio,
               hora_fim: formData.hora_fim || formData.hora_inicio,
