@@ -1716,10 +1716,17 @@ export default function AgendaPage() {
                     {/* Barras de Agendamento */}
                     <div className="absolute inset-0 px-1">
                       {agendamentosColaborador.map((agendamento) => {
-                        // Usar duracao_minutos do banco, ou 60 como padrão
-                        const duracao = agendamento.duracao_minutos || 60;
-                        const posicao = calcularPosicaoBarra(agendamento.data_hora, duracao);
-                        const progresso = calcularProgresso(agendamento.data_hora, duracao);
+                        // Usar duracao_minutos do banco, ou 60 como padrão (duração inválida vira 60)
+                        const duracao = agendamento.duracao_minutos && agendamento.duracao_minutos > 0 ? agendamento.duracao_minutos : 60;
+                        // Posiciona pela hora_inicio quando houver (data_hora pode estar em 00:00
+                        // em registros importados/antigos, jogando o card pra fora da timeline).
+                        const horaIni = (agendamento as any).hora_inicio as string | null;
+                        const diaAg = (agendamento.data_hora || '').split(/[T ]/)[0];
+                        const dataHoraPos = horaIni && diaAg
+                          ? `${diaAg}T${horaIni.length === 5 ? horaIni + ':00' : horaIni}`
+                          : agendamento.data_hora;
+                        const posicao = calcularPosicaoBarra(dataHoraPos, duracao);
+                        const progresso = calcularProgresso(dataHoraPos, duracao);
                         const isHovered = hoveredAgendamento === agendamento.id;
 
                         const isBeingResized = isResizing && resizingAgendamento?.id === agendamento.id;

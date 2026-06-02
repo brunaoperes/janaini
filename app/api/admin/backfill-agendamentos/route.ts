@@ -23,10 +23,40 @@ async function handle(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const dry = searchParams.get('dry') === '1';
+  const reparar = searchParams.get('repararDataHora') === '1';
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+
+  // ── Modo reparo: agendamentos cujo data_hora ficou em 00:00:00 mas têm
+  // hora_inicio válida (some da agenda porque a grade posiciona por data_hora).
+  // Corrige data_hora = dia + hora_inicio. Só UPDATE, nunca deleta.
+  if (reparar) {
+    const { data: ags, error: agErr } = await supabase
+      .from('agendamentos')
+      .select('id, data_hora, hora_inicio')
+      .not('hora_inicio', 'is', null);
+    if (agErr) return NextResponse.json({ error: agErr.message }, { status: 500 });
+
+    const quebrados = (ags || []).filter((a: any) => {
+      const hi = String(a.hora_inicio || '').slice(0, 5);
+      const horaDataHora = (String(a.data_hora || '').match(/[T ](\d{2}:\d{2})/)?.[1]) || '';
+      return /^\d{2}:\d{2}$/.test(hi) && hi !== '00:00' && horaDataHora === '00:00';
+    });
+
+    const rel: any[] = [];
+    let corrigidos = 0;
+    for (const a of quebrados as any[]) {
+      const dia = String(a.data_hora).split(/[T ]/)[0];
+      const novo = `${dia} ${String(a.hora_inicio).slice(0, 5)}:00`;
+      if (dry) { rel.push({ id: a.id, de: a.data_hora, para: novo, acao: 'corrigiria' }); continue; }
+      const { error: upErr } = await supabase.from('agendamentos').update({ data_hora: novo }).eq('id', a.id);
+      if (upErr) { rel.push({ id: a.id, acao: 'ERRO', erro: upErr.message }); }
+      else { corrigidos++; rel.push({ id: a.id, de: a.data_hora, para: novo, acao: 'corrigido' }); }
+    }
+    return NextResponse.json({ modo: 'repararDataHora', dry, quebrados_encontrados: quebrados.length, corrigidos, relatorio: rel });
+  }
 
   // Lançamentos candidatos: têm horário e não estão cancelados
   const { data: lancamentos, error: lancErr } = await supabase
@@ -83,11 +113,16 @@ async function handle(request: Request) {
       continue;
     }
 
+    // data_hora PRECISA conter a hora (a grade da agenda posiciona o card por ela);
+    // l.data às vezes guarda só a data (meia-noite) → junta com a hora_inicio.
+    const diaL = String(l.data).split(/[T ]/)[0];
+    const dataHoraFinal = horaIni ? `${diaL} ${horaIni}:00` : l.data;
+
     const { error: insErr } = await supabase.from('agendamentos').insert({
       lancamento_id: l.id,
       colaborador_id: l.colaborador_id,
       cliente_id: l.cliente_id,
-      data_hora: l.data,
+      data_hora: dataHoraFinal,
       descricao_servico: l.servicos_nomes,
       duracao_minutos: duracao,
       valor_estimado: l.valor_total,
