@@ -264,6 +264,39 @@ export default function NovoLancamentoModal({
       const dataCompleta = `${formData.data} ${horaInicioFormatada}`;
       const valorTotalFinal = formData.is_troca_gratis ? 0 : validationData.valor_total;
 
+      const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
+      const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
+      const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
+      const colaboradoresIdsAgenda = compartilhado ? divisoes.map(d => d.colaborador_id) : [validationData.colaborador_id];
+
+      // Pré-checagem de conflito de horário ANTES de criar o lançamento (somente em criação).
+      // Evita lançamento órfão: se o horário estiver ocupado, nada é criado e o usuário é avisado.
+      if (!editingId) {
+        try {
+          const checkRes = await fetch('/api/agendamentos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              apenasVerificar: true,
+              colaborador_id: validationData.colaborador_id,
+              data_hora: dataCompleta,
+              hora_inicio: formData.hora_inicio,
+              hora_fim: formData.hora_fim || formData.hora_inicio,
+              duracao_minutos: duracaoTotal,
+            }),
+          });
+          if (checkRes.status === 409) {
+            const errJson = await checkRes.json().catch(() => ({}));
+            setFormErrors(errJson.error || 'Conflito de horário: este colaborador já tem algo marcado nesse horário.');
+            toast.error(errJson.error || 'Conflito de horário nesse horário.');
+            setIsSubmitting(false);
+            return;
+          }
+        } catch {
+          // Se a verificação falhar por rede, segue o fluxo normal (o POST real ainda revalida).
+        }
+      }
+
       let formaPagamentoFinal: string | null = null;
       let dataPagamentoFinal: string | null = null;
       if (formData.is_fiado) { formaPagamentoFinal = 'fiado'; dataPagamentoFinal = null; }
@@ -316,12 +349,12 @@ export default function NovoLancamentoModal({
 
       if (!lancamento) { toast.error('Erro: lançamento não retornado pela API'); setIsSubmitting(false); return; }
 
-      const [hInicio, mInicio] = formData.hora_inicio.split(':').map(Number);
-      const [hFim, mFim] = formData.hora_fim.split(':').map(Number);
-      const duracaoTotal = (hFim * 60 + mFim) - (hInicio * 60 + mInicio);
-      const colaboradoresIdsAgenda = compartilhado ? divisoes.map(d => d.colaborador_id) : [validationData.colaborador_id];
-
-      (async () => {
+      // Criação/atualização do agendamento (AWAITED): o lançamento só é considerado
+      // concluído se entrar na agenda. Antes era "fire-and-forget" e o toast de sucesso
+      // aparecia mesmo quando o agendamento falhava → sumia da agenda sem ninguém notar.
+      let agendamentoOk = true;
+      let agendamentoErro = '';
+      {
         try {
           if (compartilhado && divisoes.length > 0) {
             if (editingId) await supabase.from('lancamento_divisoes').delete().eq('lancamento_id', editingId);
@@ -340,7 +373,7 @@ export default function NovoLancamentoModal({
           }
 
           if (editingId) {
-            await fetch('/api/agendamentos', {
+            const agendRes = await fetch('/api/agendamentos', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -355,6 +388,11 @@ export default function NovoLancamentoModal({
                 colaboradores_ids: colaboradoresIdsAgenda,
               }),
             });
+            if (!agendRes.ok) {
+              agendamentoOk = false;
+              agendamentoErro = await agendRes.text().catch(() => '');
+              console.error('[NovoLancamento] agendamento não atualizado:', agendRes.status, agendamentoErro);
+            }
           } else {
             const agendRes = await fetch('/api/agendamentos', {
               method: 'POST',
@@ -373,16 +411,17 @@ export default function NovoLancamentoModal({
               }),
             });
             if (!agendRes.ok) {
-              const errTxt = await agendRes.text().catch(() => '');
-              console.error('[NovoLancamento] agendamento não criado:', agendRes.status, errTxt);
-              toast.error('Lançamento salvo, mas não foi possível criar agendamento. Verifique a agenda.');
+              agendamentoOk = false;
+              agendamentoErro = await agendRes.text().catch(() => '');
+              console.error('[NovoLancamento] agendamento não criado:', agendRes.status, agendamentoErro);
             }
           }
         } catch (err: any) {
+          agendamentoOk = false;
+          agendamentoErro = err?.message || 'erro desconhecido';
           console.error('[NovoLancamento] erro ao criar agendamento/divisões:', err);
-          toast.error('Lançamento salvo, mas ocorreu erro ao vincular à agenda.');
         }
-      })();
+      }
 
       let msgExtra = '';
       if (formData.is_fiado) msgExtra = ' - Marcado como FIADO (pendente)';
@@ -390,7 +429,18 @@ export default function NovoLancamentoModal({
       else if (isRecebimentoMonetario && pagamentos.length > 1) msgExtra = ` - ${pagamentos.length} formas de pagamento`;
       else if (valorTaxa > 0) msgExtra = ` (Taxa: -R$ ${valorTaxa.toFixed(2)})`;
 
-      toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgExtra);
+      if (agendamentoOk) {
+        toast.success((editingId ? 'Lançamento atualizado!' : 'Lançamento criado!') + msgExtra);
+      } else {
+        // Lançamento salvo, mas NÃO entrou na agenda — avisa de forma clara e persistente.
+        const motivo = agendamentoErro && agendamentoErro.toLowerCase().includes('conflito')
+          ? ' (conflito de horário)'
+          : '';
+        toast.error(
+          `Lançamento salvo, mas NÃO apareceu na agenda${motivo}. Edite o horário e salve de novo, ou avise o administrador.`,
+          { duration: 9000 }
+        );
+      }
       onClose();
       onSaved();
     } catch (error) {

@@ -294,6 +294,20 @@ export default function LancamentosPage() {
     }
   }
 
+  // Comissão PREVISTA para lançamentos futuros/pendentes que ainda não têm comissão gravada
+  // (agendamento futuro só calcula a comissão quando é concluído/pago). Apenas exibição —
+  // não é gravada no banco, então não entra em DRE/relatórios de comissão realizada.
+  function comissaoEstimada(lanc: LancamentoComRelacoes): number | null {
+    if (!lanc._canViewComissao) return null;
+    if (lanc.comissao_colaborador) return null; // já tem comissão real
+    if (lanc.is_troca_gratis) return null;       // troca/grátis não gera comissão
+    if (lanc.compartilhado) return null;         // dividido: % por colaborador não se aplica aqui
+    const colab = colaboradores.find(c => c.id === lanc.colaborador_id);
+    const pct = colab?.porcentagem_comissao ?? lanc.colaboradores?.porcentagem_comissao;
+    if (!pct) return null;
+    return (lanc.valor_total * pct) / 100;
+  }
+
   const tabs: { key: TabType; label: string; color: string }[] = [
     { key: 'hoje', label: 'Hoje', color: 'blue' },
     { key: 'pendentes', label: 'Pendentes', color: 'yellow' },
@@ -479,9 +493,16 @@ export default function LancamentosPage() {
                             <span className="font-semibold text-purple-600">
                               R$ {lanc.comissao_colaborador.toFixed(2)}
                             </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          ) : (() => {
+                            const est = comissaoEstimada(lanc);
+                            return est != null ? (
+                              <span className="text-purple-400" title="Comissão prevista — confirmada quando o lançamento for concluído">
+                                ~R$ {est.toFixed(2)} <span className="text-[10px] text-gray-400">previsto</span>
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           {getStatusBadge(lanc.status, lanc)}
@@ -576,11 +597,18 @@ export default function LancamentosPage() {
                       </div>
                     )}
 
-                    {lanc._canViewComissao && lanc.comissao_colaborador && (
+                    {lanc._canViewComissao && lanc.comissao_colaborador ? (
                       <div className="text-sm text-purple-600 mb-3">
                         <span className="font-medium">Comissão:</span> R$ {lanc.comissao_colaborador.toFixed(2)}
                       </div>
-                    )}
+                    ) : (() => {
+                      const est = comissaoEstimada(lanc);
+                      return est != null ? (
+                        <div className="text-sm text-purple-400 mb-3">
+                          <span className="font-medium">Comissão prevista:</span> ~R$ {est.toFixed(2)}
+                        </div>
+                      ) : null;
+                    })()}
 
                     <div className="flex gap-2 pt-2 border-t border-gray-100">
                       <button

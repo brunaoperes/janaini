@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       observacoes,
       colaboradores_ids,
       lancamento_id: existingLancamentoId, // se vier, NÃO cria novo lançamento
+      apenasVerificar, // se true, só checa conflito de horário e retorna (não cria nada)
     } = body;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -158,6 +159,13 @@ export async function POST(request: Request) {
           }, { status: 409 });
         }
       }
+    }
+
+    // Modo "só verificar": chegou aqui sem conflito (os checks acima retornam 409 se houver).
+    // Usado pela tela de Lançamentos para validar o horário ANTES de criar o lançamento,
+    // evitando lançamento órfão (salvo sem agendamento) quando há conflito.
+    if (apenasVerificar) {
+      return NextResponse.json({ ok: true });
     }
 
     // Se veio lancamento_id, reaproveita; senão cria um lançamento pendente
@@ -377,6 +385,33 @@ export async function PUT(request: Request) {
     }
 
     if (!dadosAnterior || !agendamentoId) {
+      // Auto-cura: se veio por lancamento_id e o agendamento não existe (lançamento órfão —
+      // criado quando a criação do agendamento havia falhado), cria agora em vez de 404.
+      if (lancamento_id && !id) {
+        const horaIni = updateData.data_hora?.match(/[T ](\d{2}:\d{2})/)?.[1] || null;
+        const { data: novo, error: insErr } = await supabase
+          .from('agendamentos')
+          .insert({
+            lancamento_id,
+            colaborador_id: updateData.colaborador_id,
+            cliente_id: updateData.cliente_id,
+            data_hora: updateData.data_hora,
+            descricao_servico: updateData.descricao_servico,
+            duracao_minutos: updateData.duracao_minutos,
+            valor_estimado: updateData.valor_estimado,
+            hora_inicio: horaIni,
+            status: updateData.status || 'pendente',
+            observacoes: updateData.observacoes || null,
+            colaboradores_ids: Array.isArray(updateData.colaboradores_ids) && updateData.colaboradores_ids.length > 0 ? updateData.colaboradores_ids : null,
+          })
+          .select()
+          .single();
+        if (insErr) {
+          console.error('[API/agendamentos] Erro ao auto-criar agendamento no PUT:', insErr);
+          return NextResponse.json({ error: insErr.message }, { status: 500 });
+        }
+        return NextResponse.json({ success: true, data: novo, created: true });
+      }
       return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
     }
 
