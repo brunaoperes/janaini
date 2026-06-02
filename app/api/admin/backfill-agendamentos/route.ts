@@ -30,8 +30,10 @@ async function handle(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ── Modo reparo: registros com hora_fim <= hora_inicio (duração negativa).
-  // Corrige hora_fim = hora_inicio + 30min em lançamento E agendamento. Só UPDATE.
+  // ── Modo reparo: registros com hora_fim <= hora_inicio. Corrige (UPDATE) em
+  // lançamento E agendamento:
+  //   • INVERTIDO (fim < início, ex.: 16:30→10:00): hora_fim = início + 30min
+  //   • DURAÇÃO-ZERO (fim == início): hora_fim = início + 5min
   if (repararHF) {
     const mm = (v?: string | null): number | null => {
       if (!v || !/^\d{2}:\d{2}/.test(v)) return null;
@@ -51,13 +53,17 @@ async function handle(request: Request) {
     let corrigidos = 0;
     for (const l of invalidos as any[]) {
       const hi = String(l.hora_inicio).slice(0, 5);
-      const fimMin = (mm(hi) as number) + 30;
+      const hiMin = mm(hi) as number;
+      const invertido = (mm(l.hora_fim) as number) < hiMin; // < = invertido; == = duração-zero
+      const offset = invertido ? 30 : 5;
+      const fimMin = hiMin + offset;
       const novoHF = `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}`;
-      if (dry) { rel.push({ lancamento_id: l.id, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigiria' }); continue; }
+      const tipo = invertido ? 'invertido(+30)' : 'zero(+5)';
+      if (dry) { rel.push({ lancamento_id: l.id, tipo, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigiria' }); continue; }
       const { error: e1 } = await supabase.from('lancamentos').update({ hora_fim: novoHF }).eq('id', l.id);
-      const { error: e2 } = await supabase.from('agendamentos').update({ hora_fim: novoHF, duracao_minutos: 30 }).eq('lancamento_id', l.id);
+      const { error: e2 } = await supabase.from('agendamentos').update({ hora_fim: novoHF, duracao_minutos: offset }).eq('lancamento_id', l.id);
       if (e1 || e2) { rel.push({ lancamento_id: l.id, acao: 'ERRO', erro: (e1 || e2)?.message }); }
-      else { corrigidos++; rel.push({ lancamento_id: l.id, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigido' }); }
+      else { corrigidos++; rel.push({ lancamento_id: l.id, tipo, inicio: hi, de: l.hora_fim, para: novoHF, acao: 'corrigido' }); }
     }
     return NextResponse.json({ modo: 'repararHoraFim', dry, invalidos_encontrados: invalidos.length, corrigidos, relatorio: rel });
   }
