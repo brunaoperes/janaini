@@ -54,6 +54,7 @@ export default function AgendaPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [rankingMes, setRankingMes] = useState<{ id: number; nome: string; quantidade: number }[]>([]);
   const [horarioPicoMes, setHorarioPicoMes] = useState<{ hora: number; quantidade: number } | null>(null);
+  const [horariosPicoMes, setHorariosPicoMes] = useState<number[]>([]);
   const [topServicosMes, setTopServicosMes] = useState<{ nome: string; quantidade: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -174,6 +175,7 @@ export default function AgendaPage() {
         if (!data) return;
         setRankingMes(data.ranking || []);
         setHorarioPicoMes(data.horarioPico || null);
+        setHorariosPicoMes(Array.isArray(data.horariosPico) ? data.horariosPico : []);
         setTopServicosMes(data.topServicos || []);
       })
       .catch(() => {});
@@ -506,11 +508,21 @@ export default function AgendaPage() {
     // Formato: 2025-11-19 17:00:00 (sem T e sem timezone)
     const novoDataHora = `${selectedDate} ${dragPreview.novoHorario}`;
 
+    // Manter hora_inicio/hora_fim em sincronia com data_hora (a grade posiciona por hora_inicio)
+    const novoInicioHHMM = dragPreview.novoHorario.substring(0, 5);
+    const durDrag = (draggedAgendamento.duracao_minutos && draggedAgendamento.duracao_minutos > 0) ? draggedAgendamento.duracao_minutos : 60;
+    const [dgH, dgM] = novoInicioHHMM.split(':').map(Number);
+    let fimMinDrag = dgH * 60 + dgM + durDrag;
+    if (fimMinDrag > 23 * 60 + 59) fimMinDrag = 23 * 60 + 59;
+    const novoFimHHMM = `${String(Math.floor(fimMinDrag / 60)).padStart(2, '0')}:${String(fimMinDrag % 60).padStart(2, '0')}`;
+
     const { error } = await supabase
       .from('agendamentos')
       .update({
         data_hora: novoDataHora,
         colaborador_id: dragPreview.novoColaboradorId,
+        hora_inicio: novoInicioHHMM,
+        hora_fim: novoFimHHMM,
       })
       .eq('id', draggedAgendamento.id)
       .select('*, clientes!fk_agendamentos_cliente(*), colaboradores!fk_agendamentos_colaborador(*)');
@@ -667,32 +679,29 @@ export default function AgendaPage() {
       // ⚡ Snap para múltiplos de 15 minutos
       const duracaoSnap = Math.max(15, Math.round(ultimoResultado.novaDuracao / 15) * 15);
 
-      // Salvar no banco de dados - agendamento
+      // Início do agendamento (prefere hora_inicio; senão extrai do data_hora)
+      const dataHoraStr = agendamento.data_hora || '';
+      let horaInicio = ((agendamento as any).hora_inicio as string) || '';
+      if (!/^\d{2}:\d{2}/.test(horaInicio)) {
+        if (dataHoraStr.includes('T')) horaInicio = dataHoraStr.split('T')[1].substring(0, 5);
+        else if (dataHoraStr.includes(' ')) horaInicio = dataHoraStr.split(' ')[1].substring(0, 5);
+        else horaInicio = '09:00';
+      }
+      horaInicio = horaInicio.substring(0, 5);
+      const [hInicio, mInicio] = horaInicio.split(':').map(Number);
+      const minutosFim = hInicio * 60 + mInicio + duracaoSnap;
+      const horaFim = `${Math.floor(minutosFim / 60).toString().padStart(2, '0')}:${(minutosFim % 60).toString().padStart(2, '0')}`;
+
+      // Salvar no banco - agendamento (duração E hora_fim consistentes)
       const { error } = await supabase
         .from('agendamentos')
-        .update({ duracao_minutos: duracaoSnap })
+        .update({ duracao_minutos: duracaoSnap, hora_fim: horaFim })
         .eq('id', agendamento.id);
 
       if (error) {
         console.error('Erro ao atualizar duração:', error);
         toast.error('Erro ao ajustar duração: ' + error.message);
       } else {
-        // Calcular hora_fim baseado na duração
-        // Extrair hora diretamente da string (evitar problemas de timezone)
-        const dataHoraStr = agendamento.data_hora;
-        let horaInicio = '09:00';
-
-        // Tentar extrair hora da string (pode ser "2025-12-01 09:00:00" ou "2025-12-01T09:00:00")
-        if (dataHoraStr.includes('T')) {
-          horaInicio = dataHoraStr.split('T')[1].substring(0, 5);
-        } else if (dataHoraStr.includes(' ')) {
-          horaInicio = dataHoraStr.split(' ')[1].substring(0, 5);
-        }
-
-        const [hInicio, mInicio] = horaInicio.split(':').map(Number);
-        const minutosFim = hInicio * 60 + mInicio + duracaoSnap;
-        const horaFim = `${Math.floor(minutosFim / 60).toString().padStart(2, '0')}:${(minutosFim % 60).toString().padStart(2, '0')}`;
-
         // Atualizar lançamento vinculado (se existir)
         if (agendamento.lancamento_id) {
           const { error: lancError } = await supabase
@@ -1275,7 +1284,10 @@ export default function AgendaPage() {
   // Horário de pico do mês (dados de /api/agenda/ranking-mes)
   const encontrarHorarioPico = () => {
     if (!horarioPicoMes) return 'N/A';
-    return `${String(horarioPicoMes.hora).padStart(2, '0')}:00 (${horarioPicoMes.quantidade} agend.)`;
+    const horas = horariosPicoMes.length > 0 ? horariosPicoMes : [horarioPicoMes.hora];
+    const lista = horas.map(h => `${String(h).padStart(2, '0')}:00`).join(' e ');
+    const sufixo = horas.length > 1 ? `${horarioPicoMes.quantidade} agend. cada` : `${horarioPicoMes.quantidade} agend.`;
+    return `${lista} (${sufixo})`;
   };
 
   // Calcular taxa de ocupação
@@ -1454,7 +1466,7 @@ export default function AgendaPage() {
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg border-b border-purple-100 shadow-soft">
         <div className="container mx-auto px-4 md:px-6 py-3 md:py-4">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 md:gap-4">
               <Link
                 href="/"
@@ -1471,7 +1483,7 @@ export default function AgendaPage() {
               </h1>
             </div>
 
-            <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex flex-wrap items-center justify-end gap-2 md:gap-4 w-full sm:w-auto">
               <div className="text-xs md:text-sm text-gray-600">
                 {format(currentTime, 'HH:mm')}
               </div>

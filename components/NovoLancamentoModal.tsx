@@ -347,6 +347,9 @@ export default function NovoLancamentoModal({
             setIsSubmitting(false);
             return;
           }
+          // Aviso não-bloqueante (ex.: mesma cliente em atendimento simultâneo)
+          const checkJson = await checkRes.json().catch(() => ({}));
+          if (checkJson?.aviso) toast(checkJson.aviso, { icon: '⚠️', duration: 5000 });
         } catch {
           // Se a verificação falhar por rede, segue o fluxo normal (o POST real ainda revalida).
         }

@@ -132,7 +132,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // (2) Conflito com a mesma CLIENTE (em qualquer colaborador)
+    // (2) Mesma CLIENTE no mesmo horário (com OUTRO colaborador) — NÃO bloqueia
+    // (atendimento simultâneo mão+pé é legítimo), apenas devolve um aviso.
+    let avisoCliente: string | undefined;
     if (cliente_id) {
       const [{ data: agCli }, { data: lcCli }] = await Promise.all([
         supabase.from('agendamentos').select(SEL_AG)
@@ -149,14 +151,18 @@ export async function POST(request: Request) {
         if (existingLancamentoId && ag.lancamento_id === existingLancamentoId) continue;
         if (sobrepoe(intervalo(ag.hora_inicio, ag.hora_fim, ag.duracao_minutos, ag.data_hora))) {
           const nome = ag.colaboradores?.nome || 'outro colaborador';
-          return NextResponse.json({ error: `Conflito: esta cliente já está agendada às ${ag.hora_inicio || ''} com ${nome}` }, { status: 409 });
+          avisoCliente = `Atenção: esta cliente já tem horário às ${ag.hora_inicio || ''} com ${nome} (atendimento simultâneo).`;
+          break;
         }
       }
-      for (const lc of (lcCli || []) as any[]) {
-        if (existingLancamentoId && lc.id === existingLancamentoId) continue;
-        if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
-          const nome = lc.colaboradores?.nome || 'outro colaborador';
-          return NextResponse.json({ error: `Conflito: esta cliente já tem lançamento às ${lc.hora_inicio} com ${nome}` }, { status: 409 });
+      if (!avisoCliente) {
+        for (const lc of (lcCli || []) as any[]) {
+          if (existingLancamentoId && lc.id === existingLancamentoId) continue;
+          if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
+            const nome = lc.colaboradores?.nome || 'outro colaborador';
+            avisoCliente = `Atenção: esta cliente já tem horário às ${lc.hora_inicio} com ${nome} (atendimento simultâneo).`;
+            break;
+          }
         }
       }
     }
@@ -165,7 +171,7 @@ export async function POST(request: Request) {
     // Usado pela tela de Lançamentos para validar o horário ANTES de criar o lançamento,
     // evitando lançamento órfão (salvo sem agendamento) quando há conflito.
     if (apenasVerificar) {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, aviso: avisoCliente });
     }
 
     // Se veio lancamento_id, reaproveita; senão cria um lançamento pendente
@@ -342,6 +348,7 @@ export async function POST(request: Request) {
       success: true,
       agendamento,
       lancamento_id: lancamentoIdParaVincular,
+      aviso: avisoCliente,
     });
 
   } catch (error: any) {
