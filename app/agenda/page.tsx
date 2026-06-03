@@ -200,13 +200,11 @@ export default function AgendaPage() {
 
       if (pendentes.length === 0) return;
 
-      // Atualizar em background sem recarregar toda a página
-      for (const ag of pendentes) {
-        await supabase
-          .from('agendamentos')
-          .update({ status: 'executando' })
-          .eq('id', ag.id);
-      }
+      // Atualizar em background — UM update batcheado (antes era 1 por agendamento a cada minuto)
+      await supabase
+        .from('agendamentos')
+        .update({ status: 'executando' })
+        .in('id', pendentes.map(p => p.id));
 
       // Atualizar state local sem reload completo
       setAgendamentos(prev => prev.map(ag =>

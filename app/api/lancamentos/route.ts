@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     // Carregar dados em paralelo
     const [colaboradoresRes, clientesRes, servicosRes, formasRes] = await Promise.all([
       supabase.from('colaboradores').select('*').order('nome'),
-      supabase.from('clientes').select('*').order('nome'),
+      supabase.from('clientes').select('id, nome, telefone, aniversario').order('nome'),
       supabase.from('servicos').select('*').eq('ativo', true).order('nome'),
       supabase.from('formas_pagamento').select('*').eq('ativo', true).order('ordem')
     ]);

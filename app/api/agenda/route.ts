@@ -56,10 +56,10 @@ export async function GET(request: Request) {
       .select('*')
       .order('nome');
 
-    // Carregar clientes
+    // Carregar clientes (só colunas usadas pela tela — corta payload; antes era select('*'))
     const { data: clientes } = await supabase
       .from('clientes')
-      .select('*')
+      .select('id, nome, telefone, aniversario')
       .order('nome');
 
     // Carregar serviços ativos

@@ -45,28 +45,32 @@ export async function GET(request: Request) {
 
     resultado.pendentes.encontrados = pendentes?.length || 0;
 
-    if (pendentes) {
-      for (const msg of pendentes) {
-        // Cancelar confirmação/lembrete de agendamentos que já passaram
-        if (msg.tipo === 'confirmacao' || msg.tipo === 'lembrete') {
-          const { data: agendamento } = await supabase
-            .from('agendamentos')
-            .select('data_hora')
-            .eq('id', msg.agendamento_id)
-            .single();
+    if (pendentes && pendentes.length > 0) {
+      // Batch (antes era 1 query por mensagem): busca todos os agendamentos de uma vez
+      const msgsConfLemb = pendentes.filter(m => m.tipo === 'confirmacao' || m.tipo === 'lembrete');
+      if (msgsConfLemb.length > 0) {
+        const agIds = [...new Set(msgsConfLemb.map(m => m.agendamento_id).filter(Boolean))];
+        const { data: ags } = await supabase
+          .from('agendamentos').select('id, data_hora').in('id', agIds);
+        const agMap: Record<number, string> = {};
+        (ags || []).forEach((a: any) => { agMap[a.id] = a.data_hora; });
 
-          const agMatch = agendamento?.data_hora?.match?.(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+        const idsParaCancelar: number[] = [];
+        for (const msg of msgsConfLemb) {
+          const dataHora = agMap[msg.agendamento_id];
+          const agMatch = dataHora?.match?.(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
           const agPassou = agMatch ? new Date(Date.UTC(
             parseInt(agMatch[1]), parseInt(agMatch[2]) - 1, parseInt(agMatch[3]),
             parseInt(agMatch[4]) + 3, parseInt(agMatch[5])
           )).getTime() < Date.now() : false;
-
-          if (agendamento && agPassou) {
-            await supabase
-              .from('mensagens_whatsapp')
-              .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })
-              .eq('id', msg.id);
-          }
+          if (dataHora && agPassou) idsParaCancelar.push(msg.id);
+        }
+        // Um único UPDATE batcheado
+        if (idsParaCancelar.length > 0) {
+          await supabase
+            .from('mensagens_whatsapp')
+            .update({ status: 'erro', erro_mensagem: 'Cancelado: agendamento já passou' })
+            .in('id', idsParaCancelar);
         }
       }
       // As mensagens válidas ficam 'pendente' e o worker da VPS envia com throttle.
@@ -203,14 +207,13 @@ export async function GET(request: Request) {
 
     resultado.retry.encontrados = comErro?.length || 0;
 
-    if (comErro) {
-      for (const msg of comErro) {
-        await supabase
-          .from('mensagens_whatsapp')
-          .update({ status: 'pendente' })
-          .eq('id', msg.id);
-        resultado.retry.enviados++;
-      }
+    if (comErro && comErro.length > 0) {
+      // Um único UPDATE batcheado (antes era 1 por mensagem)
+      await supabase
+        .from('mensagens_whatsapp')
+        .update({ status: 'pendente' })
+        .in('id', comErro.map((m: any) => m.id));
+      resultado.retry.enviados = comErro.length;
     }
   } catch (error) {
     console.error('[Cron/WhatsApp] Erro no passo C (reset retry):', error);
