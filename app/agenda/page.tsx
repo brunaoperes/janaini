@@ -689,7 +689,7 @@ export default function AgendaPage() {
       }
       horaInicio = horaInicio.substring(0, 5);
       const [hInicio, mInicio] = horaInicio.split(':').map(Number);
-      const minutosFim = hInicio * 60 + mInicio + duracaoSnap;
+      const minutosFim = Math.min(hInicio * 60 + mInicio + duracaoSnap, 23 * 60 + 59); // não estoura a meia-noite
       const horaFim = `${Math.floor(minutosFim / 60).toString().padStart(2, '0')}:${(minutosFim % 60).toString().padStart(2, '0')}`;
 
       // Salvar no banco - agendamento (duração E hora_fim consistentes)

@@ -157,6 +157,7 @@ export async function GET(request: Request) {
           .select('*', { count: 'exact', head: true })
           .gte('data_hora', `${hojeStr}T00:00:00`)
           .lte('data_hora', `${hojeStr}T23:59:59`)
+          .neq('status', 'cancelado')
       ),
 
       // 7. Top colaboradoras

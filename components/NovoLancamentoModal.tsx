@@ -127,8 +127,9 @@ export default function NovoLancamentoModal({
       const cliente = clientes.find(c => c.id === lancFresh.cliente_id);
       const colaborador = colaboradores.find(c => c.id === lancFresh.colaborador_id);
 
-      const dataMatch = lancFresh.data.match(/(\d{4}-\d{2}-\d{2})/);
-      const dataStr = dataMatch ? dataMatch[1] : lancFresh.data.split('T')[0];
+      const dataRaw = String(lancFresh.data || '');
+      const dataMatch = dataRaw.match(/(\d{4}-\d{2}-\d{2})/);
+      const dataStr = dataMatch ? dataMatch[1] : (dataRaw.split('T')[0] || format(new Date(), 'yyyy-MM-dd'));
       const horaInicio = lancFresh.hora_inicio ? lancFresh.hora_inicio.substring(0, 5) : '09:00';
       const horaFim = lancFresh.hora_fim ? lancFresh.hora_fim.substring(0, 5) : '10:00';
 
@@ -141,13 +142,13 @@ export default function NovoLancamentoModal({
       }
 
       setFormData({
-        colaborador_id: lancFresh.colaborador_id.toString(),
-        cliente_id: lancFresh.cliente_id.toString(),
+        colaborador_id: lancFresh.colaborador_id != null ? String(lancFresh.colaborador_id) : '',
+        cliente_id: lancFresh.cliente_id != null ? String(lancFresh.cliente_id) : '',
         data: dataStr,
         hora_inicio: horaInicio,
         hora_fim: horaFim,
         servicos_ids: servicosIds,
-        valor_total: lancFresh.valor_total.toFixed(2),
+        valor_total: (lancFresh.valor_total ?? 0).toFixed(2),
         observacoes: lancFresh.observacoes || '',
         forma_pagamento: lancFresh.forma_pagamento || '',
         is_fiado: lancFresh.is_fiado || false,
