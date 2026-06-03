@@ -733,7 +733,7 @@ export default function PacotesAdminPage() {
         ) : (
           <div className="space-y-4">
             {pacotes.map(pacote => {
-              const progresso = (pacote.quantidade_usada / pacote.quantidade_total) * 100;
+              const progresso = pacote.quantidade_total > 0 ? (pacote.quantidade_usada / pacote.quantidade_total) * 100 : 0;
               const sessoesRestantes = pacote.quantidade_total - pacote.quantidade_usada;
 
               return (
@@ -1600,11 +1600,11 @@ export default function PacotesAdminPage() {
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-sm text-gray-500">Valor Total</p>
-                  <p className="font-semibold text-purple-600">R$ {pacoteSelecionado.valor_total.toFixed(2)}</p>
+                  <p className="font-semibold text-purple-600">R$ {(pacoteSelecionado.valor_total ?? 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-sm text-gray-500">Valor por Sessão</p>
-                  <p className="font-semibold">R$ {pacoteSelecionado.valor_por_sessao.toFixed(2)}</p>
+                  <p className="font-semibold">R$ {(pacoteSelecionado.valor_por_sessao ?? 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-sm text-gray-500">Sessões</p>
