@@ -104,21 +104,24 @@ export async function POST(request: Request) {
 
       const taxaPagamento = lancamentoOriginal?.taxa_pagamento || 0;
 
-      // Calcular comissão proporcional a ser estornada (with same tax logic as original)
+      // Estorno proporcional, espelhando a lógica de comissão de uma venda normal:
+      //   comissaoBruta = valor * %; valorTaxa (proporcional) = taxa_orig * valor/valor_pacote;
+      //   comissaoColab = bruta - taxa; comissaoSalao = valor - comissaoColab (colab+salao = valor).
+      // Valores gravados NEGATIVOS (é dinheiro saindo) → reduzem faturamento/comissão nas somas.
       const porcentagem = pacote.colaborador_vendedor?.porcentagem_comissao || 50;
       const comissaoBruta = (data.valor_reembolso * porcentagem) / 100;
-      const descontoTaxa = taxaPagamento > 0 ? (comissaoBruta * taxaPagamento / data.valor_reembolso) : 0;
-      const comissaoEstorno = comissaoBruta - descontoTaxa;
-      const taxaEstorno = taxaPagamento > 0 ? (taxaPagamento * data.valor_reembolso / pacote.valor_total) : 0;
-      const salaoEstorno = data.valor_reembolso - comissaoEstorno - taxaEstorno;
+      const taxaEstorno = (taxaPagamento > 0 && pacote.valor_total > 0)
+        ? (taxaPagamento * data.valor_reembolso / pacote.valor_total) : 0;
+      const comissaoEstorno = comissaoBruta - taxaEstorno;
+      const salaoEstorno = data.valor_reembolso - comissaoEstorno;
 
       const lancamentoData = {
         colaborador_id: pacote.colaborador_vendedor_id,
         cliente_id: pacote.cliente_id,
-        valor_total: data.valor_reembolso, // Positive value, tipo_lancamento indicates refund
-        comissao_colaborador: comissaoEstorno,
-        comissao_salao: salaoEstorno,
-        taxa_pagamento: taxaEstorno,
+        valor_total: -data.valor_reembolso, // NEGATIVO — reembolso reduz o faturamento
+        comissao_colaborador: -comissaoEstorno,
+        comissao_salao: -salaoEstorno,
+        taxa_pagamento: -taxaEstorno,
         data: new Date().toISOString().split('T')[0],
         servicos_nomes: `Reembolso Pacote: ${pacote.nome} (${sessoesRestantes} sessões)`,
         status: 'concluido',

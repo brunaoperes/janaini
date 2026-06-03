@@ -253,7 +253,9 @@ export default function NovoLancamentoModal({
         if (divisoes.length < 2) { setFormErrors('Serviço compartilhado precisa de pelo menos 2 colaboradores'); setIsSubmitting(false); return; }
         const valorTotal = parseFloat(formData.valor_total) || 0;
         const somaDivisoes = divisoes.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0);
-        if (somaDivisoes > valorTotal) { setFormErrors(`Soma das divisões (R$ ${somaDivisoes.toFixed(2)}) excede o valor total (R$ ${valorTotal.toFixed(2)})`); setIsSubmitting(false); return; }
+        // Soma das divisões precisa BATER com o total (antes só barrava se passasse; se sobrasse,
+        // a comissão saía a menos e o valor "sumia"). Tolerância de 1 centavo.
+        if (Math.abs(somaDivisoes - valorTotal) > 0.01) { setFormErrors(`Soma das divisões (R$ ${somaDivisoes.toFixed(2)}) precisa ser igual ao valor total (R$ ${valorTotal.toFixed(2)})`); setIsSubmitting(false); return; }
         if (divisoes.some(d => parseFloat(d.valor) < 0)) { setFormErrors('Valores não podem ser negativos'); setIsSubmitting(false); return; }
         if (divisoes.some((d, i) => divisoes.findIndex(x => x.colaborador_id === d.colaborador_id) !== i)) { setFormErrors('Não pode repetir colaborador na divisão'); setIsSubmitting(false); return; }
       }

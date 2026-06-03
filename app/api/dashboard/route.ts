@@ -44,11 +44,14 @@ export async function GET(request: Request) {
       colaboradorIdFiltro = colaboradorIdParam || null;
     }
 
-    const hoje = new Date();
-    const hojeStr = formatDate(hoje);
+    // "Hoje"/"agora" em horário de Brasília — o servidor (Vercel) roda em UTC; sem isso,
+    // entre 21h e 00h BRT o "hoje" pula pro dia seguinte e os totais divergem dos Lançamentos.
+    const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const [hjY, hjM, hjD] = hojeStr.split('-').map(Number);
+    const hoje = new Date(hjY, hjM - 1, hjD);
 
-    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-    const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+    const inicioMes = new Date(hjY, hjM - 1, 1);
+    const fimMes = new Date(hjY, hjM, 0);
     const inicioMesStr = formatDate(inicioMes);
     const fimMesStr = formatDate(fimMes);
 
@@ -58,28 +61,22 @@ export async function GET(request: Request) {
       chartDataInicio = dataInicio;
       chartDataFim = dataFim;
     } else {
-      const inicioGrafico = new Date();
-      inicioGrafico.setDate(inicioGrafico.getDate() - dias);
-      chartDataInicio = formatDate(inicioGrafico);
+      chartDataInicio = formatDate(new Date(hjY, hjM - 1, hjD - dias));
       chartDataFim = hojeStr;
     }
 
     const diasPeriodo = Math.ceil((new Date(chartDataFim).getTime() - new Date(chartDataInicio).getTime()) / (1000 * 60 * 60 * 24));
 
-    const agoraStr = hoje.toTimeString().slice(0, 8);
+    const agoraStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour12: false });
 
-    const amanha = new Date();
-    amanha.setDate(amanha.getDate() + 1);
+    const amanha = new Date(hjY, hjM - 1, hjD + 1);
     const amanhaStr = formatDate(amanha);
 
-    const fimProjecao = new Date();
-    fimProjecao.setDate(fimProjecao.getDate() + 30);
+    const fimProjecao = new Date(hjY, hjM - 1, hjD + 30);
     const fimProjecaoStr = formatDate(fimProjecao);
 
-    const inicioProjecaoPeriodo = new Date();
-    inicioProjecaoPeriodo.setDate(inicioProjecaoPeriodo.getDate() + 1);
-    const fimProjecaoPeriodo = new Date();
-    fimProjecaoPeriodo.setDate(fimProjecaoPeriodo.getDate() + diasPeriodo);
+    const inicioProjecaoPeriodo = new Date(hjY, hjM - 1, hjD + 1);
+    const fimProjecaoPeriodo = new Date(hjY, hjM - 1, hjD + diasPeriodo);
 
     // Helper para aplicar filtro por colaborador
     const applyColabFilter = (q: any): any =>
