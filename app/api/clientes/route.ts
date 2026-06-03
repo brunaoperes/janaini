@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -66,6 +67,9 @@ function normalizarNome(nome: string): string {
 // Buscar clientes (com pesquisa opcional)
 export async function GET(request: Request) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
 
@@ -95,6 +99,9 @@ export async function GET(request: Request) {
 // Criar novo cliente
 export async function POST(request: Request) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
     const { nome, telefone, aniversario } = body;
 

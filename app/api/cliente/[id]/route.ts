@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -18,6 +19,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const { id } = await params;
     const clienteId = parseInt(id, 10);
 

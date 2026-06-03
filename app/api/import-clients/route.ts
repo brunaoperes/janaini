@@ -10,6 +10,15 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 
 export async function POST(request: Request) {
   try {
+    // Bloqueio em produção: import em lote a partir de arquivo é operação de setup,
+    // não deve ser disparável em prod (mesmo por admin).
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        { error: 'Importação em lote desabilitada em produção.' },
+        { status: 403 }
+      );
+    }
+
     // Verificar autenticação admin
     const authResult = await requireAdmin();
     if (isAuthError(authResult)) return authResult;
