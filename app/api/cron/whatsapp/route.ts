@@ -168,7 +168,7 @@ export async function GET(request: Request) {
             clienteId: cliente.id,
             clienteNome: cliente.nome,
             clienteTelefone: cliente.telefone,
-            colaboradorNome: colaborador.nome,
+            colaboradorNome: colaborador?.nome || 'nossa equipe', // não quebra se o colaborador foi removido/nulo
             dataHora: agendamento.data_hora,
             dataProgramada: new Date(),
           });

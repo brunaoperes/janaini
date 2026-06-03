@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auditCreate, auditDelete } from '@/lib/audit';
 import { pacoteUsoSchema, formatZodErrors } from '@/lib/validations';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -90,6 +91,9 @@ export async function GET(request: Request) {
 // POST - Registrar uso de sessão
 export async function POST(request: Request) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const body = await request.json();
 
     const validation = pacoteUsoSchema.safeParse(body);
@@ -242,6 +246,9 @@ export async function POST(request: Request) {
 // DELETE - Remover uso de sessão
 export async function DELETE(request: Request) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult;
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });

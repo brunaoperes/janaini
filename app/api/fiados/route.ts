@@ -229,7 +229,10 @@ export async function POST(request: Request) {
     const comissaoBruta = (valorPago * porcentagemComissao) / 100;
     const descontoTaxa = (comissaoBruta * taxaPercentual) / 100;
     const comissaoLiquida = comissaoBruta - descontoTaxa;
-    const comissaoSalao = valorPago - comissaoLiquida;
+    // Consistente com lib/pagamento-utils: salão = valor - comissão BRUTA (a taxa é custo
+    // do processador, não receita do salão). Antes era `- comissaoLiquida`, somando a taxa
+    // de volta ao salão e contando-a 2× (taxa_pagamento já é gravada à parte).
+    const comissaoSalao = valorPago - comissaoBruta;
 
     // Criar registro de pagamento
     const { data: pagamento, error: pagError } = await supabase

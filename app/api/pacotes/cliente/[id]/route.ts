@@ -103,7 +103,7 @@ export async function GET(
       validade_formatada: p.data_validade
         ? new Date(p.data_validade).toLocaleDateString('pt-BR')
         : 'Sem validade',
-      progresso_percentual: Math.round((p.quantidade_usada / p.quantidade_total) * 100),
+      progresso_percentual: p.quantidade_total > 0 ? Math.round((p.quantidade_usada / p.quantidade_total) * 100) : 0,
     }));
 
     return NextResponse.json({
