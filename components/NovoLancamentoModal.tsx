@@ -286,6 +286,17 @@ export default function NovoLancamentoModal({
         formaPagamentoPrincipal = calc.formaPrincipal;
       }
 
+      // Compartilhado: comissão do lançamento = soma das comissões das divisões (cada
+      // colaborador pela sua %), pra os totais de dashboard/relatórios baterem com /api/comissoes.
+      if (compartilhado && divisoes.length > 0 && !formData.is_troca_gratis) {
+        const valorTotalNum = parseFloat(formData.valor_total) || 0;
+        comissaoColaborador = divisoes.reduce((acc, d) => {
+          const colab = colaboradores.find(c => c.id === d.colaborador_id);
+          return acc + (parseFloat(d.valor) || 0) * ((colab?.porcentagem_comissao || 50) / 100);
+        }, 0);
+        comissaoSalao = valorTotalNum - comissaoColaborador;
+      }
+
       const validationData = {
         colaborador_id: Number(formData.colaborador_id),
         cliente_id: Number(formData.cliente_id),

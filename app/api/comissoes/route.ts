@@ -354,9 +354,13 @@ export async function GET(request: Request) {
       const formaPagamento = pag.forma_pagamento || 'dinheiro';
       const taxaAplicada = taxasPorForma[formaPagamento] || 0;
 
-      // A comissão do fiado já foi calculada com taxa no momento do pagamento
-      // Então usamos diretamente o valor gravado (comissao_colaborador já é líquido)
-      const comissaoBruta = pag.comissao_colaborador || 0;
+      // pag.comissao_colaborador é LÍQUIDO (taxa já descontada no pagamento do fiado).
+      // Reconstruir o BRUTO p/ as colunas bruto/desconto baterem com lançamentos normais:
+      //   liquido = bruto * (1 - taxa%/100)  →  bruto = liquido / (1 - taxa%/100)
+      const comissaoLiquida = pag.comissao_colaborador || 0;
+      const comissaoBruta = taxaAplicada > 0 && taxaAplicada < 100
+        ? comissaoLiquida / (1 - taxaAplicada / 100)
+        : comissaoLiquida;
 
       adicionarComissao(
         lanc.colaborador_id,
@@ -368,7 +372,7 @@ export async function GET(request: Request) {
         pag.valor_pago,
         comissaoBruta,
         formaPagamento,
-        0, // Taxa já está incluída no cálculo de comissão do fiado
+        taxaAplicada, // taxa real → desconto correto; líquido final permanece o mesmo
         false
       );
     });
