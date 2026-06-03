@@ -52,27 +52,26 @@ export async function POST(request: Request) {
 
     // CASO 1: Usuário trocando a própria senha
     if (!userId || userId === currentUser.id) {
-      // Usuário comum precisa informar senha atual
-      if (!isAdmin && !senhaAtual) {
+      // Step-up: TODOS (inclusive admin) devem informar a senha atual ao trocar a
+      // própria senha — evita que uma sessão sequestrada consolide o acesso.
+      if (!senhaAtual) {
         return NextResponse.json(
           { error: 'Informe sua senha atual para confirmar a alteração' },
           { status: 400 }
         );
       }
 
-      // Verificar senha atual (para usuários comuns)
-      if (!isAdmin && senhaAtual) {
-        const { error: signInError } = await supabaseAuth.auth.signInWithPassword({
-          email: currentUser.email!,
-          password: senhaAtual,
-        });
+      // Verificar senha atual
+      const { error: signInError } = await supabaseAuth.auth.signInWithPassword({
+        email: currentUser.email!,
+        password: senhaAtual,
+      });
 
-        if (signInError) {
-          return NextResponse.json(
-            { error: 'Senha atual incorreta' },
-            { status: 400 }
-          );
-        }
+      if (signInError) {
+        return NextResponse.json(
+          { error: 'Senha atual incorreta' },
+          { status: 400 }
+        );
       }
 
       // Atualizar senha do próprio usuário

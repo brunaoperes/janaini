@@ -144,31 +144,8 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm">Studio de Beleza</p>
         </div>
 
-        {/* Toggle Login/Cadastro */}
-        <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
-          <button
-            type="button"
-            onClick={() => setIsLogin(true)}
-            className={`flex-1 py-3 md:py-2 rounded-md text-sm font-medium transition-all ${
-              isLogin
-                ? 'bg-white text-purple-600 shadow'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsLogin(false)}
-            className={`flex-1 py-3 md:py-2 rounded-md text-sm font-medium transition-all ${
-              !isLogin
-                ? 'bg-white text-purple-600 shadow'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Criar Conta
-          </button>
-        </div>
+        {/* Cadastro público desativado: contas são criadas só pelo admin (#11).
+            isLogin permanece sempre true. */}
 
         {/* Formulário */}
         <form onSubmit={handleSubmit} className="space-y-4">

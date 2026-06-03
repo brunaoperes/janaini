@@ -111,6 +111,30 @@ export async function GET(request: Request) {
   }
 }
 
+// Sanitiza o payload do CRUD genérico: remove campos que o cliente não pode definir
+// (id/timestamps) e rejeita valores numéricos negativos. NÃO descarta outros campos
+// (ex.: servicos.colaboradores_ids), só protege contra payload malicioso.
+const CAMPOS_NUMERICOS_NAO_NEGATIVOS = [
+  'valor', 'valor_total', 'valor_por_sessao', 'valor_mensal', 'porcentagem_comissao',
+  'taxa_percentual', 'duracao_minutos', 'quantidade_total', 'quantidade_usada',
+  'comissao_colaborador', 'comissao_salao', 'sessoes_por_mes', 'duracao_meses',
+];
+function sanitizarDadosAdmin(dados: any): { ok: boolean; error?: string; dados?: any } {
+  if (typeof dados !== 'object' || dados === null || Array.isArray(dados)) {
+    return { ok: false, error: 'Dados inválidos' };
+  }
+  const limpo: any = { ...dados };
+  delete limpo.id;
+  delete limpo.created_at;
+  delete limpo.updated_at;
+  for (const campo of CAMPOS_NUMERICOS_NAO_NEGATIVOS) {
+    if (typeof limpo[campo] === 'number' && limpo[campo] < 0) {
+      return { ok: false, error: `Campo "${campo}" não pode ser negativo` };
+    }
+  }
+  return { ok: true, dados: limpo };
+}
+
 export async function POST(request: Request) {
   try {
     // Verificar autenticação admin
@@ -129,9 +153,12 @@ export async function POST(request: Request) {
       return errorResponse('Tabela não permitida', 403);
     }
 
+    const san = sanitizarDadosAdmin(dados);
+    if (!san.ok) return errorResponse(san.error!, 400);
+
     const { data, error } = await supabase
       .from(tabela)
-      .insert(dados)
+      .insert(san.dados)
       .select()
       .single();
 
@@ -179,6 +206,9 @@ export async function PUT(request: Request) {
       return errorResponse('Tabela não permitida', 403);
     }
 
+    const san = sanitizarDadosAdmin(dados);
+    if (!san.ok) return errorResponse(san.error!, 400);
+
     // Buscar dados anteriores para auditoria
     const { data: dadosAnterior } = await supabase
       .from(tabela)
@@ -188,7 +218,7 @@ export async function PUT(request: Request) {
 
     const { data, error } = await supabase
       .from(tabela)
-      .update(dados)
+      .update(san.dados)
       .eq('id', id)
       .select()
       .single();
