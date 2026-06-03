@@ -78,11 +78,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verificar se algum lançamento já foi pago
+    // Verificar se algum lançamento já foi pago — em QUALQUER colaborador (#11),
+    // não só no mesmo (evita pagar 2x o mesmo lançamento por colaboradores diferentes).
     const { data: pagamentosExistentes } = await supabase
       .from('pagamentos_comissao')
-      .select('lancamentos_ids')
-      .eq('colaborador_id', colaborador_id);
+      .select('lancamentos_ids');
 
     const lancamentosJaPagos = new Set<number>();
     (pagamentosExistentes || []).forEach((p: any) => {
@@ -97,16 +97,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // Registrar pagamento
+    // #1 — RECOMPUTAR o valor no servidor a partir dos lançamentos reais (não confiar no
+    // valor_liquido vindo do cliente). Líquido = comissão do colaborador nesses lançamentos:
+    // comissao_colaborador (não compartilhado) OU a divisão dele (compartilhado).
+    const { data: lancsPagar } = await supabase
+      .from('lancamentos')
+      .select('id, colaborador_id, comissao_colaborador, compartilhado')
+      .in('id', lancamentos_ids);
+
+    const sharedIds = (lancsPagar || []).filter((l: any) => l.compartilhado).map((l: any) => l.id);
+    const divMap: Record<number, number> = {};
+    if (sharedIds.length > 0) {
+      const { data: divs } = await supabase
+        .from('lancamento_divisoes')
+        .select('lancamento_id, comissao_calculada')
+        .in('lancamento_id', sharedIds)
+        .eq('colaborador_id', colaborador_id);
+      (divs || []).forEach((d: any) => {
+        divMap[d.lancamento_id] = (divMap[d.lancamento_id] || 0) + (d.comissao_calculada || 0);
+      });
+    }
+
+    let valorLiquidoServidor = 0;
+    for (const l of (lancsPagar || []) as any[]) {
+      if (l.compartilhado) valorLiquidoServidor += divMap[l.id] || 0;
+      else if (Number(l.colaborador_id) === Number(colaborador_id)) valorLiquidoServidor += (l.comissao_colaborador || 0);
+    }
+    valorLiquidoServidor = Math.round(valorLiquidoServidor * 100) / 100;
+
+    const valorBrutoFinal = typeof valor_bruto === 'number' ? valor_bruto : valorLiquidoServidor;
+    const totalDescontosFinal = Math.round((valorBrutoFinal - valorLiquidoServidor) * 100) / 100;
+
+    // Registrar pagamento (valores do SERVIDOR, não do cliente)
     const { data: pagamento, error: insertError } = await supabase
       .from('pagamentos_comissao')
       .insert({
         colaborador_id,
         periodo_inicio,
         periodo_fim,
-        valor_bruto,
-        total_descontos,
-        valor_liquido,
+        valor_bruto: valorBrutoFinal,
+        total_descontos: totalDescontosFinal >= 0 ? totalDescontosFinal : 0,
+        valor_liquido: valorLiquidoServidor,
         forma_pagamento_comissao: forma_pagamento_comissao || 'pix',
         observacoes,
         pago_por: userId,

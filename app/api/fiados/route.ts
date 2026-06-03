@@ -208,6 +208,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Este lançamento não é um fiado' }, { status: 400 });
     }
 
+    // #10 — valor pago precisa ser número positivo e não pode exceder o valor devido
+    const valorPagoNum = Number(valorPago);
+    if (!Number.isFinite(valorPagoNum) || valorPagoNum <= 0) {
+      return NextResponse.json({ error: 'Valor pago inválido.' }, { status: 400 });
+    }
+    if (valorPagoNum > (lancamento.valor_total || 0) + 0.01) {
+      return NextResponse.json({
+        error: `Valor pago (R$ ${valorPagoNum.toFixed(2)}) maior que o valor devido (R$ ${(lancamento.valor_total || 0).toFixed(2)}).`
+      }, { status: 400 });
+    }
+
     if (lancamento.status === 'concluido') {
       return NextResponse.json({ error: 'Este fiado já foi pago' }, { status: 400 });
     }

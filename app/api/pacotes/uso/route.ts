@@ -209,12 +209,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: usoError.message }, { status: 500 });
     }
 
-    // Buscar pacote atualizado
+    // Buscar pacote atualizado (o trigger já incrementou quantidade_usada)
     const { data: pacoteAtualizado } = await supabase
       .from('pacotes')
       .select('quantidade_usada, quantidade_total, status')
       .eq('id', data.pacote_id)
       .single();
+
+    // Guarda anti double-spend (#2): se ESTE uso fez o saldo ultrapassar o total
+    // (corrida / duplo-clique que passou no check inicial), desfaz o próprio uso.
+    if (pacoteAtualizado && pacoteAtualizado.quantidade_usada > pacoteAtualizado.quantidade_total) {
+      await supabase.from('pacote_usos').delete().eq('id', uso.id);
+      return NextResponse.json({
+        error: 'Todas as sessões deste pacote já foram utilizadas (saldo esgotado).'
+      }, { status: 400 });
+    }
 
     // Auditoria
     if (authUser) {
