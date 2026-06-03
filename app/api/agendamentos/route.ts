@@ -117,18 +117,25 @@ export async function POST(request: Request) {
         .neq('status', 'cancelado'),
     ]);
 
+    // NÃO bloqueia: cabeleireiro atende 2 clientes durante o tempo de química/processamento.
+    // Apenas avisa que o profissional já tem algo no horário.
+    let avisoColaborador: string | undefined;
     for (const ag of (agColab || []) as any[]) {
       if (existingLancamentoId && ag.lancamento_id === existingLancamentoId) continue;
       if (sobrepoe(intervalo(ag.hora_inicio, ag.hora_fim, ag.duracao_minutos, ag.data_hora))) {
         const nome = ag.clientes?.nome || 'outro cliente';
-        return NextResponse.json({ error: `Conflito de horário: este colaborador já tem agendamento às ${ag.hora_inicio || ''} com ${nome}` }, { status: 409 });
+        avisoColaborador = `Atenção: este profissional já tem horário às ${ag.hora_inicio || ''} com ${nome}.`;
+        break;
       }
     }
-    for (const lc of (lcColab || []) as any[]) {
-      if (existingLancamentoId && lc.id === existingLancamentoId) continue;
-      if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
-        const nome = lc.clientes?.nome || 'outro cliente';
-        return NextResponse.json({ error: `Conflito de horário: este colaborador já tem lançamento às ${lc.hora_inicio} com ${nome}` }, { status: 409 });
+    if (!avisoColaborador) {
+      for (const lc of (lcColab || []) as any[]) {
+        if (existingLancamentoId && lc.id === existingLancamentoId) continue;
+        if (sobrepoe(intervalo(lc.hora_inicio, lc.hora_fim, null, null))) {
+          const nome = lc.clientes?.nome || 'outro cliente';
+          avisoColaborador = `Atenção: este profissional já tem horário às ${lc.hora_inicio} com ${nome}.`;
+          break;
+        }
       }
     }
 
@@ -170,8 +177,10 @@ export async function POST(request: Request) {
     // Modo "só verificar": chegou aqui sem conflito (os checks acima retornam 409 se houver).
     // Usado pela tela de Lançamentos para validar o horário ANTES de criar o lançamento,
     // evitando lançamento órfão (salvo sem agendamento) quando há conflito.
+    const avisoFinal = [avisoColaborador, avisoCliente].filter(Boolean).join(' ') || undefined;
+
     if (apenasVerificar) {
-      return NextResponse.json({ ok: true, aviso: avisoCliente });
+      return NextResponse.json({ ok: true, aviso: avisoFinal });
     }
 
     // Se veio lancamento_id, reaproveita; senão cria um lançamento pendente
@@ -348,7 +357,7 @@ export async function POST(request: Request) {
       success: true,
       agendamento,
       lancamento_id: lancamentoIdParaVincular,
-      aviso: avisoCliente,
+      aviso: avisoFinal,
     });
 
   } catch (error: any) {
