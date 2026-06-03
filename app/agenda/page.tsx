@@ -1103,6 +1103,16 @@ export default function AgendaPage() {
         formaPagamentoFinal = calc.formaPrincipal;
       }
 
+      // Compartilhado: comissão do lançamento = soma das comissões das divisões
+      // (cada colaborador pela sua %), pra bater com /api/comissoes e os totais.
+      if (compartilhadoFinal && !finalizarData.is_troca_gratis) {
+        comissaoColaborador = divisoesFinal.reduce((acc, d) => {
+          const colab = colaboradores.find(c => c.id === d.colaborador_id);
+          return acc + (parseFloat(d.valor) || 0) * ((colab?.porcentagem_comissao || 50) / 100);
+        }, 0);
+        comissaoSalao = valorPago - comissaoColaborador;
+      }
+
       // Se o agendamento já tem lançamento vinculado, atualizar
       if (lancamentoId) {
         const { error: lancError } = await supabase
