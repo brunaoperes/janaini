@@ -131,7 +131,7 @@ export default function LancamentosPage() {
         // Lançamentos do dia atual (qualquer status)
         filtered = filtered.filter(l => {
           const dataLanc = parseAsLocalTime(l.data);
-          return dataLanc >= hoje && dataLanc <= fimHoje;
+          return dataLanc >= hoje && dataLanc <= fimHoje && l.status !== 'cancelado';
         });
         break;
 
@@ -152,7 +152,7 @@ export default function LancamentosPage() {
         // Lançamentos com data > hoje (agendamentos futuros)
         filtered = filtered.filter(l => {
           const dataLanc = parseAsLocalTime(l.data);
-          return dataLanc > fimHoje;
+          return dataLanc > fimHoje && l.status !== 'cancelado';
         });
         break;
     }
