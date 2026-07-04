@@ -38,10 +38,13 @@ export async function GET(request: Request) {
 
   // STATS (contadores para o dashboard)
   if (secao === 'stats') {
+    // erros: só os últimos 7 dias — o banner de alerta deve indicar problema ATUAL,
+    // não o histórico acumulado (rastro de quedas antigas ficava alarmando pra sempre)
+    const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const [enviados, pendentes, erros, totalGeral] = await Promise.all([
       supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'enviado'),
       supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
-      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'erro'),
+      supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }).eq('status', 'erro').gte('created_at', seteDiasAtras),
       supabase.from('mensagens_whatsapp').select('id', { count: 'exact', head: true }),
     ]);
 
