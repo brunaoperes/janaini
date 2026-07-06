@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   VIEW_APPOINTMENTS: 'view_appointments',
   VIEW_SERVICES: 'view_services',
   EDIT_SERVICE_VALUES: 'edit_service_values',
+  MANAGE_OWN_SERVICES: 'manage_own_services', // criar/editar/excluir os PRÓPRIOS serviços
   VIEW_OWN_COMMISSION: 'view_own_commission',
   VIEW_CLIENTS: 'view_clients',
   CREATE_CLIENTS: 'create_clients',
@@ -38,6 +39,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     PERMISSIONS.VIEW_APPOINTMENTS,
     PERMISSIONS.VIEW_SERVICES,
     PERMISSIONS.EDIT_SERVICE_VALUES,
+    PERMISSIONS.MANAGE_OWN_SERVICES,
     PERMISSIONS.VIEW_OWN_COMMISSION,
     PERMISSIONS.VIEW_CLIENTS,
     PERMISSIONS.CREATE_CLIENTS,

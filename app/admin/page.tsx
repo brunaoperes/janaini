@@ -268,6 +268,32 @@ export default function AdminPage() {
           />
 
           <AdminCard
+            href="/admin/financeiro"
+            title="Financeiro"
+            description="Contas a pagar, contas fixas e DRE"
+            icon={
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            }
+            gradient="from-rose-400 to-pink-600"
+            delay={255}
+          />
+
+          <AdminCard
+            href="/admin/estoque"
+            title="Estoque"
+            description="Produtos e alerta de reposição"
+            icon={
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            }
+            gradient="from-cyan-400 to-blue-600"
+            delay={258}
+          />
+
+          <AdminCard
             href="/admin/pagamentos"
             title="Formas de Pagamento"
             description="Gerenciar taxas de cartão"

@@ -3,16 +3,22 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import UserMenu from './UserMenu';
+import { useAuth } from '@/contexts/AuthContext';
 
-const navItems = [
+const navItems: { href: string; label: string; icon: string; soAdmin?: boolean; soColaboradora?: boolean }[] = [
   { href: '/', label: 'Dashboard', icon: '📊' },
   { href: '/agenda', label: 'Agenda', icon: '📅' },
   { href: '/lancamentos', label: 'Lançamentos', icon: '💰' },
-  { href: '/admin', label: 'Admin', icon: '⚙️' },
+  { href: '/meus-servicos', label: 'Meus Serviços', icon: '✂️', soColaboradora: true },
+  { href: '/admin', label: 'Admin', icon: '⚙️', soAdmin: true },
 ];
 
 export default function Header() {
   const pathname = usePathname();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const isColaboradora = profile?.role === 'user' && !!profile?.colaborador_id;
+  const items = navItems.filter((i) => (!i.soAdmin || isAdmin) && (!i.soColaboradora || isColaboradora));
 
   return (
     <header className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-700 shadow-lg sticky top-0 z-50">
@@ -30,7 +36,7 @@ export default function Header() {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
+            {items.map((item) => {
               const isActive = pathname === item.href ||
                 (item.href !== '/' && pathname.startsWith(item.href));
 
@@ -57,7 +63,7 @@ export default function Header() {
 
         {/* Mobile Navigation */}
         <nav className="md:hidden flex items-center justify-around py-2 border-t border-white/20">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const isActive = pathname === item.href ||
               (item.href !== '/' && pathname.startsWith(item.href));
 

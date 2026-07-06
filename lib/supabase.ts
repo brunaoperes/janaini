@@ -33,6 +33,7 @@ export type Servico = {
   descricao?: string;
   ativo: boolean;
   colaboradores_ids?: number[];
+  dono_colaborador_id?: number | null; // null = serviço global do salão; preenchido = criado pela colaboradora dona
   created_at?: string;
 };
 
