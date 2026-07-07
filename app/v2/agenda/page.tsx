@@ -289,10 +289,15 @@ export default function AgendaV2() {
                 {/* régua de horas */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--nb-rule)', position: 'sticky', top: 0, background: 'var(--nb-surface)', zIndex: 3 }}>
                   <div style={{ ...NOMECOL, borderRight: '1px solid var(--nb-rule)', display: 'flex', alignItems: 'center' }}><span className="nb-eyebrow" style={{ fontSize: 10 }}>Profissionais</span></div>
-                  <div style={{ flex: 1, display: 'flex' }}>
-                    {HORAS.map((h) => (
-                      <div key={h} style={{ flex: 1, padding: '10px 0 8px', fontSize: 11, color: 'var(--nb-ink-faint)', fontFamily: 'var(--nb-mono)', borderLeft: '1px solid var(--nb-rule-soft)', textAlign: 'center' }}>{String(h).padStart(2, '0')}h</div>
-                    ))}
+                  <div style={{ flex: 1, position: 'relative', height: 30 }}>
+                    {HORAS.map((h) => {
+                      // MESMA fórmula dos blocos (posBarra) → régua alinhada com os agendamentos
+                      const left = ((h * 60 - INICIO_MIN) / JANELA_MIN) * 100;
+                      const transform = h === INICIO_MIN / 60 ? 'none' : h === FIM_MIN / 60 ? 'translateX(-100%)' : 'translateX(-50%)';
+                      return (
+                        <span key={h} style={{ position: 'absolute', left: `${left}%`, top: 9, transform, fontSize: 11, color: 'var(--nb-ink-faint)', fontFamily: 'var(--nb-mono)', whiteSpace: 'nowrap' }}>{String(h).padStart(2, '0')}h</span>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -324,8 +329,11 @@ export default function AgendaV2() {
                           </span>
                         </div>
                         <div data-colab-row data-colab-id={c.id} onClick={(e) => abrirVago(e, c.id)} style={{ flex: 1, position: 'relative', cursor: 'copy' }} title="Clique num espaço livre para agendar">
-                          <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-                            {HORAS.map((h) => <div key={h} style={{ flex: 1, borderLeft: '1px solid var(--nb-rule-soft)' }} />)}
+                          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                            {HORAS.map((h) => {
+                              const left = ((h * 60 - INICIO_MIN) / JANELA_MIN) * 100;
+                              return <div key={h} style={{ position: 'absolute', left: `${left}%`, top: 0, bottom: 0, borderLeft: '1px solid var(--nb-rule-soft)' }} />;
+                            })}
                           </div>
                           {bs.map((b) => (
                             <TimelineBlock
