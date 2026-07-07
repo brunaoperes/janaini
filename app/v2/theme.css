@@ -119,4 +119,10 @@
   .v2-root .v2-row4{grid-template-columns:1fr!important}
 }
 
+/* ---- agenda: timeline no desktop, lista no mobile ---- */
+@media(max-width:820px){
+  .v2-root .v2-agenda-desk{display:none}
+  .v2-root .v2-agenda-mob{display:flex!important}
+}
+
 @media(prefers-reduced-motion:reduce){.v2-root *{transition:none!important;animation:none!important}}
