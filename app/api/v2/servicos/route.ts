@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
-import { requireAdmin, isAuthError } from '@/lib/api-auth';
+import { requireAdmin, isAuthError } from '@/lib/v2/auth';
 import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit';
 import { derivarCategoria, CATEGORIAS, LABEL_CAT, type CategoriaId } from '@/components/v2/servicos/categoria';
 

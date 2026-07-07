@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
-import { requireAdmin, isAuthError } from '@/lib/api-auth';
+import { requireAdmin, isAuthError } from '@/lib/v2/auth';
 import { calcularFinanceiro, NOME_FORMA, LancamentoRaw, PagFiadoRaw } from '@/lib/v2/financial';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

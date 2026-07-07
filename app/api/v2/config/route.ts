@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { jsonResponse, errorResponse } from '@/lib/api-utils';
-import { requireAdmin, isAuthError } from '@/lib/api-auth';
+import { requireAdmin, isAuthError } from '@/lib/v2/auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
