@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 // "Previsto" = o que o sistema registrou por forma de pagamento no dia. "Informado" = o que o
 // operador conta na mão. A diferença aponta furo/sobra de caixa.
 const n = (v: unknown) => Number(v) || 0;
-export const FORMAS = ['dinheiro', 'pix', 'cartao_debito', 'cartao_credito', 'fiado', 'outros'] as const;
+const FORMAS = ['dinheiro', 'pix', 'cartao_debito', 'cartao_credito', 'fiado', 'outros'] as const;
 const normaliza = (f?: string | null) => {
   const s = (f || 'outros').toLowerCase();
   if (s.includes('din')) return 'dinheiro';
