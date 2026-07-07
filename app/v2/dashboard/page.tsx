@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import Button from '@/components/v2/ui/Button';
 import { Card, CardHead } from '@/components/v2/ui/Card';
@@ -18,17 +19,21 @@ type ApiResp = {
   serie: { dia: string; atual: number }[];
   porFormaPagamento: { forma: string; valor: number; taxa: number; pct: number }[];
   topColaboradoras: { nome: string; valor: number }[];
+  meta: { valor: number | null; faturamento: number };
 };
 
 export default function DashboardV2() {
   const [data, setData] = useState<ApiResp | null>(null);
   const [erro, setErro] = useState('');
 
-  useEffect(() => {
-    fetch('/api/v2/dashboard', { cache: 'no-store' })
-      .then((r) => r.json().then((j) => (r.ok ? setData(j) : setErro(j.error || 'Erro ao carregar.'))))
-      .catch(() => setErro('Erro de conexão.'));
+  const carregar = useCallback(async () => {
+    try {
+      const r = await fetch('/api/v2/dashboard', { cache: 'no-store' });
+      const j = await r.json();
+      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar.');
+    } catch { setErro('Erro de conexão.'); }
   }, []);
+  useEffect(() => { carregar(); }, [carregar]);
 
   const actions = (
     <>
@@ -57,7 +62,7 @@ export default function DashboardV2() {
       </div>
       <div className="v2-kpis" style={{ marginTop: 16 }}>
         <Kpi label="Comissão realizada" icon="HandCoins" value={brl(K?.comissaoRealizada.value ?? 0)} delta={K?.comissaoRealizada.delta ?? undefined} deltaLabel="vs mês anterior" />
-        <Kpi label="Faturamento líquido" icon="ChartColumnIncreasing" value={brl(K?.faturamentoLiquido.value ?? 0)} delta={K?.faturamentoLiquido.delta ?? undefined} deltaLabel="vs mês anterior" />
+        <Kpi label="Líquido do salão" icon="ChartColumnIncreasing" value={brl(K?.faturamentoLiquido.value ?? 0)} delta={K?.faturamentoLiquido.delta ?? undefined} deltaLabel="sem comissão e sem taxa" />
         <Kpi label="Fiados em aberto" icon="Clock" value={brl(K?.fiadosAberto.value ?? 0)} deltaLabel="a receber" tone="warn" />
         <Kpi label="Ticket médio" icon="Gauge" value={brl(K?.ticketMedio.value ?? 0)} deltaLabel="por atendimento" />
       </div>
@@ -134,11 +139,7 @@ export default function DashboardV2() {
           </div>
         </Card>
 
-        <Card>
-          <CardHead title="Meta do Mês" right={<TagExemplo />} />
-          <div style={{ display: 'grid', placeItems: 'center', padding: '6px 0 10px' }}><MetaRing pct={DEMO.meta.atingidoPct} /></div>
-          <p style={{ fontSize: 11.5, color: 'var(--nb-ink-faint)', textAlign: 'center', margin: 0 }}>Defina a meta mensal nas configurações (Fase 3).</p>
-        </Card>
+        <CardMeta meta={data?.meta} onSalvar={carregar} />
       </div>
     </PageShell>
   );
@@ -171,6 +172,62 @@ function Alerta({ tone, icon, titulo, nota, acao, exemplo }: { tone: string; ico
     </div>
   );
 }
+function Legenda({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div>
+      <div className="nb-eyebrow" style={{ fontSize: 10 }}>{label}</div>
+      <div className="nb-num" style={{ fontSize: 15, fontWeight: 640, color: 'var(--nb-ink)' }}>{valor}</div>
+    </div>
+  );
+}
+
+function CardMeta({ meta, onSalvar }: { meta?: { valor: number | null; faturamento: number }; onSalvar: () => void }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const temMeta = !!meta && meta.valor != null && meta.valor > 0;
+  const pct = temMeta ? Math.min(100, Math.round((meta!.faturamento / meta!.valor!) * 100)) : 0;
+
+  const salvar = async () => {
+    const v = parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
+    if (v <= 0) { toast.error('Informe uma meta maior que zero.'); return; }
+    setSalvando(true);
+    try {
+      const r = await fetch('/api/v2/dashboard', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta_mensal: v }) });
+      if (r.ok) { toast.success('Meta salva!'); setEditando(false); onSalvar(); } else toast.error((await r.json()).error || 'Erro.');
+    } catch { toast.error('Erro de conexão.'); } finally { setSalvando(false); }
+  };
+
+  if (!temMeta || editando) {
+    return (
+      <Card>
+        <CardHead title="Meta do Mês" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--nb-ink-soft)' }}>{editando ? 'Atualize a meta mensal de faturamento:' : 'Defina a meta mensal de faturamento do salão — é perguntado só uma vez.'}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--nb-ink-faint)', fontSize: 14 }}>R$</span>
+              <input autoFocus type="text" inputMode="numeric" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="75.000" className="nb-input nb-num" style={{ paddingLeft: 34 }} onKeyDown={(e) => { if (e.key === 'Enter') salvar(); }} />
+            </div>
+            <Button icon="Check" onClick={salvar} disabled={salvando}>{salvando ? '…' : 'Salvar'}</Button>
+          </div>
+          {editando && <button onClick={() => setEditando(false)} className="nb-btn nb-btn-quiet" style={{ alignSelf: 'flex-start', fontSize: 12.5 }}>Cancelar</button>}
+        </div>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardHead title="Meta do Mês" action={{ label: 'Editar', onClick: () => { setValor(String(meta!.valor)); setEditando(true); } }} />
+      <div style={{ display: 'grid', placeItems: 'center', padding: '6px 0 10px' }}><MetaRing pct={pct} /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingTop: 12, borderTop: '1px solid var(--nb-rule-soft)' }}>
+        <Legenda label="Faturamento atual" valor={brl(meta!.faturamento)} />
+        <Legenda label="Meta do mês" valor={brl(meta!.valor!)} />
+      </div>
+    </Card>
+  );
+}
+
 function MetaRing({ pct: p }: { pct: number }) {
   const r = 52, c = 2 * Math.PI * r, filled = (p / 100) * c;
   return (

@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   const hoje = hojeBRT();
   const anterior = mesAnterior(mes);
 
-  const [lancMes, fiadoMes, lancAnt, fiadoAnt, fiadosAbertoRes, colabRes, agHojeRes] = await Promise.all([
+  const [lancMes, fiadoMes, lancAnt, fiadoAnt, fiadosAbertoRes, colabRes, agHojeRes, metaRes] = await Promise.all([
     lancamentosDoMes(mes),
     fiadosPagosDoMes(mes),
     lancamentosDoMes(anterior),
@@ -55,10 +55,12 @@ export async function GET(request: Request) {
     supabase.from('lancamentos').select('valor_total').eq('is_fiado', true).eq('status', 'pendente'),
     supabase.from('colaboradores').select('id, nome'),
     supabase.from('agendamentos').select('id', { count: 'exact', head: true }).gte('data_hora', `${hoje}T00:00:00`).lte('data_hora', `${hoje}T23:59:59`).neq('status', 'cancelado'),
+    supabase.from('config_financeiro').select('valor').eq('chave', 'meta_mensal').maybeSingle(),
   ]);
 
   const fiadosEmAberto = (fiadosAbertoRes.data || []) as LancamentoRaw[];
   const colaboradores = colabRes.data || [];
+  const metaMensal = metaRes.data?.valor != null ? n(metaRes.data.valor) : null; // null = admin ainda não definiu
 
   // cálculos (mesma camada para tudo)
   const finMes = calcularFinanceiro({ lancamentos: lancMes, pagamentosFiado: fiadoMes, fiadosEmAberto });
@@ -95,8 +97,8 @@ export async function GET(request: Request) {
       caixaHoje: { value: finHojeExato.faturamentoRealizado, delta: null },      // dinheiro que entrou hoje
       faturamentoMes: { value: finMes.faturamentoRealizado, delta: variacao(finMes.faturamentoRealizado, finAnt.faturamentoRealizado) },
       comissaoRealizada: { value: finMes.comissaoRealizada, delta: variacao(finMes.comissaoRealizada, finAnt.comissaoRealizada) },
-      faturamentoLiquido: { value: finMes.faturamentoLiquido, delta: variacao(finMes.faturamentoLiquido, finAnt.faturamentoLiquido) },
-      parteSalao: { value: finMes.parteSalao },
+      // "Faturamento líquido" = o que sobra pro salão de verdade (sem comissão E sem taxa de cartão) — decisão do dono
+      faturamentoLiquido: { value: finMes.parteSalao, delta: variacao(finMes.parteSalao, finAnt.parteSalao) },
       fiadosAberto: { value: finMes.fiadoEmAberto },
       agendamentosHoje: { value: agHojeRes.count || 0 },
       ticketMedio: { value: ticketMedio },
@@ -105,7 +107,19 @@ export async function GET(request: Request) {
     serie,
     porFormaPagamento: finMes.porFormaPagamento,
     topColaboradoras,
-    // itens que dependem de decisão do dono / fonte ainda inexistente:
-    pendentes: { ocupacao: null, meta: null, topServicos: null, proximosAgendamentos: null },
+    // meta mensal definida pelo admin (null = ainda não definiu → o card pede na 1ª vez)
+    meta: { valor: metaMensal, faturamento: finMes.faturamentoRealizado },
   });
+}
+
+// PUT: admin define/edita a meta mensal (salva uma vez; depois é só editar)
+export async function PUT(request: Request) {
+  const auth = await requireAdmin();
+  if (isAuthError(auth)) return auth;
+  const { meta_mensal } = await request.json();
+  const val = Number(meta_mensal);
+  if (isNaN(val) || val < 0) return errorResponse('Informe uma meta válida.', 400);
+  const { error } = await supabase.from('config_financeiro').upsert({ chave: 'meta_mensal', valor: String(val), updated_at: new Date().toISOString() }, { onConflict: 'chave' });
+  if (error) return errorResponse(error.message, 500);
+  return jsonResponse({ ok: true, meta: val });
 }
