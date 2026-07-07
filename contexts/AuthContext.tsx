@@ -36,6 +36,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const profileRef = useRef<Profile | null>(null);
   const router = useRouter();
 
+  // Aplica o perfil no estado + ref + cache local. O cache (localStorage) permite hidratar o
+  // perfil INSTANTANEAMENTE no reload, sem depender da query (que às vezes estoura o timeout de 5s
+  // e deixava o app "sem admin" momentaneamente — caía na versão antiga e escondia opções de admin).
+  const CACHE_KEY = 'nb_profile';
+  const aplicarProfile = (p: Profile | null) => {
+    setProfile(p);
+    profileRef.current = p;
+    try {
+      if (p) localStorage.setItem(CACHE_KEY, JSON.stringify(p));
+      else localStorage.removeItem(CACHE_KEY);
+    } catch { /* localStorage indisponível */ }
+  };
+
+  // Lê o perfil em cache (usado no init para não esperar a query).
+  const lerProfileCache = (userId: string): Profile | null => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw) as Profile;
+      return p && p.id === userId ? p : null;
+    } catch { return null; }
+  };
+
   // Função para carregar o perfil do usuário (ou criar se não existir)
   const loadProfile = async (userId: string, userEmail?: string) => {
     try {
@@ -47,19 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('Erro ao carregar perfil:', error);
-        setProfile(null);
-        profileRef.current = null;
+        if (!profileRef.current) aplicarProfile(null); // preserva o perfil do cache, se houver
         return;
       }
 
       if (data) {
-        const p = {
-          ...data,
-          role: data.role || 'user',
-          colaborador_id: data.colaborador_id || null
-        };
-        setProfile(p);
-        profileRef.current = p;
+        aplicarProfile({ ...data, role: data.role || 'user', colaborador_id: data.colaborador_id || null });
         return;
       }
 
@@ -79,26 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (insertError) {
         console.error('Erro ao criar perfil:', insertError);
-        setProfile(null);
-        profileRef.current = null;
+        if (!profileRef.current) aplicarProfile(null);
         return;
       }
 
-      if (newProfile) {
-        const p = {
-          ...newProfile,
-          colaborador_id: newProfile.colaborador_id || null
-        };
-        setProfile(p);
-        profileRef.current = p;
-      } else {
-        setProfile(null);
-        profileRef.current = null;
-      }
+      aplicarProfile(newProfile ? { ...newProfile, colaborador_id: newProfile.colaborador_id || null } : null);
     } catch (err) {
       console.error('Erro inesperado ao carregar perfil:', err);
-      setProfile(null);
-      profileRef.current = null;
+      if (!profileRef.current) aplicarProfile(null); // timeout: mantém o perfil do cache
     }
   };
 
@@ -122,7 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user && !profileLoaded) {
           profileLoaded = true;
-          // Profile com timeout separado de 5s
+          // Hidrata o perfil do cache NA HORA — assim, mesmo que a query demore/estoure o timeout,
+          // o app já sabe quem é o usuário (e que é admin) e não cai na versão antiga.
+          const cache = lerProfileCache(session.user.id);
+          if (cache) { setProfile(cache); profileRef.current = cache; }
+          // Profile com timeout separado de 5s (revalida por cima do cache)
           try {
             await Promise.race([
               loadProfile(session.user.id, session.user.email),
@@ -364,8 +372,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Passa o userId atual para limpar a chave correta
     clearActivity(user?.id);
     await supabase.auth.signOut();
-    setProfile(null);
-    profileRef.current = null;
+    aplicarProfile(null); // limpa estado + cache do perfil
     router.push('/login');
   };
 
