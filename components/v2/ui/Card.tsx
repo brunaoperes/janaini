@@ -4,8 +4,8 @@ import { ReactNode } from 'react';
 import Icon from './Icon';
 
 /** Card base V2: superfície marfim, borda hairline, sombra mínima. */
-export function Card({ children, className = '', pad = true }: { children: ReactNode; className?: string; pad?: boolean }) {
-  return <div className={`nb-card ${pad ? 'nb-card-pad' : ''} ${className}`}>{children}</div>;
+export function Card({ children, className = '', pad = true, style }: { children: ReactNode; className?: string; pad?: boolean; style?: React.CSSProperties }) {
+  return <div className={`nb-card ${pad ? 'nb-card-pad' : ''} ${className}`} style={style}>{children}</div>;
 }
 
 /** Cabeçalho de card com título, ação opcional à direita e link "ver mais". */
