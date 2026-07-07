@@ -1,0 +1,122 @@
+/* ============================================================
+   NaviBelle V2 — Design tokens (Fase 0 / Fase 2)
+   Escopo: tudo vive sob .v2-root. NÃO afeta a produção.
+   ============================================================ */
+
+.v2-root{
+  /* superfícies / neutros quentes */
+  --nb-ground:#F6F2EC;      /* fundo champagne */
+  --nb-surface:#FFFFFF;     /* marfim */
+  --nb-surface-2:#FBF8F4;   /* marfim levemente rebaixado */
+  --nb-sidebar:#211C19;     /* grafite quente (menu) */
+  --nb-sidebar-2:#2C2521;   /* item ativo no menu */
+
+  /* tinta */
+  --nb-ink:#211C19;         /* texto principal */
+  --nb-ink-soft:#6E645C;    /* texto secundário (taupe) */
+  --nb-ink-faint:#9A9089;   /* legendas */
+  --nb-on-dark:#EDE7DF;     /* texto sobre a sidebar */
+  --nb-on-dark-soft:#A99E93;
+
+  /* linhas */
+  --nb-rule:#E6DDD1;
+  --nb-rule-soft:#EFE8DD;
+
+  /* acento feminino sóbrio + metal */
+  --nb-accent:#8C5A6B;      /* mauve / rosé */
+  --nb-accent-deep:#6E4453; /* vinho suave */
+  --nb-accent-wash:#F2E9EA; /* fundo de ícone/realce mauve bem claro */
+  --nb-gold:#A98953;        /* bronze champagne */
+
+  /* status (separados do acento) */
+  --nb-ok:#3F6B57;   --nb-ok-bg:#E7EFE9;
+  --nb-warn:#A9691F; --nb-warn-bg:#F6ECDD;
+  --nb-bad:#9A3B3B;  --nb-bad-bg:#F4E7E4;
+  --nb-info:#5E6B4C; --nb-info-bg:#ECEEE2;
+
+  /* forma */
+  --nb-r-sm:8px; --nb-r:12px; --nb-r-lg:16px;
+  --nb-shadow:0 1px 2px rgba(33,28,25,.04), 0 1px 3px rgba(33,28,25,.03);
+  --nb-shadow-md:0 4px 16px rgba(33,28,25,.06);
+
+  /* tipografia */
+  --nb-serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  --nb-sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --nb-mono:"SF Mono","Cascadia Code",ui-monospace,Menlo,monospace;
+
+  background:var(--nb-ground);
+  color:var(--nb-ink);
+  font-family:var(--nb-sans);
+  font-size:15px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+
+.v2-root ::selection{background:var(--nb-accent);color:#fff}
+
+/* ---- tipografia utilitária ---- */
+.v2-root .nb-display{font-family:var(--nb-serif);font-weight:400;letter-spacing:-.01em}
+.v2-root .nb-eyebrow{font-family:var(--nb-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--nb-ink-faint)}
+.v2-root .nb-num{font-variant-numeric:tabular-nums}
+
+/* ---- superfícies ---- */
+.v2-root .nb-card{background:var(--nb-surface);border:1px solid var(--nb-rule);border-radius:var(--nb-r-lg);box-shadow:var(--nb-shadow)}
+.v2-root .nb-card-pad{padding:20px}
+
+/* ---- botões ---- */
+.v2-root .nb-btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--nb-sans);font-weight:560;font-size:14px;line-height:1;border-radius:var(--nb-r);padding:10px 16px;border:1px solid transparent;cursor:pointer;transition:background .15s,border-color .15s,color .15s;white-space:nowrap}
+.v2-root .nb-btn:focus-visible{outline:2px solid var(--nb-accent);outline-offset:2px}
+.v2-root .nb-btn-primary{background:var(--nb-accent);color:#fff}
+.v2-root .nb-btn-primary:hover{background:var(--nb-accent-deep)}
+.v2-root .nb-btn-ghost{background:var(--nb-surface);color:var(--nb-ink);border-color:var(--nb-rule)}
+.v2-root .nb-btn-ghost:hover{background:var(--nb-surface-2);border-color:var(--nb-ink-faint)}
+.v2-root .nb-btn-quiet{background:transparent;color:var(--nb-ink-soft);padding:8px 10px}
+.v2-root .nb-btn-quiet:hover{background:var(--nb-surface-2);color:var(--nb-ink)}
+
+/* ---- badges de status ---- */
+.v2-root .nb-badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--nb-mono);font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid}
+.v2-root .nb-badge::before{content:"";width:6px;height:6px;border-radius:50%}
+.v2-root .nb-ok{color:var(--nb-ok);background:var(--nb-ok-bg);border-color:#CFE1D5}.v2-root .nb-ok::before{background:var(--nb-ok)}
+.v2-root .nb-warn{color:var(--nb-warn);background:var(--nb-warn-bg);border-color:#E7D4B4}.v2-root .nb-warn::before{background:var(--nb-warn)}
+.v2-root .nb-bad{color:var(--nb-bad);background:var(--nb-bad-bg);border-color:#E7CFC9}.v2-root .nb-bad::before{background:var(--nb-bad)}
+.v2-root .nb-info{color:var(--nb-info);background:var(--nb-info-bg);border-color:#D6DBC8}.v2-root .nb-info::before{background:var(--nb-info)}
+
+/* ---- deltas (variação) ---- */
+.v2-root .nb-delta{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.v2-root .nb-up{color:var(--nb-ok)} .v2-root .nb-down{color:var(--nb-bad)} .v2-root .nb-flat{color:var(--nb-ink-faint)}
+
+/* ---- inputs ---- */
+.v2-root .nb-input{width:100%;background:var(--nb-surface);border:1px solid var(--nb-rule);border-radius:var(--nb-r);padding:9px 12px;font-size:14px;color:var(--nb-ink);font-family:var(--nb-sans)}
+.v2-root .nb-input:focus{outline:none;border-color:var(--nb-accent);box-shadow:0 0 0 3px var(--nb-accent-wash)}
+
+/* ---- tabelas ---- */
+.v2-root .nb-table{width:100%;border-collapse:collapse;font-size:14px}
+.v2-root .nb-table th{font-family:var(--nb-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--nb-ink-soft);text-align:left;padding:10px 14px;border-bottom:1px solid var(--nb-rule);white-space:nowrap}
+.v2-root .nb-table td{padding:12px 14px;border-bottom:1px solid var(--nb-rule-soft);vertical-align:middle}
+.v2-root .nb-table tbody tr:last-child td{border-bottom:none}
+.v2-root .nb-table tbody tr:hover{background:var(--nb-surface-2)}
+
+/* scrollbar discreta dentro da V2 */
+.v2-root ::-webkit-scrollbar{width:10px;height:10px}
+.v2-root ::-webkit-scrollbar-thumb{background:#D9CFC1;border-radius:20px;border:3px solid var(--nb-ground)}
+.v2-root ::-webkit-scrollbar-thumb:hover{background:#C9BCA9}
+
+/* ---- linha clicável (listas do painel) ---- */
+.v2-root .nb-row-hover:hover{background:var(--nb-surface-2)}
+.v2-root .nb-ink-soft{color:var(--nb-ink-soft)}
+.v2-root .nb-ink-faint{color:var(--nb-ink-faint)}
+.v2-root .nb-gold{color:var(--nb-gold)}
+
+/* ---- grids do dashboard (responsivos) ---- */
+.v2-root .v2-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+@media(max-width:1180px){
+  .v2-root .v2-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .v2-root .v2-row3{grid-template-columns:minmax(0,1fr)!important}
+  .v2-root .v2-row4{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:640px){
+  .v2-root .v2-kpis{grid-template-columns:1fr}
+  .v2-root .v2-row4{grid-template-columns:1fr!important}
+}
+
+@media(prefers-reduced-motion:reduce){.v2-root *{transition:none!important;animation:none!important}}

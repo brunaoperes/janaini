@@ -52,6 +52,18 @@ export default function UserMenu() {
             <p className="text-sm font-medium text-gray-900 truncate">{userName}</p>
             <p className="text-xs text-gray-500 truncate">{user?.email}</p>
           </div>
+          {profile?.role === 'admin' && (
+            <a
+              href="/v2"
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors border-b border-gray-100"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h5v6H4V5zm10-1h5a1 1 0 011 1v4h-6V4zm0 8h6v6a1 1 0 01-1 1h-5v-7zM4 14h6v6H5a1 1 0 01-1-1v-5z" />
+              </svg>
+              Prévia V2
+              <span className="ml-auto text-[10px] uppercase tracking-wider text-purple-500 font-semibold">novo</span>
+            </a>
+          )}
           <button
             onClick={handleLogout}
             className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
