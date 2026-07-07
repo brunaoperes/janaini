@@ -16,15 +16,18 @@ import Sidebar from '@/components/v2/layout/Sidebar';
  */
 export default function V2Layout({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAuth();
-  // enquanto não temos um perfil resolvido, tratamos como "carregando" (não bloqueia por engano)
-  const carregando = loading || !profile;
   const isAdmin = profile?.role === 'admin';
+  // Só BLOQUEIA quando há certeza de não-admin (perfil resolvido e role != admin).
+  // Se o perfil ainda não resolveu (timeout do AuthContext deixa profile=null com loading=false),
+  // renderizamos a casca mesmo assim — as APIs exigem admin, então nada sensível vaza; e assim
+  // a tela nunca fica presa em "Carregando".
+  const bloqueado = !loading && !!profile && !isAdmin;
 
   return (
     <div className="v2-root">
-      {carregando ? (
+      {loading ? (
         <Center>Carregando prévia…</Center>
-      ) : !isAdmin ? (
+      ) : bloqueado ? (
         <Center>
           <div style={{ textAlign: 'center', maxWidth: 380 }}>
             <p style={{ fontFamily: 'var(--nb-serif)', fontSize: 22, margin: '0 0 8px' }}>Prévia V2 restrita</p>
