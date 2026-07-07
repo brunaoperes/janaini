@@ -107,6 +107,7 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
   const [carregandoRef, setCarregandoRef] = useState(false);
   const [carregandoEdicao, setCarregandoEdicao] = useState(false);
   const [bloqueado, setBloqueado] = useState<string | null>(null); // compartilhado → usa tela clássica
+  const edicaoReq = useRef(0); // guarda de corrida: só a última carga de edição aplica o form
 
   const [form, setForm] = useState({ ...FORM_VAZIO });
   const [pagamentos, setPagamentos] = useState<PagamentoForm[]>([]);
@@ -174,6 +175,7 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
   }
 
   async function carregarParaEdicao(id: number) {
+    const meu = ++edicaoReq.current; // esta é a carga mais recente
     setCarregandoEdicao(true);
     try {
       const res = await fetch(`/api/lancamentos/${id}`, { cache: 'no-store' });
@@ -196,14 +198,17 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
       const horaInicio = l.hora_inicio ? String(l.hora_inicio).substring(0, 5) : '09:00';
       const horaFim = l.hora_fim ? String(l.hora_fim).substring(0, 5) : '10:00';
 
-      // reconstrói servicos_ids a partir dos nomes se necessário
-      let servicosIds: number[] = l.servicos_ids || [];
-      if (servicosIds.length === 0 && l.servicos_nomes) {
-        const nomes = String(l.servicos_nomes).split(' + ').map((s: string) => s.trim());
-        servicosIds = nomes
-          .map((nome: string) => servicos.find((s) => s.nome.toLowerCase() === nome.toLowerCase())?.id)
-          .filter((x: number | undefined): x is number => x !== undefined);
+      // serviços do lançamento — fonte primária: servicos_ids (normalizado p/ number[]).
+      let servicosIds: number[] = Array.isArray(l.servicos_ids)
+        ? l.servicos_ids.map((x: any) => Number(x)).filter((x: number) => Number.isFinite(x))
+        : [];
+      // fallback: sem ids mas com nomes → casa por nome no catálogo (separador " + "; nome único pode ter "/").
+      if (servicosIds.length === 0 && l.servicos_nomes && servicos.length > 0) {
+        const nomes = String(l.servicos_nomes).split(/\s*\+\s*/).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+        servicosIds = servicos.filter((s) => nomes.includes(s.nome.trim().toLowerCase())).map((s) => s.id);
       }
+
+      if (meu !== edicaoReq.current) return; // uma carga mais nova assumiu — não sobrescreve com dado velho
 
       setForm({
         colaborador_id: l.colaborador_id != null ? String(l.colaborador_id) : '',
@@ -629,7 +634,7 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
                 {servicos
                   .filter((s) => s.nome.toLowerCase().includes(filtroServico.toLowerCase()))
                   .map((s) => {
-                    const on = form.servicos_ids.includes(s.id);
+                    const on = form.servicos_ids.some((id) => Number(id) === Number(s.id));
                     return (
                       <button key={s.id} type="button" onClick={() => toggleServico(s.id)}
                         className={`nlm-serv ${on ? 'is-on' : ''}`}>
