@@ -7,7 +7,8 @@ import {
   UserPlus, ShieldCheck, CreditCard, ScrollText, Bell, ChevronDown, ChevronLeft,
   ChevronRight, Filter, Plus, Search, TrendingUp, TrendingDown, ArrowRight, ArrowUpRight,
   DollarSign, Landmark, Percent, Target, CircleAlert, Star, Trophy, Banknote, Gauge,
-  Sparkles, Check, X, type LucideIcon,
+  Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
+  Info, ChartNoAxesColumn, Coins, Receipt, type LucideIcon,
 } from 'lucide-react';
 
 const REGISTRY: Record<string, LucideIcon> = {
@@ -17,7 +18,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   UserPlus, ShieldCheck, CreditCard, ScrollText, Bell, ChevronDown, ChevronLeft,
   ChevronRight, Filter, Plus, Search, TrendingUp, TrendingDown, ArrowRight, ArrowUpRight,
   DollarSign, Landmark, Percent, Target, CircleAlert, Star, Trophy, Banknote, Gauge,
-  Sparkles, Check, X,
+  Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
+  Info, ChartNoAxesColumn, Coins, Receipt,
 };
 
 export default function Icon({ name, size = 18, className, strokeWidth = 1.75 }: { name: string; size?: number; className?: string; strokeWidth?: number }) {

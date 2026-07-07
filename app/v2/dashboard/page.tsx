@@ -1,247 +1,254 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import toast from 'react-hot-toast';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import PageShell from '@/components/v2/layout/PageShell';
-import Button from '@/components/v2/ui/Button';
-import { Card, CardHead } from '@/components/v2/ui/Card';
-import Kpi from '@/components/v2/ui/Kpi';
+import { Card } from '@/components/v2/ui/Card';
 import Icon from '@/components/v2/ui/Icon';
-import RevenueChart from '@/components/v2/dashboard/RevenueChart';
-import PaymentDonut from '@/components/v2/dashboard/PaymentDonut';
-import { DEMO } from '@/lib/v2/constants/demo';
-import { NOME_FORMA } from '@/lib/v2/financial';
-import { brl, num, iniciais, mesExtenso } from '@/lib/v2/formatters';
+import { brl, num, pct } from '@/lib/v2/formatters';
+import FilterBar from '@/components/v2/dashboard/FilterBar';
+import KpiCard from '@/components/v2/dashboard/KpiCard';
+import MetricChart from '@/components/v2/dashboard/MetricChart';
+import AnnualView from '@/components/v2/dashboard/AnnualView';
+import RecebimentosCard from '@/components/v2/dashboard/RecebimentosCard';
+import TopColaboradoras from '@/components/v2/dashboard/TopColaboradoras';
+import ServicosVendidos from '@/components/v2/dashboard/ServicosVendidos';
+import ProximosAgendamentos from '@/components/v2/dashboard/ProximosAgendamentos';
+import AlertasGestao from '@/components/v2/dashboard/AlertasGestao';
+import MetaCard from '@/components/v2/dashboard/MetaCard';
+import { Skel, type DashResp, type Filtros } from '@/components/v2/dashboard/_shared';
 
-type ApiResp = {
-  mes: string; hoje: string;
-  kpis: Record<string, { value: number; delta?: number | null }>;
-  serie: { dia: string; atual: number }[];
-  porFormaPagamento: { forma: string; valor: number; taxa: number; pct: number }[];
-  topColaboradoras: { nome: string; valor: number }[];
-  meta: { valor: number | null; faturamento: number };
-};
+const DEFAULT_FILTROS: Filtros = { periodo: 'mes', de: '', ate: '', colaborador: 'todos', servico: 'todos', forma: 'todas' };
+type Opt = { id: number | string; nome: string };
 
 export default function DashboardV2() {
-  const [data, setData] = useState<ApiResp | null>(null);
+  const [filtros, setFiltros] = useState<Filtros>(DEFAULT_FILTROS);
+  const [data, setData] = useState<DashResp | null>(null);
+  const [busy, setBusy] = useState(true);
   const [erro, setErro] = useState('');
+  const [colabs, setColabs] = useState<Opt[]>([]);
+  const [servicos, setServicos] = useState<Opt[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const reqId = useRef(0);
 
-  const carregar = useCallback(async () => {
-    try {
-      const r = await fetch('/api/v2/dashboard', { cache: 'no-store' });
-      const j = await r.json();
-      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar.');
-    } catch { setErro('Erro de conexão.'); }
+  // opções dos filtros (uma vez)
+  useEffect(() => {
+    (async () => {
+      try {
+        const [rc, rs] = await Promise.all([
+          fetch('/api/v2/colaboradoras', { cache: 'no-store' }),
+          fetch('/api/v2/servicos', { cache: 'no-store' }),
+        ]);
+        if (rc.ok) { const j = await rc.json(); setColabs((j.colaboradoras || []).map((c: any) => ({ id: c.id, nome: c.nome }))); }
+        if (rs.ok) { const j = await rs.json(); setServicos((j.itens || []).filter((s: any) => s.ativo !== false).map((s: any) => ({ id: s.id, nome: s.nome }))); }
+      } catch { /* filtros seguem só com "Todas" */ }
+    })();
   }, []);
-  useEffect(() => { carregar(); }, [carregar]);
 
-  const actions = (
-    <>
-      <button className="nb-btn nb-btn-ghost"><Icon name="CalendarDays" size={16} /><span className="nb-num">{data ? mesExtenso(data.mes) : '—'}</span><Icon name="ChevronDown" size={15} /></button>
-      <button className="nb-btn nb-btn-ghost"><Icon name="Filter" size={16} />Filtros</button>
-      <Button icon="Plus">Novo Agendamento</Button>
-    </>
-  );
+  const carregar = useCallback(async (f: Filtros) => {
+    const id = ++reqId.current;
+    setBusy(true); setErro('');
+    try {
+      const qs = new URLSearchParams({ periodo: f.periodo, colaborador: f.colaborador, servico: f.servico, forma: f.forma });
+      if (f.periodo === 'custom') { if (f.de) qs.set('de', f.de); if (f.ate) qs.set('ate', f.ate); }
+      const r = await fetch(`/api/v2/dashboard?${qs.toString()}`, { cache: 'no-store' });
+      const j = await r.json();
+      if (id !== reqId.current) return; // resposta obsoleta
+      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar o painel.');
+    } catch {
+      if (id === reqId.current) setErro('Erro de conexão.');
+    } finally {
+      if (id === reqId.current) setBusy(false);
+    }
+  }, []);
 
-  const K = data?.kpis;
-  const totalPag = (data?.porFormaPagamento || []).reduce((s, f) => s + f.valor, 0);
-  const donut = (data?.porFormaPagamento || []).map((f) => ({ forma: NOME_FORMA[f.forma] || f.forma, valor: f.valor, pct: f.pct }));
+  useEffect(() => { carregar(filtros); }, [filtros, carregar]);
+
+  const patch = (p: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...p }));
+  const limpar = () => setFiltros(DEFAULT_FILTROS);
+
+  const exportar = useCallback(() => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      const linhas: string[] = [];
+      const push = (cols: (string | number)[]) => linhas.push(cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'));
+      push(['NaviBelle — Painel de gestão']);
+      push([data.periodo.label]);
+      push([]);
+      push(['Indicador', 'Valor', 'Período anterior', 'Variação %']);
+      const K = data.kpis;
+      const row = (nome: string, v: number, ant?: number | null, d?: number | null, moeda = true) =>
+        push([nome, moeda ? brl(v) : num(v), ant == null ? '—' : (moeda ? brl(ant) : num(ant)), d == null ? '—' : `${Math.round(d)}%`]);
+      row('Faturamento realizado', K.faturamentoRealizado.value, K.faturamentoRealizado.anterior, K.faturamentoRealizado.delta);
+      row('Caixa recebido', K.caixaRecebido.value, K.caixaRecebido.anterior, K.caixaRecebido.delta);
+      row('Líquido do salão', K.liquidoSalao.value, K.liquidoSalao.anterior, K.liquidoSalao.delta);
+      row('Comissão realizada', K.comissaoRealizada.value, K.comissaoRealizada.anterior, K.comissaoRealizada.delta);
+      row('Comissão prevista', K.comissaoPrevista.value, K.comissaoPrevista.anterior, K.comissaoPrevista.delta);
+      row('Ticket médio', K.ticketMedio.value, K.ticketMedio.anterior, K.ticketMedio.delta);
+      row('Fiados em aberto', K.fiadosAberto.value);
+      row('Lucro', K.lucro.value, K.lucro.anterior, K.lucro.delta);
+      row('Agendamentos', K.agendamentos.total, K.agendamentos.anterior, K.agendamentos.delta, false);
+      push([]);
+      push(['Recebimentos por forma', 'Valor', '%', 'Transações', 'Taxa']);
+      data.recebimentos.forEach((r) => push([r.label, brl(r.valor), `${r.pct.toFixed(1)}%`, r.transacoes, brl(r.taxa)]));
+      push([]);
+      push(['Top colaboradoras', 'Faturamento', 'Comissão', 'Atendimentos', 'Ticket']);
+      data.topColaboradoras.forEach((c) => push([c.nome, brl(c.faturamento), brl(c.comissao), c.atendimentos, brl(c.ticket)]));
+      push([]);
+      push(['Serviços mais vendidos', 'Quantidade', 'Faturamento', 'Ticket', '%']);
+      data.servicosMaisVendidos.forEach((s) => push([s.nome, s.quantidade, brl(s.faturamento), brl(s.ticket), `${s.pct.toFixed(1)}%`]));
+
+      const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `navibelle-painel-${filtros.periodo}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } finally { setExporting(false); }
+  }, [data, filtros.periodo]);
+
+  const primeiraCarga = !data && busy;
 
   return (
-    <PageShell title="Dashboard" subtitle="Visão geral do seu salão" actions={actions}>
-      <Selo />
+    <PageShell title="Painel de gestão" subtitle="Indicadores do salão em tempo real">
+      <FilterBar
+        filtros={filtros}
+        periodoLabel={data?.periodo.label || '—'}
+        colaboradoras={colabs}
+        servicos={servicos}
+        onChange={patch}
+        onClear={limpar}
+        onExport={exportar}
+        exporting={exporting}
+      />
 
-      {erro && <Card><p style={{ margin: 0, color: 'var(--nb-bad)' }}>{erro}</p></Card>}
-
-      {/* KPIs */}
-      <div className="v2-kpis">
-        <Kpi label="Faturamento hoje" icon="DollarSign" value={brl(K?.faturamentoHoje.value ?? 0)} deltaLabel="serviços prestados hoje" />
-        <Kpi label="Faturamento do mês" icon="Wallet" value={brl(K?.faturamentoMes.value ?? 0)} delta={K?.faturamentoMes.delta ?? undefined} deltaLabel="vs mês anterior" />
-        <Kpi label="Caixa recebido hoje" icon="Banknote" value={brl(K?.caixaHoje.value ?? 0)} deltaLabel="dinheiro que entrou hoje" />
-        <Kpi label="Agendamentos hoje" icon="CalendarDays" value={num(K?.agendamentosHoje.value ?? 0)} />
-      </div>
-      <div className="v2-kpis" style={{ marginTop: 16 }}>
-        <Kpi label="Comissão realizada" icon="HandCoins" value={brl(K?.comissaoRealizada.value ?? 0)} delta={K?.comissaoRealizada.delta ?? undefined} deltaLabel="vs mês anterior" />
-        <Kpi label="Líquido do salão" icon="ChartColumnIncreasing" value={brl(K?.faturamentoLiquido.value ?? 0)} delta={K?.faturamentoLiquido.delta ?? undefined} deltaLabel="sem comissão e sem taxa" />
-        <Kpi label="Fiados em aberto" icon="Clock" value={brl(K?.fiadosAberto.value ?? 0)} deltaLabel="a receber" tone="warn" />
-        <Kpi label="Ticket médio" icon="Gauge" value={brl(K?.ticketMedio.value ?? 0)} deltaLabel="por atendimento" />
-      </div>
-
-      {/* Performance · Recebimentos · Top colaboradoras */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr) minmax(0,1fr)', gap: 16, marginTop: 16 }} className="v2-row3">
-        <Card>
-          <CardHead title="Performance Financeira" right={<span className="nb-eyebrow">{data ? mesExtenso(data.mes) : ''}</span>} />
-          <p className="nb-eyebrow" style={{ margin: '-8px 0 6px' }}>Faturamento realizado por dia</p>
-          {data ? <RevenueChart data={data.serie} /> : <Vazio h={244} />}
-        </Card>
-
-        <Card>
-          <CardHead title="Recebimentos por Forma de Pagamento" action={{ label: 'Ver detalhes' }} />
-          {data && donut.length > 0 ? <PaymentDonut data={donut} total={totalPag} /> : <Vazio h={150} texto="Sem recebimentos no período." />}
-        </Card>
-
-        <Card>
-          <CardHead title="Top Colaboradoras" right={<span className="nb-eyebrow">{data ? mesExtenso(data.mes) : ''}</span>} />
-          {data && data.topColaboradoras.length > 0 ? (
-            <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {data.topColaboradoras.map((c, i) => (
-                <li key={c.nome} style={{ display: 'grid', gridTemplateColumns: '18px 34px 1fr auto', gap: 11, alignItems: 'center' }}>
-                  <span className="nb-num" style={{ fontSize: 12.5, color: i < 3 ? 'var(--nb-gold)' : 'var(--nb-ink-faint)', fontWeight: 700 }}>{i + 1}</span>
-                  <span aria-hidden style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600 }}>{iniciais(c.nome)}</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 560, color: 'var(--nb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nome}</span>
-                  <span className="nb-num" style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--nb-ink)' }}>{brl(c.valor)}</span>
-                </li>
-              ))}
-            </ol>
-          ) : <Vazio h={180} texto="Sem atendimentos no período." />}
-        </Card>
+      {/* período selecionado (desktop) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 16px', flexWrap: 'wrap' }}>
+        <span className="nb-eyebrow">Período</span>
+        <span style={{ fontFamily: 'var(--nb-serif)', fontSize: 18, color: 'var(--nb-ink)' }}>{data?.periodo.label || '—'}</span>
+        {data?.anterior.label && <span style={{ fontSize: 12, color: 'var(--nb-ink-faint)' }}>comparado {data.anterior.label}</span>}
+        {busy && data && <Icon name="RotateCcw" size={14} className="nb-ink-faint" />}
       </div>
 
-      {/* Blocos ainda de exemplo até a Fase 3 (serviços, próximos, meta) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 16, marginTop: 16 }} className="v2-row4">
-        <Card>
-          <CardHead title="Serviços Mais Vendidos" right={<TagExemplo />} />
-          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 11 }}>
-            {DEMO.topServicos.map((s, i) => (
-              <li key={s.nome} style={{ display: 'grid', gridTemplateColumns: '16px 1fr auto auto', gap: 10, alignItems: 'center', fontSize: 13 }}>
-                <span className="nb-num" style={{ color: 'var(--nb-ink-faint)', fontSize: 12 }}>{i + 1}</span>
-                <span style={{ color: 'var(--nb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.nome}</span>
-                <span className="nb-num" style={{ color: 'var(--nb-ink-faint)', minWidth: 34, textAlign: 'right' }}>{s.qtd}</span>
-                <span className="nb-num" style={{ color: 'var(--nb-ink)', fontWeight: 560, minWidth: 74, textAlign: 'right' }}>{brl(s.valor)}</span>
-              </li>
-            ))}
-          </ol>
-        </Card>
+      {erro && !data && (
+        <Card><p style={{ margin: 0, color: 'var(--nb-bad)' }}>{erro}</p></Card>
+      )}
 
-        <Card>
-          <CardHead title="Próximos Agendamentos" right={<TagExemplo />} />
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {DEMO.proximos.map((p, i) => (
-              <li key={i} style={{ display: 'grid', gridTemplateColumns: '48px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: i < DEMO.proximos.length - 1 ? '1px solid var(--nb-rule-soft)' : 'none' }}>
-                <span className="nb-num" style={{ fontSize: 13, fontWeight: 600, color: 'var(--nb-accent-deep)' }}>{p.hora}</span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 13, fontWeight: 560, color: 'var(--nb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cliente}</span>
-                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--nb-ink-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.servico}</span>
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--nb-ink-faint)', whiteSpace: 'nowrap' }}>{p.quando}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+      {primeiraCarga ? <SkeletonDashboard /> : data && (
+        <div className={busy ? 'v2-busy' : undefined}>
+          <Kpis data={data} />
 
-        <Card>
-          <CardHead title="Alertas de Gestão" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Alerta real: fiados em aberto */}
-            <Alerta tone="bad" icon="CircleAlert" titulo="Fiados pendentes" nota={`${brl(K?.fiadosAberto.value ?? 0)} a receber`} acao="Ver detalhes" />
-            <Alerta tone="warn" icon="Clock" titulo="Contas a vencer" nota="verifique o módulo financeiro" acao="Ver contas" exemplo />
-            <Alerta tone="info" icon="Gauge" titulo="Ocupação da agenda" nota="indicador entra na Fase 3" acao="Ver agenda" exemplo />
+          <div className="v2-2col" style={{ marginTop: 16 }}>
+            <MetricChart serie={data.serie} anteriorLabel={data.anterior.label} />
+            <RecebimentosCard recebimentos={data.recebimentos} />
           </div>
-        </Card>
 
-        <CardMeta meta={data?.meta} onSalvar={carregar} />
-      </div>
+          {data.anual && <div style={{ marginTop: 16 }}><AnnualView anual={data.anual} /></div>}
+
+          <div className="v2-2eq" style={{ marginTop: 16 }}>
+            <TopColaboradoras itens={data.topColaboradoras} />
+            <ServicosVendidos itens={data.servicosMaisVendidos} />
+          </div>
+
+          <div className="v2-3col" style={{ marginTop: 16 }}>
+            <ProximosAgendamentos proximos={data.proximos} />
+            <AlertasGestao alertas={data.alertas} />
+            <MetaCard meta={data.meta} onSalvar={() => carregar(filtros)} />
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
 
-/* ---- auxiliares ---- */
-function Selo() {
+/* ---------- KPIs (10 do contrato) ---------- */
+function Kpis({ data }: { data: DashResp }) {
+  const K = data.kpis;
+  const antLabel = data.anterior.label;
+  const oc = K.ocupacao;
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', marginBottom: 18, borderRadius: 20, background: 'var(--nb-surface)', border: '1px solid var(--nb-rule)', fontSize: 12, color: 'var(--nb-ink-soft)' }}>
-      <Icon name="ShieldCheck" size={14} className="nb-gold" />
-      Financeiro com dados <strong style={{ color: 'var(--nb-ink)' }}>reais</strong> (mesma regra em toda a V2). Serviços, próximos e meta seguem como exemplo até a Fase 3.
-    </div>
-  );
-}
-function TagExemplo() {
-  return <span className="nb-eyebrow" style={{ fontSize: 9.5, color: 'var(--nb-gold)', border: '1px dashed var(--nb-gold)', borderRadius: 12, padding: '2px 7px' }}>exemplo</span>;
-}
-function Vazio({ h, texto }: { h: number; texto?: string }) {
-  return <div style={{ height: h, display: 'grid', placeItems: 'center', color: 'var(--nb-ink-faint)', fontSize: 13 }}>{texto || 'Carregando…'}</div>;
-}
-function Alerta({ tone, icon, titulo, nota, acao, exemplo }: { tone: string; icon: string; titulo: string; nota: string; acao: string; exemplo?: boolean }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr', gap: 11, alignItems: 'start', padding: 12, borderRadius: 10, background: `var(--nb-${tone}-bg)`, border: `1px solid color-mix(in srgb, var(--nb-${tone}) 22%, transparent)` }}>
-      <span aria-hidden style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--nb-surface)', color: `var(--nb-${tone})`, display: 'grid', placeItems: 'center' }}><Icon name={icon} size={17} /></span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--nb-ink)', display: 'flex', gap: 6, alignItems: 'center' }}>{titulo}{exemplo && <TagExemplo />}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--nb-ink-soft)' }}>{nota}</div>
-        <a href="#" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 560, color: 'var(--nb-accent)', textDecoration: 'none', marginTop: 3 }}>{acao} <Icon name="ArrowRight" size={12} /></a>
-      </div>
-    </div>
-  );
-}
-function Legenda({ label, valor }: { label: string; valor: string }) {
-  return (
-    <div>
-      <div className="nb-eyebrow" style={{ fontSize: 10 }}>{label}</div>
-      <div className="nb-num" style={{ fontSize: 15, fontWeight: 640, color: 'var(--nb-ink)' }}>{valor}</div>
+    <div className="v2-kpi-grid">
+      <KpiCard label="Faturamento" icon="Wallet" value={brl(K.faturamentoRealizado.value)}
+        delta={K.faturamentoRealizado.delta} anterior={K.faturamentoRealizado.anterior} anteriorLabel={antLabel} href="/v2/lancamentos" />
+
+      <KpiCard label="Caixa recebido" icon="Banknote" value={brl(K.caixaRecebido.value)}
+        delta={K.caixaRecebido.delta} anterior={K.caixaRecebido.anterior} anteriorLabel={antLabel} href="/v2/caixa">
+        {!!K.caixaRecebido.fiadoRecebido && K.caixaRecebido.fiadoRecebido > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--nb-ink-faint)' }}>inclui {brl(K.caixaRecebido.fiadoRecebido)} de fiado</span>
+        )}
+      </KpiCard>
+
+      <KpiCard label="Líquido do salão" icon="Landmark" value={brl(K.liquidoSalao.value)}
+        delta={K.liquidoSalao.delta} anterior={K.liquidoSalao.anterior} anteriorLabel={antLabel} href="/v2/relatorios" />
+
+      <KpiCard label="Comissão realizada" icon="HandCoins" value={brl(K.comissaoRealizada.value)}
+        delta={K.comissaoRealizada.delta} anterior={K.comissaoRealizada.anterior} anteriorLabel={antLabel} href="/v2/comissoes" />
+
+      <KpiCard label="Comissão prevista" icon="Coins" value={brl(K.comissaoPrevista.value)}
+        delta={K.comissaoPrevista.delta} anterior={K.comissaoPrevista.anterior} anteriorLabel={antLabel} href="/v2/comissoes" />
+
+      <KpiCard label="Ticket médio" icon="Gauge" value={brl(K.ticketMedio.value)}
+        delta={K.ticketMedio.delta} anterior={K.ticketMedio.anterior} anteriorLabel={antLabel} />
+
+      <KpiCard label="Fiados em aberto" icon="Clock" value={brl(K.fiadosAberto.value)} tone="warn"
+        anteriorLabel={antLabel} semComparativo href="/v2/financeiro"
+        footer={<span style={{ fontSize: 11.5, color: 'var(--nb-ink-faint)' }}>total a receber</span>} />
+
+      <KpiCard label="Ocupação" icon="Percent" value={oc ? pct(oc.value, { casas: 0 }) : '—'} tone="default"
+        delta={oc?.delta} anterior={oc?.anterior} anteriorLabel={antLabel} semComparativo={!oc} fmtDelta={(v) => pct(v, { casas: 0 })}
+        footer={<span style={{ fontSize: 11.5, color: 'var(--nb-ink-faint)' }}>{oc?.base || 'Sem base para estimar'}</span>}>
+        {oc?.base && <span style={{ fontSize: 10.5, color: 'var(--nb-ink-faint)' }}>{oc.base}</span>}
+      </KpiCard>
+
+      <KpiCard label="Lucro" icon="PiggyBank" value={brl(K.lucro.value)} tone={K.lucro.value >= 0 ? 'ok' : 'warn'}
+        delta={K.lucro.delta} anterior={K.lucro.anterior} anteriorLabel={antLabel} href="/v2/relatorios">
+        <span style={{ display: 'inline-flex', width: 'fit-content', alignItems: 'center', gap: 4, fontSize: 10, fontFamily: 'var(--nb-mono)', letterSpacing: '.05em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 12, background: K.lucro.tipo === 'real' ? 'var(--nb-ok-bg)' : 'var(--nb-surface-2)', color: K.lucro.tipo === 'real' ? 'var(--nb-ok)' : 'var(--nb-ink-soft)', border: '1px solid var(--nb-rule)' }}>
+          {K.lucro.tipo === 'real' ? 'real' : 'estimado'}
+        </span>
+      </KpiCard>
+
+      <KpiCard label="Agendamentos" icon="CalendarDays" value={num(K.agendamentos.total)}
+        delta={K.agendamentos.delta} anterior={K.agendamentos.anterior} anteriorLabel={antLabel} href="/v2/agenda"
+        fmtDelta={(v) => num(v)}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          <Chip tone="ok" label="concluídos" v={K.agendamentos.concluidos} />
+          <Chip tone="warn" label="pendentes" v={K.agendamentos.pendentes} />
+          <Chip tone="bad" label="cancelados" v={K.agendamentos.cancelados} />
+          <Chip tone="info" label="futuros" v={K.agendamentos.futuros} />
+        </div>
+      </KpiCard>
     </div>
   );
 }
 
-function CardMeta({ meta, onSalvar }: { meta?: { valor: number | null; faturamento: number }; onSalvar: () => void }) {
-  const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const temMeta = !!meta && meta.valor != null && meta.valor > 0;
-  const pct = temMeta ? Math.min(100, Math.round((meta!.faturamento / meta!.valor!) * 100)) : 0;
+function Chip({ tone, label, v }: { tone: string; label: string; v: number }) {
+  return (
+    <span className="nb-num" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '2px 7px', borderRadius: 10, background: `var(--nb-${tone}-bg)`, color: `var(--nb-${tone})`, fontWeight: 600 }}>
+      {v} <span style={{ fontWeight: 400, opacity: .8 }}>{label}</span>
+    </span>
+  );
+}
 
-  const salvar = async () => {
-    const v = parseFloat(valor.replace(/\./g, '').replace(',', '.')) || 0;
-    if (v <= 0) { toast.error('Informe uma meta maior que zero.'); return; }
-    setSalvando(true);
-    try {
-      const r = await fetch('/api/v2/dashboard', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta_mensal: v }) });
-      if (r.ok) { toast.success('Meta salva!'); setEditando(false); onSalvar(); } else toast.error((await r.json()).error || 'Erro.');
-    } catch { toast.error('Erro de conexão.'); } finally { setSalvando(false); }
-  };
-
-  if (!temMeta || editando) {
-    return (
-      <Card>
-        <CardHead title="Meta do Mês" />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--nb-ink-soft)' }}>{editando ? 'Atualize a meta mensal de faturamento:' : 'Defina a meta mensal de faturamento do salão — é perguntado só uma vez.'}</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--nb-ink-faint)', fontSize: 14 }}>R$</span>
-              <input autoFocus type="text" inputMode="numeric" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="75.000" className="nb-input nb-num" style={{ paddingLeft: 34 }} onKeyDown={(e) => { if (e.key === 'Enter') salvar(); }} />
-            </div>
-            <Button icon="Check" onClick={salvar} disabled={salvando}>{salvando ? '…' : 'Salvar'}</Button>
+/* ---------- skeleton da primeira carga ---------- */
+function SkeletonDashboard() {
+  return (
+    <>
+      <div className="v2-kpi-grid">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="nb-card nb-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><Skel h={11} w={70} /><Skel h={36} w={36} r={10} /></div>
+            <Skel h={26} w="60%" />
+            <Skel h={12} w="80%" />
           </div>
-          {editando && <button onClick={() => setEditando(false)} className="nb-btn nb-btn-quiet" style={{ alignSelf: 'flex-start', fontSize: 12.5 }}>Cancelar</button>}
-        </div>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardHead title="Meta do Mês" action={{ label: 'Editar', onClick: () => { setValor(String(meta!.valor)); setEditando(true); } }} />
-      <div style={{ display: 'grid', placeItems: 'center', padding: '6px 0 10px' }}><MetaRing pct={pct} /></div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingTop: 12, borderTop: '1px solid var(--nb-rule-soft)' }}>
-        <Legenda label="Faturamento atual" valor={brl(meta!.faturamento)} />
-        <Legenda label="Meta do mês" valor={brl(meta!.valor!)} />
+        ))}
       </div>
-    </Card>
-  );
-}
-
-function MetaRing({ pct: p }: { pct: number }) {
-  const r = 52, c = 2 * Math.PI * r, filled = (p / 100) * c;
-  return (
-    <div style={{ position: 'relative', width: 140, height: 140 }}>
-      <svg width="140" height="140" viewBox="0 0 140 140" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="70" cy="70" r={r} fill="none" stroke="var(--nb-rule)" strokeWidth="12" />
-        <circle cx="70" cy="70" r={r} fill="none" stroke="var(--nb-accent)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${filled} ${c}`} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-        <div>
-          <div className="nb-num" style={{ fontSize: 26, fontWeight: 700, color: 'var(--nb-ink)', lineHeight: 1 }}>{p}%</div>
-          <div style={{ fontSize: 11, color: 'var(--nb-ink-faint)', marginTop: 2 }}>da meta</div>
-        </div>
+      <div className="v2-2col" style={{ marginTop: 16 }}>
+        <div className="nb-card nb-card-pad"><Skel h={16} w={180} /><Skel h={244} r={12} style={{ marginTop: 16 }} /></div>
+        <div className="nb-card nb-card-pad"><Skel h={16} w={160} /><Skel h={200} r={12} style={{ marginTop: 16 }} /></div>
       </div>
-    </div>
+      <div className="v2-2eq" style={{ marginTop: 16 }}>
+        <div className="nb-card nb-card-pad"><Skel h={16} w={160} /><Skel h={180} r={12} style={{ marginTop: 16 }} /></div>
+        <div className="nb-card nb-card-pad"><Skel h={16} w={160} /><Skel h={180} r={12} style={{ marginTop: 16 }} /></div>
+      </div>
+    </>
   );
 }
