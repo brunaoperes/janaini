@@ -271,11 +271,14 @@ export default function AgendaV2() {
                     </div>
                   )}
 
-                  {/* linha do horário atual */}
+                  {/* linha do horário atual — o container externo cobre SÓ a área da grade (a partir da
+                      coluna de nomes), e a linha usa posAgora% dessa área. Evita o calc() inválido anterior. */}
                   {ehHoje && posAgora >= 0 && posAgora <= 100 && !loading && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `calc(${NOMECOL.width}px + ${posAgora}% * (100% - ${NOMECOL.width}px) / 100)`, width: 2, background: 'var(--nb-bad)', zIndex: 4, pointerEvents: 'none' }}>
-                      <span style={{ position: 'absolute', top: 4, left: 4, background: 'var(--nb-bad)', color: '#fff', fontSize: 10.5, fontWeight: 700, fontFamily: 'var(--nb-mono)', padding: '2px 6px', borderRadius: 6, whiteSpace: 'nowrap', boxShadow: 'var(--nb-shadow)' }}>{hhmm(agora)}</span>
-                      <span style={{ position: 'absolute', top: -1, left: -3, width: 8, height: 8, borderRadius: '50%', background: 'var(--nb-bad)' }} />
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: NOMECOL.width, right: 0, zIndex: 4, pointerEvents: 'none' }}>
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${posAgora}%`, width: 2, background: 'var(--nb-bad)' }}>
+                        <span style={{ position: 'absolute', top: 4, left: 4, background: 'var(--nb-bad)', color: '#fff', fontSize: 10.5, fontWeight: 700, fontFamily: 'var(--nb-mono)', padding: '2px 6px', borderRadius: 6, whiteSpace: 'nowrap', boxShadow: 'var(--nb-shadow)' }}>{hhmm(agora)}</span>
+                        <span style={{ position: 'absolute', top: -1, left: -3, width: 8, height: 8, borderRadius: '50%', background: 'var(--nb-bad)' }} />
+                      </div>
                     </div>
                   )}
                 </div>
