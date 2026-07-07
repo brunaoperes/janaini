@@ -112,9 +112,9 @@ export default function ColaboradorasV2() {
           {/* KPIs */}
           <div className="v2-kpi-grid" style={{ gridTemplateColumns: 'repeat(4,minmax(0,1fr))' }}>
             <Kpi label="Colaboradoras ativas" icon="Users" value={num(data.kpis.ativas.value)} k={data.kpis.ativas} fmt={num} anteriorLabel="mês anterior" />
-            <Kpi label="Faturamento do mês" icon="Wallet" value={brl(data.kpis.faturamento.value)} k={data.kpis.faturamento} fmt={brl} anteriorLabel="mês anterior" />
-            <Kpi label="Comissão total" icon="HandCoins" value={brl(data.kpis.comissao.value)} k={data.kpis.comissao} fmt={brl} anteriorLabel="mês anterior" tone="accent" />
-            <Kpi label="Atendimentos" icon="Scissors" value={num(data.kpis.atendimentos.value)} k={data.kpis.atendimentos} fmt={num} anteriorLabel="mês anterior" />
+            <Kpi label="Faturamento do mês" icon="Wallet" value={brl(data.kpis.faturamento.value)} k={data.kpis.faturamento} fmt={brl} anteriorLabel="mês anterior" href="/v2/relatorios" />
+            <Kpi label="Comissão total" icon="HandCoins" value={brl(data.kpis.comissao.value)} k={data.kpis.comissao} fmt={brl} anteriorLabel="mês anterior" tone="accent" href="/v2/comissoes" />
+            <Kpi label="Atendimentos" icon="Scissors" value={num(data.kpis.atendimentos.value)} k={data.kpis.atendimentos} fmt={num} anteriorLabel="mês anterior" href="/v2/lancamentos" />
           </div>
 
           <div style={{ marginTop: 16 }}>
@@ -169,18 +169,27 @@ export default function ColaboradorasV2() {
 }
 
 /* ---------- KPI ---------- */
-function Kpi({ label, icon, value, k, fmt, anteriorLabel, tone }: {
-  label: string; icon: string; value: string; k: { anterior: number | null; delta: number | null }; fmt: (v: number | null | undefined) => string; anteriorLabel: string; tone?: 'accent';
+function Kpi({ label, icon, value, k, fmt, anteriorLabel, tone, href }: {
+  label: string; icon: string; value: string; k: { anterior: number | null; delta: number | null }; fmt: (v: number | null | undefined) => string; anteriorLabel: string; tone?: 'accent'; href?: string;
 }) {
+  const Root: any = href ? 'a' : 'div';
+  const rootProps: any = href
+    ? { href, className: 'nb-card nb-card-pad nb-card-link', 'aria-label': `${label} — ver detalhes` }
+    : { className: 'nb-card nb-card-pad' };
   return (
-    <div className="nb-card nb-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Root {...rootProps} style={{ display: 'flex', flexDirection: 'column', gap: 10, color: 'inherit', textDecoration: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span className="nb-eyebrow">{label}</span>
         <span aria-hidden style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--nb-surface-2)', border: '1px solid var(--nb-rule)', display: 'grid', placeItems: 'center', color: 'var(--nb-accent-deep)' }}><Icon name={icon} size={17} /></span>
       </div>
       <div className="nb-num" style={{ fontSize: 24, fontWeight: 680, lineHeight: 1.1, color: tone === 'accent' ? 'var(--nb-accent-deep)' : 'var(--nb-ink)' }}>{value}</div>
       <Delta delta={k.delta} anterior={k.anterior} anteriorLabel={anteriorLabel} fmt={fmt} />
-    </div>
+      {href && (
+        <span className="nb-card-link-cta" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 560, color: 'var(--nb-accent)', marginTop: 'auto' }}>
+          Ver detalhes <Icon name="ArrowRight" size={12} />
+        </span>
+      )}
+    </Root>
   );
 }
 

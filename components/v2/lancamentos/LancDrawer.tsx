@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/v2/ui/Icon';
 import { brl, num } from '@/lib/v2/formatters';
 import { Avatar, SitBadge, partesData, type Situacao } from './_shared';
 import PayIcon, { labelForma } from './PayIcon';
+import PagamentoFiadoModal, { type FiadoTarget } from '@/components/v2/fiados/PagamentoFiadoModal';
 
 type Detalhe = {
   lancamento: {
@@ -28,13 +29,25 @@ function Linha({ label, children, tone }: { label: string; children: React.React
   );
 }
 
-export default function LancDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
+export default function LancDrawer({ id, onClose, onEdit, onChanged }: { id: number | null; onClose: () => void; onEdit?: (id: number) => void; onChanged?: () => void }) {
   const [d, setD] = useState<Detalhe | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
+  const [pagar, setPagar] = useState(false);
+
+  const carregarDetalhe = useCallback(async (lancId: number, comSpinner = true) => {
+    if (comSpinner) setLoading(true);
+    setErro('');
+    try {
+      const r = await fetch(`/api/v2/lancamentos?detalhe=${lancId}`, { cache: 'no-store' });
+      const j = await r.json();
+      if (r.ok) setD(j); else setErro(j.error || 'Não foi possível carregar.');
+    } catch { setErro('Erro de conexão.'); }
+    finally { if (comSpinner) setLoading(false); }
+  }, []);
 
   useEffect(() => {
-    if (id == null) { setD(null); setErro(''); return; }
+    if (id == null) { setD(null); setErro(''); setPagar(false); return; }
     let vivo = true;
     setLoading(true); setErro('');
     (async () => {
@@ -176,17 +189,39 @@ export default function LancDrawer({ id, onClose }: { id: number | null; onClose
         {/* ações (preparadas — a edição/registro reusa a produção quando disponível) */}
         {L && !loading && (
           <div style={{ borderTop: '1px solid var(--nb-rule)', padding: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <a href={`/lancamentos?editar=${L.id}`} className="nb-btn nb-btn-ghost" style={{ flex: 1, justifyContent: 'center', textDecoration: 'none', fontSize: 13 }}>
-              <Icon name="Settings" size={15} /> Editar
-            </a>
-            {(L.situacao === 'fiado' || L.situacao === 'parcial') && (
-              <a href={`/fiados`} className="nb-btn nb-btn-primary" style={{ flex: 1, justifyContent: 'center', textDecoration: 'none', fontSize: 13 }}>
-                <Icon name="HandCoins" size={15} /> Registrar pagamento
+            {onEdit ? (
+              <button onClick={() => onEdit(L.id)} className="nb-btn nb-btn-ghost" style={{ flex: 1, justifyContent: 'center', fontSize: 13 }}>
+                <Icon name="Settings" size={15} /> Editar
+              </button>
+            ) : (
+              <a href={`/lancamentos?editar=${L.id}`} className="nb-btn nb-btn-ghost" style={{ flex: 1, justifyContent: 'center', textDecoration: 'none', fontSize: 13 }}>
+                <Icon name="Settings" size={15} /> Editar
               </a>
+            )}
+            {(L.situacao === 'fiado' || L.situacao === 'parcial') && L.saldo_fiado > 0 && (
+              <button onClick={() => setPagar(true)} className="nb-btn nb-btn-primary" style={{ flex: 1, justifyContent: 'center', fontSize: 13 }}>
+                <Icon name="HandCoins" size={15} /> Registrar pagamento
+              </button>
             )}
           </div>
         )}
       </aside>
+
+      {pagar && L && (
+        <PagamentoFiadoModal
+          fiado={{
+            lancamentoId: L.id,
+            clienteNome: L.cliente_nome,
+            colaboradorNome: L.colaborador_nome,
+            valorTotal: L.valor_total,
+            jaPago: d!.pagamentosFiado.reduce((s, p) => s + (Number(p.valor_pago) || 0), 0),
+            saldo: L.saldo_fiado,
+            dataServico: L.data,
+          }}
+          onClose={() => setPagar(false)}
+          onDone={() => { setPagar(false); carregarDetalhe(L.id, false); onChanged?.(); }}
+        />
+      )}
     </>
   );
 }

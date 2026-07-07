@@ -8,6 +8,7 @@ import { brl, num } from '@/lib/v2/formatters';
 import { Skel } from '@/components/v2/dashboard/_shared';
 import FilterBar, { ABAS } from '@/components/v2/lancamentos/FilterBar';
 import LancDrawer from '@/components/v2/lancamentos/LancDrawer';
+import NovoLancamentoModal from '@/components/v2/lancamentos/NovoLancamentoModal';
 import PayIcon, { labelForma } from '@/components/v2/lancamentos/PayIcon';
 import { Avatar, SitBadge, partesData, FILTROS_INICIAIS, type Filtros, type LancResp, type LancItem } from '@/components/v2/lancamentos/_shared';
 
@@ -22,6 +23,7 @@ export default function LancamentosV2() {
   const [erro, setErro] = useState('');
   const [colabs, setColabs] = useState<Opt[]>([]);
   const [detalheId, setDetalheId] = useState<number | null>(null);
+  const [modal, setModal] = useState<{ open: boolean; editId: number | null }>({ open: false, editId: null });
   const [exporting, setExporting] = useState(false);
   const reqId = useRef(0);
 
@@ -111,7 +113,8 @@ export default function LancamentosV2() {
     } finally { setExporting(false); }
   }, [data, filtros, montarQS]);
 
-  const novo = () => { window.location.href = '/lancamentos'; };
+  const novo = () => setModal({ open: true, editId: null });
+  const editar = (id: number) => { setDetalheId(null); setModal({ open: true, editId: id }); };
 
   const primeiraCarga = !data && busy;
   const K = data?.kpis, S = data?.strip, pg = data?.paginacao;
@@ -141,17 +144,17 @@ export default function LancamentosV2() {
         <div className={busy ? 'v2-busy' : undefined}>
           {/* 5 KPIs */}
           <div className="v2-kpi-grid" style={{ marginBottom: 14 }}>
-            <Kpi label="Entrou (realizado)" icon="Wallet" v={K!.realizado} />
-            <Kpi label="Comissão das profissionais" icon="HandCoins" v={K!.comissao} />
-            <Kpi label="Taxas de cartão" icon="CreditCard" v={K!.taxas} />
-            <Kpi label="Ficou pro salão" icon="Landmark" v={K!.salao} tone="ok" destaque />
-            <Kpi label="Fiado em aberto" icon="Clock" v={K!.fiadoAberto} tone="warn" />
+            <Kpi label="Entrou (realizado)" icon="Wallet" v={K!.realizado} href="/v2/relatorios" />
+            <Kpi label="Comissão das profissionais" icon="HandCoins" v={K!.comissao} href="/v2/comissoes" />
+            <Kpi label="Taxas de cartão" icon="CreditCard" v={K!.taxas} href="/v2/relatorios" />
+            <Kpi label="Ficou pro salão" icon="Landmark" v={K!.salao} tone="ok" destaque href="/v2/financeiro#fin-dre" />
+            <Kpi label="Fiado em aberto" icon="Clock" v={K!.fiadoAberto} tone="warn" href="/v2/financeiro#fin-fiados" />
           </div>
 
           {/* strip de 3 blocos */}
           <div className="v2-3col" style={{ marginBottom: 16 }}>
-            <Strip label="Recebido (realizado)" hint="lançamentos" icon="Banknote" v={S!.recebido} tone="ok" />
-            <Strip label="Pendente (a receber)" hint="lançamentos" icon="Hourglass" v={S!.pendente} tone="warn" />
+            <Strip label="Recebido (realizado)" hint="lançamentos" icon="Banknote" v={S!.recebido} tone="ok" href="/v2/financeiro#fin-dre" />
+            <Strip label="Pendente (a receber)" hint="lançamentos" icon="Hourglass" v={S!.pendente} tone="warn" href="/v2/financeiro#fin-fiados" />
             <Strip label="Ticket médio" hint="atendimentos" icon="Gauge" v={S!.ticket} />
           </div>
 
@@ -211,7 +214,7 @@ export default function LancamentosV2() {
                             <td><SitBadge s={l.situacao} /></td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button className="nb-btn nb-btn-quiet lv2-act" onClick={() => setDetalheId(l.id)} aria-label="Ver detalhes"><Icon name="Search" size={16} /></button>
-                              <a href={`/lancamentos?editar=${l.id}`} className="nb-btn nb-btn-quiet lv2-act" aria-label="Editar" style={{ textDecoration: 'none' }}><Icon name="SlidersHorizontal" size={16} /></a>
+                              <button className="nb-btn nb-btn-quiet lv2-act" onClick={() => editar(l.id)} aria-label="Editar"><Icon name="SlidersHorizontal" size={16} /></button>
                             </td>
                           </tr>
                         );
@@ -289,16 +292,27 @@ export default function LancamentosV2() {
         </div>
       )}
 
-      <LancDrawer id={detalheId} onClose={() => setDetalheId(null)} />
+      <LancDrawer id={detalheId} onClose={() => setDetalheId(null)} onEdit={editar} onChanged={() => carregar(filtros)} />
+
+      <NovoLancamentoModal
+        open={modal.open}
+        editId={modal.editId}
+        onClose={() => setModal({ open: false, editId: null })}
+        onSaved={() => carregar(filtros)}
+      />
     </PageShell>
   );
 }
 
 /* ---------------- KPI compacto ---------------- */
-function Kpi({ label, icon, v, tone, destaque }: { label: string; icon: string; v: { valor: number; count: number }; tone?: 'ok' | 'warn' | 'bad'; destaque?: boolean }) {
+function Kpi({ label, icon, v, tone, destaque, href }: { label: string; icon: string; v: { valor: number; count: number }; tone?: 'ok' | 'warn' | 'bad'; destaque?: boolean; href?: string }) {
   const color = tone === 'ok' ? 'var(--nb-ok)' : tone === 'warn' ? 'var(--nb-warn)' : tone === 'bad' ? 'var(--nb-bad)' : 'var(--nb-ink)';
+  const Root: any = href ? 'a' : 'div';
+  const rootProps: any = href
+    ? { href, className: 'nb-card nb-card-pad nb-card-link', 'aria-label': `${label} — ver detalhes` }
+    : { className: 'nb-card nb-card-pad' };
   return (
-    <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, ...(destaque ? { borderColor: '#CFE1D5', background: 'linear-gradient(0deg, var(--nb-ok-bg) 0%, var(--nb-surface) 62%)' } : {}) }}>
+    <Root {...rootProps} style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, color: 'inherit', textDecoration: 'none', ...(destaque ? { borderColor: '#CFE1D5', background: 'linear-gradient(0deg, var(--nb-ok-bg) 0%, var(--nb-surface) 62%)' } : {}) }}>
       <span aria-hidden style={{ flex: '0 0 auto', width: 38, height: 38, borderRadius: 11, background: destaque ? 'var(--nb-ok-bg)' : 'var(--nb-accent-wash)', color: destaque ? 'var(--nb-ok)' : 'var(--nb-accent)', display: 'grid', placeItems: 'center' }}>
         <Icon name={icon} size={18} />
       </span>
@@ -307,15 +321,19 @@ function Kpi({ label, icon, v, tone, destaque }: { label: string; icon: string; 
         <div className="nb-num" style={{ fontSize: 20, fontWeight: 680, color, lineHeight: 1.15, letterSpacing: '-.01em' }}>{brl(v.valor)}</div>
         <div style={{ fontSize: 10.5, color: 'var(--nb-ink-faint)' }}>{num(v.count)} {v.count === 1 ? 'lançamento' : 'lançamentos'}</div>
       </div>
-    </div>
+    </Root>
   );
 }
 
 /* ---------------- Strip (3 blocos) ---------------- */
-function Strip({ label, hint, icon, v, tone }: { label: string; hint: string; icon: string; v: { valor: number; count: number }; tone?: 'ok' | 'warn' }) {
+function Strip({ label, hint, icon, v, tone, href }: { label: string; hint: string; icon: string; v: { valor: number; count: number }; tone?: 'ok' | 'warn'; href?: string }) {
   const color = tone === 'ok' ? 'var(--nb-ok)' : tone === 'warn' ? 'var(--nb-warn)' : 'var(--nb-ink)';
+  const Root: any = href ? 'a' : 'div';
+  const rootProps: any = href
+    ? { href, className: 'nb-card nb-card-pad nb-card-link', 'aria-label': `${label} — ver detalhes` }
+    : { className: 'nb-card nb-card-pad' };
   return (
-    <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+    <Root {...rootProps} style={{ display: 'flex', alignItems: 'center', gap: 14, color: 'inherit', textDecoration: 'none' }}>
       <span aria-hidden style={{ flex: '0 0 auto', width: 46, height: 46, borderRadius: 13, background: 'var(--nb-accent-wash)', color: 'var(--nb-accent)', display: 'grid', placeItems: 'center' }}>
         <Icon name={icon} size={22} />
       </span>
@@ -324,7 +342,7 @@ function Strip({ label, hint, icon, v, tone }: { label: string; hint: string; ic
         <div className="nb-num" style={{ fontSize: 26, fontWeight: 700, color, lineHeight: 1.1, letterSpacing: '-.02em' }}>{brl(v.valor)}</div>
         <div style={{ fontSize: 11.5, color: 'var(--nb-ink-faint)' }}>{num(v.count)} {hint}</div>
       </div>
-    </div>
+    </Root>
   );
 }
 

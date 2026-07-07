@@ -81,3 +81,28 @@ export async function POST(request: Request) {
 
   return jsonResponse({ cliente: data });
 }
+
+// PUT (?id=): edita um cliente (nome, telefone, aniversário). Só admin.
+export async function PUT(request: Request) {
+  const auth = await requireAdmin();
+  if (isAuthError(auth)) return auth;
+  const id = Number(new URL(request.url).searchParams.get('id'));
+  if (!id) return errorResponse('ID do cliente é obrigatório.', 400);
+
+  let body: any;
+  try { body = await request.json(); } catch { return errorResponse('Corpo inválido.', 400); }
+  const nome = (body?.nome || '').trim();
+  const telefone = (body?.telefone || '').trim();
+  const aniversario = (body?.aniversario || '').trim() || null;
+  if (!nome) return errorResponse('Nome é obrigatório.', 400);
+  if (!telefone) return errorResponse('Telefone é obrigatório.', 400);
+
+  const { data, error } = await supabase
+    .from('clientes')
+    .update({ nome, telefone, aniversario })
+    .eq('id', id)
+    .select('id, nome, telefone, aniversario, created_at')
+    .single();
+  if (error) return errorResponse(error.message, 500);
+  return jsonResponse({ cliente: data });
+}

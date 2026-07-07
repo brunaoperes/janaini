@@ -114,11 +114,11 @@ export default function ComissoesV2() {
           delta={K?.totalAPagar.delta ?? undefined} deltaLabel={`${anteriorLabel} · ${brl(K?.totalAPagar.anterior ?? 0)}`} />
         <Kpi label="Comissões pagas" value={kFmt(K?.comissoesPagas.value ?? 0)} icon="Check"
           delta={K?.comissoesPagas.delta ?? undefined} deltaLabel={`de ${brl(K?.comissoesPagas.base ?? 0)} no período`} />
-        <Kpi label="Faturamento gerado" value={kFmt(K?.faturamento.value ?? 0)} icon="Wallet"
+        <Kpi label="Faturamento gerado" value={kFmt(K?.faturamento.value ?? 0)} icon="Wallet" href="/v2/lancamentos"
           delta={K?.faturamento.delta ?? undefined} deltaLabel={`${anteriorLabel} · ${brl(K?.faturamento.anterior ?? 0)}`} />
-        <Kpi label="Taxas de cartão" value={kFmt(K?.taxas.value ?? 0)} icon="CreditCard"
+        <Kpi label="Taxas de cartão" value={kFmt(K?.taxas.value ?? 0)} icon="CreditCard" href="/v2/relatorios"
           delta={K?.taxas.delta ?? undefined} deltaLabel={`${anteriorLabel} · ${brl(K?.taxas.anterior ?? 0)}`} />
-        <Kpi label="Atendimentos" value={num(K?.atendimentos.value ?? 0)} icon="ReceiptText"
+        <Kpi label="Atendimentos" value={num(K?.atendimentos.value ?? 0)} icon="ReceiptText" href="/v2/lancamentos"
           delta={K?.atendimentos.delta ?? undefined} deltaLabel={`${anteriorLabel} · ${num(K?.atendimentos.anterior ?? 0)}`} />
       </div>
 

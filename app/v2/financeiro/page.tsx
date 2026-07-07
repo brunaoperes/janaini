@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import Icon from '@/components/v2/ui/Icon';
+import Button from '@/components/v2/ui/Button';
 import { Card } from '@/components/v2/ui/Card';
 import { Skel } from '@/components/v2/dashboard/_shared';
 import KpisFinanceiro from '@/components/v2/financeiro/KpisFinanceiro';
@@ -12,7 +14,9 @@ import FluxoCaixaCard from '@/components/v2/financeiro/FluxoCaixa';
 import EvolucaoChart from '@/components/v2/financeiro/EvolucaoChart';
 import ContasPagar from '@/components/v2/financeiro/ContasPagar';
 import DespesasDonut from '@/components/v2/financeiro/DespesasDonut';
-import type { FinanceiroResp } from '@/components/v2/financeiro/types';
+import DespesaModal from '@/components/v2/financeiro/DespesaModal';
+import FiadosAbertosCard from '@/components/v2/financeiro/FiadosAbertosCard';
+import type { FinanceiroResp, ContaPagar } from '@/components/v2/financeiro/types';
 
 const mesAtual = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
 
@@ -33,6 +37,9 @@ export default function FinanceiroV2() {
   const [erro, setErro] = useState<string | null>(null);
   const [catFiltro, setCatFiltro] = useState('todas');
   const [sitFiltro, setSitFiltro] = useState('todas');
+  const [modalDespesa, setModalDespesa] = useState(false);   // modal Nova despesa / conta fixa
+  const [confirmarPago, setConfirmarPago] = useState<ContaPagar | null>(null); // linha a marcar como paga
+  const [marcandoId, setMarcandoId] = useState<number | null>(null);
 
   const carregar = useCallback(async (m: string, primeira: boolean) => {
     if (primeira) setLoading(true); else setBusy(true);
@@ -106,12 +113,35 @@ export default function FinanceiroV2() {
 
   const limpar = () => { setCatFiltro('todas'); setSitFiltro('todas'); setMes(mesAtual()); };
 
+  const recarregar = useCallback(() => carregar(mes, false), [carregar, mes]);
+
+  const onDespesaCriada = useCallback(() => { setModalDespesa(false); recarregar(); }, [recarregar]);
+
+  // marca uma despesa como paga (PUT status=pago + data_pagamento hoje), após confirmação
+  const marcarPago = useCallback(async (c: ContaPagar) => {
+    setMarcandoId(c.id);
+    setConfirmarPago(null);
+    try {
+      const hojeBRT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      const r = await fetch(`/api/admin/despesas?id=${c.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pago', data_pagamento: hojeBRT }),
+      });
+      const j = await r.json();
+      if (!r.ok) { toast.error(j.error || 'Não foi possível marcar como paga.'); return; }
+      toast.success(`"${c.descricao}" marcada como paga.`);
+      recarregar();
+    } catch { toast.error('Erro de conexão.'); }
+    finally { setMarcandoId(null); }
+  }, [recarregar]);
+
   const actions = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       <input type="month" value={mes} max={mesAtual()} onChange={(e) => setMes(e.target.value)} className="nb-input" style={{ width: 168 }} aria-label="Mês de referência" />
       <button className="nb-btn nb-btn-ghost" onClick={exportarCsv} disabled={!data} style={{ fontSize: 13 }}>
         <Icon name="Download" size={15} /> Exportar CSV
       </button>
+      <Button icon="Plus" onClick={() => setModalDespesa(true)} style={{ fontSize: 13 }}>Lançar despesa</Button>
     </div>
   );
 
@@ -178,7 +208,7 @@ export default function FinanceiroV2() {
         </div>
 
         {/* DRE do mês + Fluxo de caixa */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, marginBottom: 16 }} className="v2-row3">
+        <div id="fin-dre" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, marginBottom: 16, scrollMarginTop: 88 }} className="v2-row3">
           <DreCard dre={data.dreMes} mesLabel={data.mesLabel} />
           <FluxoCaixaCard fluxo={data.fluxoCaixa} mesLabel={data.mesLabel} />
         </div>
@@ -194,9 +224,15 @@ export default function FinanceiroV2() {
         </div>
 
         {/* Contas a pagar + donut */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: 16 }} className="v2-row3">
-          <ContasPagar contas={contasFiltradas} qtdPendente={qtdPendenteFiltrado} loading={busy} />
+        <div id="fin-contas" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: 16, scrollMarginTop: 88 }} className="v2-row3">
+          <ContasPagar contas={contasFiltradas} qtdPendente={qtdPendenteFiltrado} loading={busy}
+            onNovaDespesa={() => setModalDespesa(true)} onMarcarPago={setConfirmarPago} marcandoId={marcandoId} />
           <DespesasDonut categorias={donutFiltrado.cats} total={donutFiltrado.total} />
+        </div>
+
+        {/* Fiados em aberto (atalho de recebimento — reusa a API de produção) */}
+        <div id="fin-fiados" style={{ marginTop: 16, scrollMarginTop: 88 }}>
+          <FiadosAbertosCard onPago={recarregar} />
         </div>
       </div>
 
@@ -205,8 +241,45 @@ export default function FinanceiroV2() {
         O <strong style={{ color: 'var(--nb-ink-soft)', fontWeight: 600 }}>fluxo de caixa</strong> mostra as entradas e saídas efetivas (o que foi recebido e o que foi pago). Por isso os dois podem divergir.
         {data.aliquota > 0 && <> Alíquota de imposto aplicada sobre a receita: {data.aliquota.toLocaleString('pt-BR')}%.</>}
       </p>
+
+      {modalDespesa && (
+        <DespesaModal mes={mes} onClose={() => setModalDespesa(false)} onDone={onDespesaCriada} />
+      )}
+
+      {confirmarPago && (
+        <ConfirmarPagoDialog conta={confirmarPago} onCancelar={() => setConfirmarPago(null)} onConfirmar={() => marcarPago(confirmarPago)} />
+      )}
     </PageShell>
   );
+}
+
+function ConfirmarPagoDialog({ conta, onCancelar, onConfirmar }: { conta: ContaPagar; onCancelar: () => void; onConfirmar: () => void }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Confirmar pagamento" onClick={onCancelar}
+      style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} className="nb-card" style={{ width: '100%', maxWidth: 400, overflow: 'hidden' }}>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span aria-hidden style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--nb-surface-2)', border: '1px solid var(--nb-rule)', display: 'grid', placeItems: 'center', color: 'var(--nb-ok)' }}>
+            <Icon name="CircleCheck" size={20} />
+          </span>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 620, color: 'var(--nb-ink)' }}>Marcar como paga?</div>
+            <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--nb-ink-soft)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--nb-ink)' }}>{conta.descricao}</strong> — {brlValor(conta.valor)}. A data de pagamento será hoje. Isso entra no fluxo de caixa do dia.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--nb-rule)' }}>
+          <Button variant="ghost" onClick={onCancelar} style={{ flex: 1, justifyContent: 'center' }}>Cancelar</Button>
+          <Button icon="Check" onClick={onConfirmar} style={{ flex: 1, justifyContent: 'center' }}>Confirmar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function brlValor(v: number) {
+  return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function mesAnteriorLabel(ym: string) {

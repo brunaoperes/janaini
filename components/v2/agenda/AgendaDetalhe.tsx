@@ -7,12 +7,13 @@ import { Bloco } from './timeline-utils';
 import { StatusBadge, Avatar, hhmm } from './_ui';
 
 export default function AgendaDetalhe({
-  bloco, cor, receitaConfiavel, onClose,
+  bloco, cor, receitaConfiavel, onClose, onEdit,
 }: {
   bloco: Bloco;
   cor: string;
   receitaConfiavel: boolean;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -75,8 +76,11 @@ export default function AgendaDetalhe({
           ))}
         </div>
 
-        <div style={{ padding: '12px 20px 18px' }}>
-          <button className="nb-btn nb-btn-ghost" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>Fechar</button>
+        <div style={{ display: 'flex', gap: 10, padding: '12px 20px 18px' }}>
+          <button className="nb-btn nb-btn-ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Fechar</button>
+          {onEdit && bloco.status !== 'cancelado' && (
+            <button className="nb-btn nb-btn-primary" onClick={onEdit} style={{ flex: 1, justifyContent: 'center' }}><Icon name="SlidersHorizontal" size={16} /> Editar</button>
+          )}
         </div>
       </div>
     </div>

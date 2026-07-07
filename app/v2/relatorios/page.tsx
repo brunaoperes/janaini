@@ -35,10 +35,10 @@ export default function RelatoriosV2() {
     <PageShell title="Relatórios" subtitle={`Visão gerencial — ${mesExtenso(mes)}`} actions={actions}>
       {/* resumo do mês */}
       <div className="v2-kpis" style={{ marginBottom: 16 }}>
-        <Kpi label="Faturamento" value={brl(F?.faturamentoRealizado ?? 0)} icon="Wallet" />
-        <Kpi label="Comissões" value={brl(F?.comissaoRealizada ?? 0)} icon="HandCoins" />
-        <Kpi label="Taxas de cartão" value={brl(F?.taxasCartao ?? 0)} icon="CreditCard" />
-        <Kpi label="Ficou pro salão" value={brl(F?.parteSalao ?? 0)} icon="Landmark" tone="ok" />
+        <Kpi label="Faturamento" value={brl(F?.faturamentoRealizado ?? 0)} icon="Wallet" href="/v2/lancamentos" />
+        <Kpi label="Comissões" value={brl(F?.comissaoRealizada ?? 0)} icon="HandCoins" href="/v2/comissoes" />
+        <Kpi label="Taxas de cartão" value={brl(F?.taxasCartao ?? 0)} icon="CreditCard" href="/v2/financeiro#fin-dre" />
+        <Kpi label="Ficou pro salão" value={brl(F?.parteSalao ?? 0)} icon="Landmark" tone="ok" href="/v2/financeiro#fin-dre" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 16 }} className="v2-row3">
@@ -82,12 +82,16 @@ export default function RelatoriosV2() {
   );
 }
 
-function Kpi({ label, value, icon, tone }: { label: string; value: string; icon: string; tone?: 'ok' }) {
+function Kpi({ label, value, icon, tone, href }: { label: string; value: string; icon: string; tone?: 'ok'; href?: string }) {
+  const Root: any = href ? 'a' : 'div';
+  const rootProps: any = href
+    ? { href, className: 'nb-card nb-card-pad nb-card-link', 'aria-label': `${label} — ver detalhes` }
+    : { className: 'nb-card nb-card-pad' };
   return (
-    <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <Root {...rootProps} style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'inherit', textDecoration: 'none' }}>
       <span aria-hidden style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--nb-accent-wash)', color: 'var(--nb-accent)', display: 'grid', placeItems: 'center' }}><Icon name={icon} size={18} /></span>
       <div><div className="nb-eyebrow" style={{ fontSize: 10 }}>{label}</div><div className="nb-num" style={{ fontSize: 20, fontWeight: 680, color: tone === 'ok' ? 'var(--nb-ok)' : 'var(--nb-ink)', lineHeight: 1.1 }}>{value}</div></div>
-    </div>
+    </Root>
   );
 }
 function Vazio({ h, texto }: { h: number; texto?: string }) {

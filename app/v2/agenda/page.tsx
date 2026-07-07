@@ -8,12 +8,13 @@ import Icon from '@/components/v2/ui/Icon';
 import { EmptyState, Segmented } from '@/components/v2/dashboard/_shared';
 import { brl, num } from '@/lib/v2/formatters';
 import {
-  HORAS, INICIO_MIN, JANELA_MIN, horaParaMin, minDeISO, marcarConflitos,
+  HORAS, INICIO_MIN, FIM_MIN, JANELA_MIN, horaParaMin, minDeISO, marcarConflitos,
   contarConflitos, corColab, statusVisual, Bloco,
 } from '@/components/v2/agenda/timeline-utils';
 import AgendaFilters, { FiltrosAgenda, FILTROS_VAZIOS, temFiltroAtivo } from '@/components/v2/agenda/AgendaFilters';
 import AgendaAnalytics from '@/components/v2/agenda/AgendaAnalytics';
 import AgendaDetalhe from '@/components/v2/agenda/AgendaDetalhe';
+import AgendamentoModal, { AgendamentoEdit } from '@/components/v2/agenda/AgendamentoModal';
 import TimelineBlock from '@/components/v2/agenda/TimelineBlock';
 import { useTimelineDnd } from '@/components/v2/agenda/useTimelineDnd';
 import { StatusBadge, Avatar, hhmm } from '@/components/v2/agenda/_ui';
@@ -39,9 +40,13 @@ export default function AgendaV2() {
   const [ags, setAgs] = useState<any[]>([]);
   const [colabs, setColabs] = useState<any[]>([]);
   const [servicosDisp, setServicosDisp] = useState<string[]>([]);
+  const [servicosCat, setServicosCat] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosAgenda>(FILTROS_VAZIOS);
   const [sel, setSel] = useState<Bloco | null>(null);
+  // Modal de criar/editar agendamento (null = fechado).
+  const [novoModal, setNovoModal] = useState<null | { colabId?: number | null; hora?: string | null }>(null);
+  const [editAg, setEditAg] = useState<AgendamentoEdit | null>(null);
   const [agora, setAgora] = useState<number>(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
 
   useEffect(() => {
@@ -57,6 +62,7 @@ export default function AgendaV2() {
       if (r.ok) {
         setAgs(j.agendamentos || []);
         setColabs(j.colaboradores || []);
+        setServicosCat(j.servicos || []);
         const nomes = Array.from(new Set((j.servicos || []).map((s: any) => s.nome).filter(Boolean))) as string[];
         setServicosDisp(nomes.sort((a, b) => a.localeCompare(b, 'pt-BR')));
       }
@@ -109,6 +115,55 @@ export default function AgendaV2() {
     onCommitResize: ({ id, inicioMin, fimMin }) =>
       persist(id, inicioMin, fimMin, undefined, `Duração ajustada · ${hhmm(inicioMin)}–${hhmm(fimMin)}`),
   });
+
+  // ---- Abrir modal de criar/editar agendamento ----
+  const abrirNovo = useCallback(() => { setEditAg(null); setNovoModal({}); }, []);
+
+  // Guarda: o browser sintetiza um "click" no ancestral comum após um drag que solta em
+  // outro elemento. Marcamos o fim de cada arraste para ignorar esse click fantasma.
+  const dragEndRef = useRef(0);
+  const prevActiveRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevActiveRef.current != null && dnd.activeId == null) dragEndRef.current = Date.now();
+    prevActiveRef.current = dnd.activeId;
+  }, [dnd.activeId]);
+
+  // Clique num espaço VAZIO da timeline: pré-preenche colaboradora + horário (snap 15 min).
+  const abrirVago = useCallback((e: React.MouseEvent<HTMLDivElement>, colabId: number) => {
+    if ((e.target as HTMLElement).closest('[data-agid]')) return; // clicou num bloco existente
+    if (dnd.activeId != null) return;                             // arraste em andamento
+    if (Date.now() - dragEndRef.current < 350) return;            // click fantasma pós-drag
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const min = INICIO_MIN + ((e.clientX - rect.left) / rect.width) * JANELA_MIN;
+    const snapped = Math.max(INICIO_MIN, Math.min(FIM_MIN - 15, Math.round(min / 15) * 15));
+    setEditAg(null);
+    setNovoModal({ colabId, hora: hhmm(snapped) });
+  }, [dnd.activeId]);
+
+  // Editar: usa o registro BRUTO do agendamento (tem cliente_id, observações etc.).
+  const abrirEdicao = useCallback((id: number) => {
+    const a = agsRef.current.find((x) => x.id === id);
+    if (!a) return;
+    setSel(null);
+    setNovoModal(null);
+    setEditAg({
+      id: a.id,
+      cliente_id: a.cliente_id,
+      colaborador_id: a.colaborador_id,
+      data_hora: a.data_hora,
+      descricao_servico: a.descricao_servico,
+      duracao_minutos: a.duracao_minutos,
+      valor_estimado: a.valor_estimado,
+      hora_inicio: a.hora_inicio,
+      hora_fim: a.hora_fim,
+      observacoes: a.observacoes,
+      cliente: a.cliente ? { nome: a.cliente.nome, telefone: a.cliente.telefone } : null,
+    });
+  }, []);
+
+  const fecharModal = useCallback(() => { setNovoModal(null); setEditAg(null); }, []);
+  const aposSalvar = useCallback(() => { fecharModal(); carregar(data); }, [fecharModal, carregar, data]);
 
   // Todos os blocos do dia (a API já exclui cancelados)
   const todosBlocos = useMemo<Bloco[]>(() => ags.map((a): Bloco => {
@@ -189,7 +244,7 @@ export default function AgendaV2() {
       </div>
       <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="nb-input" style={{ width: 148 }} />
       <Segmented value={vista} onChange={setVista} options={[['dia', 'Dia'], ['semana', 'Semana']] as const} />
-      <a href="/agenda" className="nb-btn nb-btn-primary" style={{ textDecoration: 'none' }}><Icon name="Plus" size={16} /> Novo agendamento</a>
+      <button className="nb-btn nb-btn-primary" onClick={abrirNovo}><Icon name="Plus" size={16} /> Novo agendamento</button>
     </div>
   );
 
@@ -202,7 +257,7 @@ export default function AgendaV2() {
       <div className="v2-kpis" style={{ marginBottom: 18 }}>
         <Kpi icon="CalendarDays" label="Agendamentos" value={loading ? '—' : num(totalAg)} sub={temFiltroAtivo(filtros) ? 'No filtro atual' : 'Total do dia'} />
         <Kpi
-          icon="DollarSign" label="Receita prevista"
+          icon="DollarSign" label="Receita prevista" href="/v2/relatorios"
           value={loading ? '—' : receitaConfiavel ? brl(receitaEstimada) : receitaLancada > 0 ? brl(receitaLancada) : '—'}
           sub={loading ? '' : receitaConfiavel ? 'Baseado nos agendamentos' : receitaLancada > 0 ? 'Sem estimativa · valor lançado' : 'Sem valores registrados'}
           alerta={!loading && !receitaConfiavel && receitaLancada > 0}
@@ -268,7 +323,7 @@ export default function AgendaV2() {
                             <span style={{ fontSize: 11, color: 'var(--nb-ink-faint)' }}>{bs.length} agend.</span>
                           </span>
                         </div>
-                        <div data-colab-row data-colab-id={c.id} style={{ flex: 1, position: 'relative' }}>
+                        <div data-colab-row data-colab-id={c.id} onClick={(e) => abrirVago(e, c.id)} style={{ flex: 1, position: 'relative', cursor: 'copy' }} title="Clique num espaço livre para agendar">
                           <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                             {HORAS.map((h) => <div key={h} style={{ flex: 1, borderLeft: '1px solid var(--nb-rule-soft)' }} />)}
                           </div>
@@ -298,7 +353,7 @@ export default function AgendaV2() {
                         <div style={{ fontSize: 12.5, color: 'var(--nb-ink-faint)', margin: '4px 0 12px' }}>
                           {temFiltroAtivo(filtros) ? 'Ajuste os filtros ou selecione outra data.' : 'Use os filtros ou selecione outra data.'}
                         </div>
-                        <a href="/agenda" className="nb-btn nb-btn-primary" style={{ textDecoration: 'none' }}><Icon name="Plus" size={15} /> Criar agendamento</a>
+                        <button className="nb-btn nb-btn-primary" onClick={abrirNovo}><Icon name="Plus" size={15} /> Criar agendamento</button>
                       </div>
                     </div>
                   )}
@@ -333,7 +388,7 @@ export default function AgendaV2() {
             {loading ? (
               [0, 1].map((i) => <Card key={i}><div className="v2-skel" style={{ height: 60 }} /></Card>)
             ) : vazioGeral ? (
-              <Card><EmptyState icon="CalendarOff" titulo="Nenhum agendamento encontrado" texto={temFiltroAtivo(filtros) ? 'Ajuste os filtros ou selecione outra data.' : 'Use os filtros ou selecione outra data.'} acao={{ label: 'Criar agendamento', href: '/agenda' }} /></Card>
+              <Card><EmptyState icon="CalendarOff" titulo="Nenhum agendamento encontrado" texto={temFiltroAtivo(filtros) ? 'Ajuste os filtros ou selecione outra data.' : 'Use os filtros ou selecione outra data.'} acao={{ label: 'Criar agendamento', onClick: abrirNovo }} /></Card>
             ) : colabsExibidas.map((c) => {
               const bs = blocosDe(c.id).sort((a, b) => a.inicioMin - b.inicioMin);
               return (
@@ -342,6 +397,7 @@ export default function AgendaV2() {
                     <Avatar nome={c.nome} cor={corDe(c.id)} size={26} />
                     <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{c.nome}</span>
                     <span style={{ fontSize: 11.5, color: 'var(--nb-ink-faint)' }}>{bs.length} agend.</span>
+                    <button className="nb-btn nb-btn-quiet" onClick={() => { setEditAg(null); setNovoModal({ colabId: c.id }); }} aria-label={`Agendar para ${c.nome}`} style={{ padding: 6 }}><Icon name="Plus" size={16} /></button>
                   </div>
                   {bs.length === 0 ? <div style={{ padding: 14, fontSize: 13, color: 'var(--nb-ink-faint)' }}>Sem agendamentos.</div> : bs.map((b) => (
                     <button key={b.id} onClick={() => setSel(b)} style={{ width: '100%', display: 'grid', gridTemplateColumns: '54px 3px 1fr auto', gap: 10, alignItems: 'center', padding: '11px 14px', borderBottom: '1px solid var(--nb-rule-soft)', background: 'transparent', border: 'none', borderBottomLeftRadius: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
@@ -386,7 +442,26 @@ export default function AgendaV2() {
       )}
 
       {sel && (
-        <AgendaDetalhe bloco={sel} cor={corDe(sel.colaboradorId)} receitaConfiavel={receitaConfiavel} onClose={() => setSel(null)} />
+        <AgendaDetalhe
+          bloco={sel}
+          cor={corDe(sel.colaboradorId)}
+          receitaConfiavel={receitaConfiavel}
+          onClose={() => setSel(null)}
+          onEdit={() => abrirEdicao(sel.id)}
+        />
+      )}
+
+      {(novoModal !== null || editAg !== null) && (
+        <AgendamentoModal
+          colabs={colabs}
+          servicos={servicosCat}
+          dataPadrao={data}
+          preColabId={novoModal?.colabId ?? null}
+          preHoraInicio={novoModal?.hora ?? null}
+          agendamento={editAg}
+          onClose={fecharModal}
+          onSaved={aposSalvar}
+        />
       )}
     </PageShell>
   );
@@ -394,16 +469,20 @@ export default function AgendaV2() {
 
 const NOMECOL: React.CSSProperties = { width: 168, flex: '0 0 168px', padding: '0 14px', position: 'sticky', left: 0, background: 'var(--nb-surface)', zIndex: 2 };
 
-function Kpi({ icon, label, value, sub, tone, alerta }: { icon: string; label: string; value: string; sub?: string; tone?: 'warn'; alerta?: boolean }) {
+function Kpi({ icon, label, value, sub, tone, alerta, href }: { icon: string; label: string; value: string; sub?: string; tone?: 'warn'; alerta?: boolean; href?: string }) {
+  const Root: any = href ? 'a' : 'div';
+  const rootProps: any = href
+    ? { href, className: 'nb-card nb-card-pad nb-card-link', 'aria-label': `${label} — ver detalhes` }
+    : { className: 'nb-card nb-card-pad' };
   return (
-    <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+    <Root {...rootProps} style={{ display: 'flex', alignItems: 'center', gap: 13, color: 'inherit', textDecoration: 'none' }}>
       <span aria-hidden style={{ width: 42, height: 42, borderRadius: 11, background: '#F0E7D8', color: 'var(--nb-gold)', display: 'grid', placeItems: 'center', flex: '0 0 auto' }}><Icon name={icon} size={19} /></span>
       <div style={{ minWidth: 0 }}>
         <div className="nb-eyebrow" style={{ fontSize: 10 }}>{label}</div>
         <div className="nb-num" style={{ fontSize: 22, fontWeight: 680, color: tone === 'warn' ? 'var(--nb-warn)' : 'var(--nb-ink)', lineHeight: 1.12 }}>{value}</div>
         {sub && <div style={{ fontSize: 11, color: alerta ? 'var(--nb-warn)' : 'var(--nb-ink-faint)', display: 'flex', alignItems: 'center', gap: 4 }}>{alerta && <Icon name="Info" size={11} />}{sub}</div>}
       </div>
-    </div>
+    </Root>
   );
 }
 function Leg({ cor, texto }: { cor: string; texto: string }) {

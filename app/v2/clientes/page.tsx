@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import { Card } from '@/components/v2/ui/Card';
 import Icon from '@/components/v2/ui/Icon';
 import { brl, num, iniciais } from '@/lib/v2/formatters';
+import ClienteModal from '@/components/v2/clientes/ClienteModal';
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -35,9 +35,8 @@ export default function ClientesV2() {
   const [data, setData] = useState<{ itens: Cliente[]; paginacao: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
-  const [form, setForm] = useState(false);
-  const [novo, setNovo] = useState({ nome: '', telefone: '', aniversario: '' });
-  const [salvando, setSalvando] = useState(false);
+  const [modal, setModal] = useState(false);
+  const [editCliente, setEditCliente] = useState<Cliente | null>(null);
 
   // debounce simples da busca
   useEffect(() => {
@@ -60,27 +59,6 @@ export default function ClientesV2() {
   }, [page, search]);
   useEffect(() => { carregar(); }, [carregar]);
 
-  const salvar = async () => {
-    if (!novo.nome.trim()) { toast.error('Informe o nome.'); return; }
-    if (!novo.telefone.trim()) { toast.error('Informe o telefone.'); return; }
-    setSalvando(true);
-    try {
-      const r = await fetch('/api/v2/clientes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(novo),
-      });
-      const j = await r.json();
-      if (r.ok) {
-        toast.success('Cliente cadastrada!');
-        setNovo({ nome: '', telefone: '', aniversario: '' });
-        setForm(false);
-        setPage(1);
-        carregar();
-      } else toast.error(j.error || 'Não foi possível salvar.');
-    } catch { toast.error('Erro de conexão.'); } finally { setSalvando(false); }
-  };
-
   const pg = data?.paginacao;
   const itens = data?.itens || [];
 
@@ -98,33 +76,10 @@ export default function ClientesV2() {
             style={{ paddingLeft: 38 }}
           />
         </div>
-        <button className="nb-btn nb-btn-primary" onClick={() => setForm((v) => !v)}>
-          <Icon name={form ? 'X' : 'UserPlus'} size={16} /> {form ? 'Fechar' : 'Novo cliente'}
+        <button className="nb-btn nb-btn-primary" onClick={() => { setEditCliente(null); setModal(true); }}>
+          <Icon name="UserPlus" size={16} /> Novo cliente
         </button>
       </div>
-
-      {/* formulário inline */}
-      {form && (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, alignItems: 'end' }}>
-            <label style={{ display: 'block' }}>
-              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Nome</span>
-              <input className="nb-input" value={novo.nome} onChange={(e) => setNovo((s) => ({ ...s, nome: e.target.value }))} placeholder="Nome completo" />
-            </label>
-            <label style={{ display: 'block' }}>
-              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Telefone</span>
-              <input className="nb-input" value={novo.telefone} onChange={(e) => setNovo((s) => ({ ...s, telefone: e.target.value }))} placeholder="(00) 00000-0000" />
-            </label>
-            <label style={{ display: 'block' }}>
-              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Aniversário</span>
-              <input className="nb-input" type="date" value={novo.aniversario} onChange={(e) => setNovo((s) => ({ ...s, aniversario: e.target.value }))} />
-            </label>
-            <button className="nb-btn nb-btn-primary" onClick={salvar} disabled={salvando} style={{ justifyContent: 'center' }}>
-              <Icon name="Check" size={16} /> {salvando ? 'Salvando…' : 'Salvar'}
-            </button>
-          </div>
-        </Card>
-      )}
 
       {/* tabela */}
       <Card pad={false}>
@@ -148,7 +103,7 @@ export default function ClientesV2() {
               ) : itens.length === 0 ? (
                 <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--nb-ink-faint)' }}>{search ? 'Nenhuma cliente encontrada nesta busca.' : 'Nenhuma cliente cadastrada ainda.'}</td></tr>
               ) : itens.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} onClick={() => { setEditCliente(c); setModal(true); }} style={{ cursor: 'pointer' }} title="Editar cliente">
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
                       <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>{iniciais(c.nome)}</span>
@@ -181,6 +136,14 @@ export default function ClientesV2() {
       <p style={{ fontSize: 12, color: 'var(--nb-ink-faint)', marginTop: 12 }}>
         <strong>Total gasto</strong> e <strong>atendimentos</strong> contam apenas lançamentos concluídos, sem fiado e sem troca grátis. Busca e paginação no servidor.
       </p>
+
+      {modal && (
+        <ClienteModal
+          cliente={editCliente}
+          onClose={() => { setModal(false); setEditCliente(null); }}
+          onSaved={() => { setModal(false); setEditCliente(null); setPage(1); carregar(); }}
+        />
+      )}
     </PageShell>
   );
 }
