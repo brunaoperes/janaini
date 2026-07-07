@@ -1,11 +1,186 @@
 'use client';
 
-import PageShell, { EmConstrucao } from '@/components/v2/layout/PageShell';
+import { useEffect, useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
+import PageShell from '@/components/v2/layout/PageShell';
+import { Card } from '@/components/v2/ui/Card';
+import Icon from '@/components/v2/ui/Icon';
+import { brl, num, iniciais } from '@/lib/v2/formatters';
 
-export default function V2Page() {
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** aniversário salvo como 'YYYY-MM-DD' (ou 'MM-DD') -> '07/jul' */
+function fmtAniversario(v?: string | null) {
+  if (!v) return '—';
+  const partes = v.slice(0, 10).split('-');
+  const [d, m] = partes.length === 3 ? [partes[2], partes[1]] : [partes[1], partes[0]];
+  const mi = Number(m) - 1;
+  if (!d || mi < 0 || mi > 11) return '—';
+  return `${d}/${MESES[mi]}`;
+}
+
+/** último atendimento: ISO -> 'dd/mm/aaaa' */
+function fmtUltimo(iso?: string | null) {
+  if (!iso) return '—';
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${a}`;
+}
+
+type Cliente = { id: number; nome: string; telefone: string; aniversario: string | null; atendimentos: number; totalGasto: number; ultimo: string | null };
+
+export default function ClientesV2() {
+  const [busca, setBusca] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<{ itens: Cliente[]; paginacao: any } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(false);
+  const [form, setForm] = useState(false);
+  const [novo, setNovo] = useState({ nome: '', telefone: '', aniversario: '' });
+  const [salvando, setSalvando] = useState(false);
+
+  // debounce simples da busca
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(busca.trim()), 350);
+    return () => clearTimeout(t);
+  }, [busca]);
+  useEffect(() => { setPage(1); }, [search]);
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    setErro(false);
+    const q = new URLSearchParams({ page: String(page), limit: '30' });
+    if (search) q.set('search', search);
+    try {
+      const r = await fetch(`/api/v2/clientes?${q}`, { cache: 'no-store' });
+      const j = await r.json();
+      if (r.ok) setData(j);
+      else setErro(true);
+    } catch { setErro(true); } finally { setLoading(false); }
+  }, [page, search]);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const salvar = async () => {
+    if (!novo.nome.trim()) { toast.error('Informe o nome.'); return; }
+    if (!novo.telefone.trim()) { toast.error('Informe o telefone.'); return; }
+    setSalvando(true);
+    try {
+      const r = await fetch('/api/v2/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(novo),
+      });
+      const j = await r.json();
+      if (r.ok) {
+        toast.success('Cliente cadastrada!');
+        setNovo({ nome: '', telefone: '', aniversario: '' });
+        setForm(false);
+        setPage(1);
+        carregar();
+      } else toast.error(j.error || 'Não foi possível salvar.');
+    } catch { toast.error('Erro de conexão.'); } finally { setSalvando(false); }
+  };
+
+  const pg = data?.paginacao;
+  const itens = data?.itens || [];
+
   return (
-    <PageShell title="Clientes" subtitle="Cadastro, historico e recorrencia">
-      <EmConstrucao fase="Fase 3+" nota="" />
+    <PageShell title="Clientes" subtitle="Cadastro, histórico e recorrência">
+      {/* busca + novo cliente */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 240, maxWidth: 420 }}>
+          <span aria-hidden style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--nb-ink-faint)', display: 'grid', placeItems: 'center' }}><Icon name="Search" size={16} /></span>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome ou telefone…"
+            className="nb-input"
+            style={{ paddingLeft: 38 }}
+          />
+        </div>
+        <button className="nb-btn nb-btn-primary" onClick={() => setForm((v) => !v)}>
+          <Icon name={form ? 'X' : 'UserPlus'} size={16} /> {form ? 'Fechar' : 'Novo cliente'}
+        </button>
+      </div>
+
+      {/* formulário inline */}
+      {form && (
+        <Card style={{ marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, alignItems: 'end' }}>
+            <label style={{ display: 'block' }}>
+              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Nome</span>
+              <input className="nb-input" value={novo.nome} onChange={(e) => setNovo((s) => ({ ...s, nome: e.target.value }))} placeholder="Nome completo" />
+            </label>
+            <label style={{ display: 'block' }}>
+              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Telefone</span>
+              <input className="nb-input" value={novo.telefone} onChange={(e) => setNovo((s) => ({ ...s, telefone: e.target.value }))} placeholder="(00) 00000-0000" />
+            </label>
+            <label style={{ display: 'block' }}>
+              <span className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Aniversário</span>
+              <input className="nb-input" type="date" value={novo.aniversario} onChange={(e) => setNovo((s) => ({ ...s, aniversario: e.target.value }))} />
+            </label>
+            <button className="nb-btn nb-btn-primary" onClick={salvar} disabled={salvando} style={{ justifyContent: 'center' }}>
+              <Icon name="Check" size={16} /> {salvando ? 'Salvando…' : 'Salvar'}
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* tabela */}
+      <Card pad={false}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="nb-table" style={{ minWidth: 780 }}>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Telefone</th>
+                <th>Aniversário</th>
+                <th style={{ textAlign: 'right' }}>Atendimentos</th>
+                <th style={{ textAlign: 'right' }}>Total gasto</th>
+                <th>Último atendimento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--nb-ink-faint)' }}>Carregando…</td></tr>
+              ) : erro ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--nb-bad)' }}>Não foi possível carregar os clientes. <button className="nb-btn nb-btn-ghost" onClick={carregar} style={{ marginLeft: 8, padding: '6px 12px' }}>Tentar de novo</button></td></tr>
+              ) : itens.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--nb-ink-faint)' }}>{search ? 'Nenhuma cliente encontrada nesta busca.' : 'Nenhuma cliente cadastrada ainda.'}</td></tr>
+              ) : itens.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+                      <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>{iniciais(c.nome)}</span>
+                      <span style={{ fontWeight: 560 }}>{c.nome}</span>
+                    </span>
+                  </td>
+                  <td className="nb-num" style={{ whiteSpace: 'nowrap', color: 'var(--nb-ink-soft)' }}>{c.telefone || '—'}</td>
+                  <td style={{ color: 'var(--nb-ink-soft)', whiteSpace: 'nowrap' }}>{fmtAniversario(c.aniversario)}</td>
+                  <td className="nb-num" style={{ textAlign: 'right', color: 'var(--nb-ink-soft)' }}>{num(c.atendimentos)}</td>
+                  <td className="nb-num" style={{ textAlign: 'right', fontWeight: 600 }}>{brl(c.totalGasto)}</td>
+                  <td className="nb-num" style={{ whiteSpace: 'nowrap', color: 'var(--nb-ink-soft)' }}>{fmtUltimo(c.ultimo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* paginação (servidor) */}
+        {pg && pg.total > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid var(--nb-rule)', fontSize: 13, color: 'var(--nb-ink-soft)' }}>
+            <span>{num(pg.total)} cliente{pg.total !== 1 ? 's' : ''} · página {pg.page} de {pg.paginas || 1}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="nb-btn nb-btn-ghost" disabled={pg.page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: '7px 12px' }}><Icon name="ChevronLeft" size={15} /> Anterior</button>
+              <button className="nb-btn nb-btn-ghost" disabled={pg.page >= (pg.paginas || 1)} onClick={() => setPage((p) => p + 1)} style={{ padding: '7px 12px' }}>Próxima <Icon name="ChevronRight" size={15} /></button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <p style={{ fontSize: 12, color: 'var(--nb-ink-faint)', marginTop: 12 }}>
+        <strong>Total gasto</strong> e <strong>atendimentos</strong> contam apenas lançamentos concluídos, sem fiado e sem troca grátis. Busca e paginação no servidor.
+      </p>
     </PageShell>
   );
 }
