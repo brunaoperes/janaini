@@ -182,4 +182,10 @@
 /* conteúdo em recarga */
 .v2-root .v2-busy{opacity:.5;pointer-events:none;transition:opacity .2s}
 
+/* financeiro: grade de 6 KPIs e linha do donut */
+.v2-root .v2-fin-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media(max-width:1000px){.v2-root .v2-fin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.v2-root .v2-fin-kpis{grid-template-columns:1fr}}
+@media(max-width:520px){.v2-root .v2-donut-row{grid-template-columns:1fr!important;justify-items:center;text-align:left}}
+
 @media(prefers-reduced-motion:reduce){.v2-root *{transition:none!important;animation:none!important}}

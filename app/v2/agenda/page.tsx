@@ -1,18 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import { Card } from '@/components/v2/ui/Card';
 import Icon from '@/components/v2/ui/Icon';
 import { EmptyState, Segmented } from '@/components/v2/dashboard/_shared';
 import { brl, num } from '@/lib/v2/formatters';
 import {
-  HORAS, INICIO_MIN, JANELA_MIN, horaParaMin, minDeISO, posBarra, marcarConflitos,
-  contarConflitos, corColab, statusVisual, STATUS_META, Bloco,
+  HORAS, INICIO_MIN, JANELA_MIN, horaParaMin, minDeISO, marcarConflitos,
+  contarConflitos, corColab, statusVisual, Bloco,
 } from '@/components/v2/agenda/timeline-utils';
 import AgendaFilters, { FiltrosAgenda, FILTROS_VAZIOS, temFiltroAtivo } from '@/components/v2/agenda/AgendaFilters';
 import AgendaAnalytics from '@/components/v2/agenda/AgendaAnalytics';
 import AgendaDetalhe from '@/components/v2/agenda/AgendaDetalhe';
+import TimelineBlock from '@/components/v2/agenda/TimelineBlock';
+import { useTimelineDnd } from '@/components/v2/agenda/useTimelineDnd';
 import { StatusBadge, Avatar, hhmm } from '@/components/v2/agenda/_ui';
 
 const hojeBRT = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -60,6 +63,52 @@ export default function AgendaV2() {
     } catch { /* silencioso */ } finally { setLoading(false); }
   }, []);
   useEffect(() => { carregar(data); }, [data, carregar]);
+
+  // ---- Mover / redimensionar agendamentos (drag + resize) ----
+  // Estado sempre-atual dos agendamentos p/ snapshot de rollback sem recriar os callbacks.
+  const agsRef = useRef(ags);
+  useEffect(() => { agsRef.current = ags; }, [ags]);
+
+  // Persistência otimista: atualiza o estado local na hora e faz PUT; em erro, faz rollback + toast.
+  const persist = useCallback(async (
+    id: number,
+    inicioMin: number,
+    fimMin: number,
+    colaboradorId: number | null | undefined,
+    ok: string,
+  ) => {
+    const prev = agsRef.current.find((a) => a.id === id);
+    if (!prev) return;
+    const hi = hhmm(inicioMin);
+    const hf = hhmm(fimMin);
+    const dataHora = `${data} ${hi}:00`;
+    const patch: any = { data_hora: dataHora, hora_inicio: hi, hora_fim: hf, duracao_minutos: fimMin - inicioMin };
+    if (colaboradorId !== undefined) patch.colaborador_id = colaboradorId;
+
+    setAgs((cur) => cur.map((a) => (a.id === id ? { ...a, ...patch } : a))); // otimista
+    try {
+      const r = await fetch('/api/agendamentos', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.error) throw new Error(j?.error || 'Falha ao salvar');
+      toast.success(ok);
+    } catch (err: any) {
+      setAgs((cur) => cur.map((a) => (a.id === id ? prev : a))); // rollback
+      const msg = typeof err?.message === 'string' && /inválido|Horário/i.test(err.message)
+        ? err.message : 'Não foi possível salvar. Tente novamente.';
+      toast.error(msg);
+    }
+  }, [data]);
+
+  const dnd = useTimelineDnd({
+    onCommitMove: ({ id, colaboradorId, inicioMin, fimMin }) =>
+      persist(id, inicioMin, fimMin, colaboradorId, `Movido para ${hhmm(inicioMin)}`),
+    onCommitResize: ({ id, inicioMin, fimMin }) =>
+      persist(id, inicioMin, fimMin, undefined, `Duração ajustada · ${hhmm(inicioMin)}–${hhmm(fimMin)}`),
+  });
 
   // Todos os blocos do dia (a API já exclui cancelados)
   const todosBlocos = useMemo<Bloco[]>(() => ags.map((a): Bloco => {
@@ -219,39 +268,22 @@ export default function AgendaV2() {
                             <span style={{ fontSize: 11, color: 'var(--nb-ink-faint)' }}>{bs.length} agend.</span>
                           </span>
                         </div>
-                        <div style={{ flex: 1, position: 'relative' }}>
+                        <div data-colab-row data-colab-id={c.id} style={{ flex: 1, position: 'relative' }}>
                           <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                             {HORAS.map((h) => <div key={h} style={{ flex: 1, borderLeft: '1px solid var(--nb-rule-soft)' }} />)}
                           </div>
-                          {bs.map((b) => {
-                            const { left, width } = posBarra(b);
-                            const meta = STATUS_META[b.status];
-                            const largo = width > 12;
-                            return (
-                              <button
-                                key={b.id}
-                                onClick={() => setSel(b)}
-                                title={`${b.cliente} · ${b.servico}`}
-                                style={{
-                                  position: 'absolute', top: 7, bottom: 7, left: `${left}%`, width: `${width}%`,
-                                  background: meta.bg, borderRadius: 9,
-                                  borderLeft: `3px solid ${corDe(b.colaboradorId)}`,
-                                  border: b.conflito ? '1.5px dashed var(--nb-bad)' : `1px solid ${meta.borda}`,
-                                  boxShadow: 'var(--nb-shadow)', padding: '5px 8px', overflow: 'hidden', minWidth: 0,
-                                  display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 1,
-                                  cursor: 'pointer', textAlign: 'left', font: 'inherit',
-                                }}
-                              >
-                                <span className="nb-num" style={{ fontSize: 10, color: 'var(--nb-ink-faint)', fontFamily: 'var(--nb-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  {b.conflito && <Icon name="TriangleAlert" size={11} className="nb-bad" />}
-                                  {largo ? `${hhmm(b.inicioMin)}–${hhmm(b.fimMin)}` : hhmm(b.inicioMin)}
-                                </span>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--nb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.cliente}</span>
-                                {largo && b.servico && <span style={{ fontSize: 10.5, color: 'var(--nb-ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.servico}</span>}
-                                {width > 20 && <span style={{ marginTop: 2 }}><StatusBadge status={b.status} size="sm" /></span>}
-                              </button>
-                            );
-                          })}
+                          {bs.map((b) => (
+                            <TimelineBlock
+                              key={b.id}
+                              b={b}
+                              corBarra={corDe(b.colaboradorId)}
+                              onOpen={() => setSel(b)}
+                              onBeginMove={(e) => dnd.beginMove(e, b, () => setSel(b))}
+                              onBeginResize={(e, side) => dnd.beginResize(e, b, side)}
+                              isSource={dnd.activeId === b.id}
+                              interactive={b.status !== 'cancelado'}
+                            />
+                          ))}
                         </div>
                       </div>
                     );
@@ -335,6 +367,22 @@ export default function AgendaV2() {
             <AgendaAnalytics blocos={blocos} colabs={colabsExibidas} corDe={corDe} receitaConfiavel={receitaConfiavel} />
           )}
         </>
+      )}
+
+      {/* Preview de arraste/resize — segue o cursor (opacidade + sombra + borda mauve). */}
+      {dnd.preview && (
+        <div style={{
+          position: 'fixed', left: dnd.preview.leftPx, top: dnd.preview.topPx,
+          width: Math.max(dnd.preview.widthPx, 2), height: dnd.preview.heightPx,
+          borderRadius: 9, background: 'var(--nb-surface)', border: '1.5px solid var(--nb-accent)',
+          boxShadow: 'var(--nb-shadow-md)', zIndex: 60, pointerEvents: 'none', padding: '5px 8px',
+          overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 1, opacity: 0.96,
+        }}>
+          <span className="nb-num" style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--nb-accent-deep)', fontFamily: 'var(--nb-mono)' }}>
+            {hhmm(dnd.preview.inicioMin)}–{hhmm(dnd.preview.fimMin)}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--nb-ink-faint)' }}>{dnd.preview.mode === 'move' ? 'Movendo' : 'Redimensionando'}</span>
+        </div>
       )}
 
       {sel && (
