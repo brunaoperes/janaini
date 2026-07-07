@@ -21,6 +21,8 @@ export function minDeISO(iso?: string | null): number | null {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
+export type StatusVis = 'pendente' | 'confirmado' | 'executando' | 'concluido' | 'cancelado';
+
 export type Bloco = {
   id: number;
   colaboradorId: number | null;
@@ -28,11 +30,33 @@ export type Bloco = {
   inicioMin: number;      // preferindo hora_inicio > data_hora
   fimMin: number;
   cliente: string;
+  telefone?: string | null;
   servico: string;
-  status: string;         // pendente | concluido | executando | ...
+  colaboradorNome?: string | null;
+  status: StatusVis;      // status VISUAL derivado (ver statusVisual)
   valor: number;          // do lançamento vinculado (0 se sem)
+  valorEstimado: number;  // valor_estimado do agendamento (0 se null)
   conflito?: boolean;
 };
+
+/** Metadados visuais de cada status (paleta V2, sóbria). Concluído = cinza-azulado. */
+export const STATUS_META: Record<StatusVis, { label: string; cor: string; bg: string; borda: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'neutro' }> = {
+  pendente:   { label: 'Agendado',    cor: 'var(--nb-ink-soft)', bg: 'var(--nb-surface)', borda: 'var(--nb-rule)', tone: 'neutro' },
+  confirmado: { label: 'Confirmado',  cor: 'var(--nb-ok)',       bg: 'var(--nb-ok-bg)',   borda: '#CFE1D5',        tone: 'ok' },
+  executando: { label: 'Em execução', cor: 'var(--nb-warn)',     bg: 'var(--nb-warn-bg)', borda: '#E7D4B4',        tone: 'warn' },
+  concluido:  { label: 'Concluído',   cor: '#64748B',            bg: '#EEF1F4',           borda: '#DBE1E8',        tone: 'info' },
+  cancelado:  { label: 'Cancelado',   cor: 'var(--nb-bad)',      bg: 'var(--nb-bad-bg)',  borda: '#E7CFC9',        tone: 'bad' },
+};
+
+/** Status bruto do agendamento (+ lançamento) -> status visual normalizado. */
+export function statusVisual(a: any): StatusVis {
+  const raw = String(a?.status ?? '').toLowerCase().trim();
+  if (a?.lancamento?.status === 'concluido' || raw === 'concluido' || raw === 'concluído') return 'concluido';
+  if (raw === 'cancelado' || raw === 'cancelada') return 'cancelado';
+  if (raw === 'executando' || raw === 'em_execucao' || raw.includes('execu') || raw === 'atendendo') return 'executando';
+  if (raw === 'confirmado' || raw === 'confirmada') return 'confirmado';
+  return 'pendente';
+}
 
 /** Posição/tamanho da barra em % da janela. */
 export function posBarra(b: Bloco) {
@@ -58,6 +82,23 @@ export function marcarConflitos(blocos: Bloco[]): Bloco[] {
     }
   }
   return blocos;
+}
+
+/** Conta INCIDENTES de conflito (pares sobrepostos), não blocos. 2 blocos sobrepostos = 1 conflito. */
+export function contarConflitos(blocos: Bloco[]): number {
+  const porColab: Record<number, Bloco[]> = {};
+  for (const b of blocos) {
+    const k = b.colaboradorId ?? -1;
+    (porColab[k] ||= []).push(b);
+  }
+  let total = 0;
+  for (const lista of Object.values(porColab)) {
+    lista.sort((a, b) => a.inicioMin - b.inicioMin);
+    for (let i = 1; i < lista.length; i++) {
+      if (lista[i].inicioMin < lista[i - 1].fimMin) total++;
+    }
+  }
+  return total;
 }
 
 /** Cores sóbrias por profissional (dentro da paleta V2), distinguíveis entre si. */

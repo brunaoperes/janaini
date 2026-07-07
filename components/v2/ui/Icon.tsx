@@ -8,7 +8,9 @@ import {
   ChevronRight, Filter, Plus, Search, TrendingUp, TrendingDown, ArrowRight, ArrowUpRight,
   DollarSign, Landmark, Percent, Target, CircleAlert, Star, Trophy, Banknote, Gauge,
   Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
-  Info, ChartNoAxesColumn, Coins, Receipt, type LucideIcon,
+  Info, ChartNoAxesColumn, Coins, Receipt,
+  CircleCheck, Ban, Phone, TriangleAlert, CalendarOff, Hourglass, User, Timer,
+  ChevronsRight, type LucideIcon,
 } from 'lucide-react';
 
 const REGISTRY: Record<string, LucideIcon> = {
@@ -20,6 +22,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   DollarSign, Landmark, Percent, Target, CircleAlert, Star, Trophy, Banknote, Gauge,
   Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
   Info, ChartNoAxesColumn, Coins, Receipt,
+  CircleCheck, Ban, Phone, TriangleAlert, CalendarOff, Hourglass, User, Timer,
+  ChevronsRight,
 };
 
 export default function Icon({ name, size = 18, className, strokeWidth = 1.75 }: { name: string; size?: number; className?: string; strokeWidth?: number }) {
