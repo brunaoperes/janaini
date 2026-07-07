@@ -7,6 +7,7 @@ export const NAV_MAIN: NavItem[] = [
   { label: 'Dashboard', href: '/v2/dashboard', icon: 'LayoutDashboard' },
   { label: 'Agenda', href: '/v2/agenda', icon: 'CalendarDays' },
   { label: 'Lançamentos', href: '/v2/lancamentos', icon: 'ReceiptText' },
+  { label: 'Fechamento de caixa', href: '/v2/caixa', icon: 'Calculator' },
   { label: 'Clientes', href: '/v2/clientes', icon: 'Users' },
   { label: 'Colaboradoras', href: '/v2/colaboradoras', icon: 'UserCog' },
   { label: 'Serviços', href: '/v2/servicos', icon: 'Scissors' },
@@ -34,7 +35,7 @@ export const ADMIN_AREAS: { area: string; icon: string; itens: { label: string; 
     itens: [
       { label: 'Agenda', href: '/v2/agenda', icon: 'CalendarDays' },
       { label: 'Lançamentos', href: '/v2/lancamentos', icon: 'ReceiptText' },
-      { label: 'Fechamento de caixa', href: null, icon: 'Calculator' },
+      { label: 'Fechamento de caixa', href: '/v2/caixa', icon: 'Calculator' },
       { label: 'Fiados', href: null, icon: 'Clock' },
     ],
   },
