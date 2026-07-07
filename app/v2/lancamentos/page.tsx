@@ -11,6 +11,7 @@ import LancDrawer from '@/components/v2/lancamentos/LancDrawer';
 import NovoLancamentoModal from '@/components/v2/lancamentos/NovoLancamentoModal';
 import PayIcon, { labelForma } from '@/components/v2/lancamentos/PayIcon';
 import { Avatar, SitBadge, partesData, FILTROS_INICIAIS, type Filtros, type LancResp, type LancItem } from '@/components/v2/lancamentos/_shared';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 type Opt = { id: number | string; nome: string };
 const LIMITES = [10, 25, 50, 100];
@@ -47,15 +48,21 @@ export default function LancamentosV2() {
 
   const carregar = useCallback(async (f: Filtros) => {
     const id = ++reqId.current;
+    const url = `/api/v2/lancamentos?${montarQS(f)}`;
+    const cached = getCache<LancResp>(url);
+    if (cached !== undefined) {
+      setData(cached); // mostra na hora, sem skeleton
+      if (!colabs.length) setColabs((cached.colaboradores || []).map((c: any) => ({ id: c.id, nome: c.nome })));
+    }
     setBusy(true); setErro('');
     try {
-      const r = await fetch(`/api/v2/lancamentos?${montarQS(f)}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
       if (id !== reqId.current) return;
-      if (r.ok) { setData(j); if (!colabs.length) setColabs((j.colaboradores || []).map((c: any) => ({ id: c.id, nome: c.nome }))); }
-      else setErro(j.error || 'Erro ao carregar os lançamentos.');
+      if (r.ok) { setData(j); setCache(url, j); if (!colabs.length) setColabs((j.colaboradores || []).map((c: any) => ({ id: c.id, nome: c.nome }))); }
+      else if (cached === undefined) setErro(j.error || 'Erro ao carregar os lançamentos.');
     } catch {
-      if (id === reqId.current) setErro('Erro de conexão.');
+      if (id === reqId.current && cached === undefined) setErro('Erro de conexão.');
     } finally {
       if (id === reqId.current) setBusy(false);
     }
@@ -292,13 +299,13 @@ export default function LancamentosV2() {
         </div>
       )}
 
-      <LancDrawer id={detalheId} onClose={() => setDetalheId(null)} onEdit={editar} onChanged={() => carregar(filtros)} />
+      <LancDrawer id={detalheId} onClose={() => setDetalheId(null)} onEdit={editar} onChanged={() => { invalidateCache('/api/v2/'); carregar(filtros); }} />
 
       <NovoLancamentoModal
         open={modal.open}
         editId={modal.editId}
         onClose={() => setModal({ open: false, editId: null })}
-        onSaved={() => carregar(filtros)}
+        onSaved={() => { invalidateCache('/api/v2/'); carregar(filtros); }}
       />
     </PageShell>
   );

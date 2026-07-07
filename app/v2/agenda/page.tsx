@@ -18,6 +18,7 @@ import AgendamentoModal, { AgendamentoEdit } from '@/components/v2/agenda/Agenda
 import TimelineBlock from '@/components/v2/agenda/TimelineBlock';
 import { useTimelineDnd } from '@/components/v2/agenda/useTimelineDnd';
 import { StatusBadge, Avatar, hhmm } from '@/components/v2/agenda/_ui';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const hojeBRT = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 function addDias(iso: string, n: number) {
@@ -55,18 +56,22 @@ export default function AgendaV2() {
   }, []);
 
   const carregar = useCallback(async (dia: string) => {
-    setLoading(true);
+    const aplicar = (j: any) => {
+      setAgs(j.agendamentos || []);
+      setColabs(j.colaboradores || []);
+      setServicosCat(j.servicos || []);
+      const nomes = Array.from(new Set((j.servicos || []).map((s: any) => s.nome).filter(Boolean))) as string[];
+      setServicosDisp(nomes.sort((a, b) => a.localeCompare(b, 'pt-BR')));
+    };
+    const url = `/api/agenda?data=${dia}`;
+    const cached = getCache<any>(url);
+    if (cached !== undefined) { aplicar(cached); setLoading(false); } // mostra na hora, sem skeleton
+    else setLoading(true);
     try {
-      const r = await fetch(`/api/agenda?data=${dia}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (r.ok) {
-        setAgs(j.agendamentos || []);
-        setColabs(j.colaboradores || []);
-        setServicosCat(j.servicos || []);
-        const nomes = Array.from(new Set((j.servicos || []).map((s: any) => s.nome).filter(Boolean))) as string[];
-        setServicosDisp(nomes.sort((a, b) => a.localeCompare(b, 'pt-BR')));
-      }
-    } catch { /* silencioso */ } finally { setLoading(false); }
+      if (r.ok) { aplicar(j); setCache(url, j); }
+    } catch { /* silencioso — mantém o cache se houver */ } finally { setLoading(false); }
   }, []);
   useEffect(() => { carregar(data); }, [data, carregar]);
 
@@ -100,6 +105,8 @@ export default function AgendaV2() {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j?.error) throw new Error(j?.error || 'Falha ao salvar');
+      // move/resize persistido → cache da agenda (e do dashboard) fica obsoleto
+      invalidateCache('/api/agenda'); invalidateCache('/api/v2/');
       toast.success(ok);
     } catch (err: any) {
       setAgs((cur) => cur.map((a) => (a.id === id ? prev : a))); // rollback
@@ -163,7 +170,7 @@ export default function AgendaV2() {
   }, []);
 
   const fecharModal = useCallback(() => { setNovoModal(null); setEditAg(null); }, []);
-  const aposSalvar = useCallback(() => { fecharModal(); carregar(data); }, [fecharModal, carregar, data]);
+  const aposSalvar = useCallback(() => { fecharModal(); invalidateCache('/api/agenda'); invalidateCache('/api/v2/'); carregar(data); }, [fecharModal, carregar, data]);
 
   // Todos os blocos do dia (a API já exclui cancelados)
   const todosBlocos = useMemo<Bloco[]>(() => ags.map((a): Bloco => {

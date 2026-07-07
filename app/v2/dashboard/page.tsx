@@ -16,6 +16,7 @@ import ProximosAgendamentos from '@/components/v2/dashboard/ProximosAgendamentos
 import AlertasGestao from '@/components/v2/dashboard/AlertasGestao';
 import MetaCard from '@/components/v2/dashboard/MetaCard';
 import { Skel, type DashResp, type Filtros } from '@/components/v2/dashboard/_shared';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const DEFAULT_FILTROS: Filtros = { periodo: 'mes', de: '', ate: '', colaborador: 'todos', servico: 'todos', forma: 'todas' };
 type Opt = { id: number | string; nome: string };
@@ -46,16 +47,20 @@ export default function DashboardV2() {
 
   const carregar = useCallback(async (f: Filtros) => {
     const id = ++reqId.current;
+    const qs = new URLSearchParams({ periodo: f.periodo, colaborador: f.colaborador, servico: f.servico, forma: f.forma });
+    if (f.periodo === 'custom') { if (f.de) qs.set('de', f.de); if (f.ate) qs.set('ate', f.ate); }
+    const url = `/api/v2/dashboard?${qs.toString()}`;
+    const cached = getCache<DashResp>(url);
+    if (cached !== undefined) setData(cached); // mostra na hora, sem skeleton
     setBusy(true); setErro('');
     try {
-      const qs = new URLSearchParams({ periodo: f.periodo, colaborador: f.colaborador, servico: f.servico, forma: f.forma });
-      if (f.periodo === 'custom') { if (f.de) qs.set('de', f.de); if (f.ate) qs.set('ate', f.ate); }
-      const r = await fetch(`/api/v2/dashboard?${qs.toString()}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
       if (id !== reqId.current) return; // resposta obsoleta
-      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar o painel.');
+      if (r.ok) { setData(j); setCache(url, j); }
+      else if (cached === undefined) setErro(j.error || 'Erro ao carregar o painel.');
     } catch {
-      if (id === reqId.current) setErro('Erro de conexão.');
+      if (id === reqId.current && cached === undefined) setErro('Erro de conexão.');
     } finally {
       if (id === reqId.current) setBusy(false);
     }
@@ -152,7 +157,7 @@ export default function DashboardV2() {
           <div className="v2-3col" style={{ marginTop: 16 }}>
             <ProximosAgendamentos proximos={data.proximos} />
             <AlertasGestao alertas={data.alertas} />
-            <MetaCard meta={data.meta} onSalvar={() => carregar(filtros)} />
+            <MetaCard meta={data.meta} onSalvar={() => { invalidateCache('/api/v2/dashboard'); carregar(filtros); }} />
           </div>
         </div>
       )}

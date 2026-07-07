@@ -17,6 +17,7 @@ import {
   FILTROS_INICIAIS, LIMITES, type Filtros, type ServResp, type ServicoItem,
 } from '@/components/v2/servicos/_shared';
 import { LABEL_CAT } from '@/components/v2/servicos/categoria';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 export default function ServicosV2() {
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIAIS);
@@ -52,14 +53,18 @@ export default function ServicosV2() {
 
   const carregar = useCallback(async (f: Filtros) => {
     const id = ++reqId.current;
+    const url = `/api/v2/servicos?${montarQS(f)}`;
+    const cached = getCache<ServResp>(url);
+    if (cached !== undefined) setData(cached); // mostra na hora, sem skeleton
     setBusy(true); setErro('');
     try {
-      const r = await fetch(`/api/v2/servicos?${montarQS(f)}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
       if (id !== reqId.current) return;
-      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar os serviços.');
+      if (r.ok) { setData(j); setCache(url, j); }
+      else if (cached === undefined) setErro(j.error || 'Erro ao carregar os serviços.');
     } catch {
-      if (id === reqId.current) setErro('Erro de conexão.');
+      if (id === reqId.current && cached === undefined) setErro('Erro de conexão.');
     } finally {
       if (id === reqId.current) setBusy(false);
     }
@@ -67,7 +72,8 @@ export default function ServicosV2() {
 
   useEffect(() => { carregar(filtros); }, [filtros, carregar]);
 
-  const recarregar = () => carregar(filtros);
+  // após criar/editar/duplicar/ativar um serviço → invalida caches V2 antes de recarregar
+  const recarregar = () => { invalidateCache('/api/v2/'); carregar(filtros); };
 
   // muda filtro → volta pra página 1 (exceto quando muda só a página)
   const patch = (p: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...p, ...(p.page ? {} : { page: 1 }) }));

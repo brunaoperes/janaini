@@ -13,6 +13,7 @@ import ColabCard from '@/components/v2/colaboradoras/ColabCard';
 import Lateral from '@/components/v2/colaboradoras/Lateral';
 import DesempenhoDrawer from '@/components/v2/colaboradoras/DesempenhoDrawer';
 import { aplicarFiltros, FILTROS_PADRAO, type Colab, type ColabResp, type Filtros, type DistItem } from '@/components/v2/colaboradoras/types';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const mesAtual = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
 
@@ -28,14 +29,18 @@ export default function ColaboradorasV2() {
 
   const carregar = useCallback(async (m: string) => {
     const id = ++reqId.current;
+    const url = `/api/v2/colaboradoras?mes=${m}`;
+    const cached = getCache<ColabResp>(url);
+    if (cached !== undefined) setData(cached); // mostra na hora, sem skeleton
     setBusy(true); setErro('');
     try {
-      const r = await fetch(`/api/v2/colaboradoras?mes=${m}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
       if (id !== reqId.current) return;
-      if (r.ok) setData(j); else setErro(j.error || 'Erro ao carregar a equipe.');
+      if (r.ok) { setData(j); setCache(url, j); }
+      else if (cached === undefined) setErro(j.error || 'Erro ao carregar a equipe.');
     } catch {
-      if (id === reqId.current) setErro('Erro de conexão.');
+      if (id === reqId.current && cached === undefined) setErro('Erro de conexão.');
     } finally {
       if (id === reqId.current) setBusy(false);
     }
@@ -149,7 +154,7 @@ export default function ColaboradorasV2() {
         <ColabForm
           editando={form.editando}
           onFechar={() => setForm({ aberto: false, editando: null })}
-          onSalvo={() => { setForm({ aberto: false, editando: null }); carregar(mes); }}
+          onSalvo={() => { setForm({ aberto: false, editando: null }); invalidateCache('/api/v2/'); carregar(mes); }}
         />
       )}
 

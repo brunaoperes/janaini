@@ -6,6 +6,7 @@ import { Card } from '@/components/v2/ui/Card';
 import Icon from '@/components/v2/ui/Icon';
 import { brl, num, iniciais } from '@/lib/v2/formatters';
 import ClienteModal from '@/components/v2/clientes/ClienteModal';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -46,16 +47,19 @@ export default function ClientesV2() {
   useEffect(() => { setPage(1); }, [search]);
 
   const carregar = useCallback(async () => {
-    setLoading(true);
-    setErro(false);
     const q = new URLSearchParams({ page: String(page), limit: '30' });
     if (search) q.set('search', search);
+    const url = `/api/v2/clientes?${q}`;
+    const cached = getCache<{ itens: Cliente[]; paginacao: any }>(url);
+    if (cached !== undefined) { setData(cached); setLoading(false); } // mostra na hora, sem "Carregando…"
+    else setLoading(true);
+    setErro(false);
     try {
-      const r = await fetch(`/api/v2/clientes?${q}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (r.ok) setData(j);
-      else setErro(true);
-    } catch { setErro(true); } finally { setLoading(false); }
+      if (r.ok) { setData(j); setCache(url, j); }
+      else if (cached === undefined) setErro(true);
+    } catch { if (cached === undefined) setErro(true); } finally { setLoading(false); }
   }, [page, search]);
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -141,7 +145,7 @@ export default function ClientesV2() {
         <ClienteModal
           cliente={editCliente}
           onClose={() => { setModal(false); setEditCliente(null); }}
-          onSaved={() => { setModal(false); setEditCliente(null); setPage(1); carregar(); }}
+          onSaved={() => { setModal(false); setEditCliente(null); invalidateCache('/api/v2/clientes'); setPage(1); carregar(); }}
         />
       )}
     </PageShell>

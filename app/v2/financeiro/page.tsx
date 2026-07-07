@@ -17,6 +17,7 @@ import DespesasDonut from '@/components/v2/financeiro/DespesasDonut';
 import DespesaModal from '@/components/v2/financeiro/DespesaModal';
 import FiadosAbertosCard from '@/components/v2/financeiro/FiadosAbertosCard';
 import type { FinanceiroResp, ContaPagar } from '@/components/v2/financeiro/types';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const mesAtual = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
 
@@ -42,15 +43,18 @@ export default function FinanceiroV2() {
   const [marcandoId, setMarcandoId] = useState<number | null>(null);
 
   const carregar = useCallback(async (m: string, primeira: boolean) => {
-    if (primeira) setLoading(true); else setBusy(true);
+    const url = `/api/v2/financeiro?mes=${m}`;
+    const cached = getCache<FinanceiroResp>(url);
+    if (cached !== undefined) { setData(cached); setLoading(false); setBusy(true); } // mostra na hora, sem skeleton
+    else if (primeira) setLoading(true); else setBusy(true);
     setErro(null);
     try {
-      const r = await fetch(`/api/v2/financeiro?mes=${m}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (!r.ok) { setErro(j?.error || 'Não foi possível carregar o financeiro.'); }
-      else setData(j as FinanceiroResp);
+      if (!r.ok) { if (cached === undefined) setErro(j?.error || 'Não foi possível carregar o financeiro.'); }
+      else { setData(j as FinanceiroResp); setCache(url, j); }
     } catch {
-      setErro('Falha de conexão ao carregar o financeiro.');
+      if (cached === undefined) setErro('Falha de conexão ao carregar o financeiro.');
     } finally { setLoading(false); setBusy(false); }
   }, []);
 
@@ -113,7 +117,8 @@ export default function FinanceiroV2() {
 
   const limpar = () => { setCatFiltro('todas'); setSitFiltro('todas'); setMes(mesAtual()); };
 
-  const recarregar = useCallback(() => carregar(mes, false), [carregar, mes]);
+  // recarga pós-mutação (despesa criada/paga, fiado recebido) → invalida caches V2 antes
+  const recarregar = useCallback(() => { invalidateCache('/api/v2/'); carregar(mes, false); }, [carregar, mes]);
 
   const onDespesaCriada = useCallback(() => { setModalDespesa(false); recarregar(); }, [recarregar]);
 

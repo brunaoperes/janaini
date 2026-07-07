@@ -15,6 +15,7 @@ import PagamentoModal from '@/components/v2/comissoes/PagamentoModal';
 import ProfDrawer from '@/components/v2/comissoes/ProfDrawer';
 import { FILTROS_PADRAO, formaLabel } from '@/components/v2/comissoes/types';
 import type { Filtros, PainelResp, Profissional } from '@/components/v2/comissoes/types';
+import { getCache, setCache, invalidateCache } from '@/lib/v2/cache';
 
 const kFmt = (v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : brl(v));
 
@@ -40,12 +41,16 @@ export default function ComissoesV2() {
   }, [filtros]);
 
   const carregar = useCallback(async () => {
-    setLoading(true);
+    const url = `/api/v2/comissoes?${qs}`;
+    const cached = getCache<PainelResp>(url);
+    if (cached !== undefined) { setData(cached); setLoading(false); } // mostra na hora, sem skeleton
+    else setLoading(true);
     try {
-      const r = await fetch(`/api/v2/comissoes?${qs}`, { cache: 'no-store' });
+      const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (r.ok) setData(j); else toast.error(j.error || 'Erro ao carregar comissões.');
-    } catch { toast.error('Erro de conexão.'); } finally { setLoading(false); }
+      if (r.ok) { setData(j); setCache(url, j); }
+      else if (cached === undefined) toast.error(j.error || 'Erro ao carregar comissões.');
+    } catch { if (cached === undefined) toast.error('Erro de conexão.'); } finally { setLoading(false); }
   }, [qs]);
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -164,7 +169,7 @@ export default function ComissoesV2() {
           prof={pagarProf}
           periodo={periodo}
           onClose={() => setPagarProf(null)}
-          onDone={() => { setPagarProf(null); carregar(); }}
+          onDone={() => { setPagarProf(null); invalidateCache('/api/v2/'); carregar(); }}
         />
       )}
 
