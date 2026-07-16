@@ -110,57 +110,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     let profileLoaded = false; // Flag para evitar carregamento duplicado
 
-    // Verificar sessão atual com timeout curto
+    // Verificar sessão atual (timeout tolerante — cold start no celular pode ser lento)
+    const nukeELogin = () => {
+      // Limpa storage do supabase e vai pro /login — SÓ quando temos certeza de que não há sessão.
+      const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
+      if (alreadyCleaned) return;
+      sessionStorage.setItem('auth_cleaned', '1');
+      try {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('sb-') || key.includes('supabase')) localStorage.removeItem(key);
+        });
+      } catch {}
+      window.location.href = '/login';
+    };
+    const aplicarSessao = (session: any) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user && !profileLoaded) {
+        profileLoaded = true;
+        // Hidrata o perfil do cache NA HORA — assim, mesmo que a query demore/estoure o timeout,
+        // o app já sabe quem é o usuário (e que é admin) e não cai na versão antiga.
+        const cache = lerProfileCache(session.user.id);
+        if (cache) { setProfile(cache); profileRef.current = cache; }
+        Promise.race([
+          loadProfile(session.user.id, session.user.email),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 5000)),
+        ]).then(() => { try { sessionStorage.removeItem('auth_cleaned'); } catch {} }).catch(() => {});
+      }
+    };
     const initAuth = async () => {
       try {
         const result = await Promise.race([
           supabase.auth.getSession(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000)),
         ]) as any;
-
         if (!isMounted) return;
-
-        const session = result?.data?.session;
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user && !profileLoaded) {
-          profileLoaded = true;
-          // Hidrata o perfil do cache NA HORA — assim, mesmo que a query demore/estoure o timeout,
-          // o app já sabe quem é o usuário (e que é admin) e não cai na versão antiga.
-          const cache = lerProfileCache(session.user.id);
-          if (cache) { setProfile(cache); profileRef.current = cache; }
-          // Profile com timeout separado de 5s (revalida por cima do cache)
-          try {
-            await Promise.race([
-              loadProfile(session.user.id, session.user.email),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Profile timeout')), 5000))
-            ]);
-            try { sessionStorage.removeItem('auth_cleaned'); } catch {}
-          } catch {
-            // Profile falhou mas sessão ok — continuar sem profile
-          }
-        }
+        aplicarSessao(result?.data?.session);
       } catch {
-        // Timeout ou erro no getSession — limpar e ir pro login se necessário
+        // Um TIMEOUT aqui é rede lenta no boot, NÃO sessão inválida. Antes isso deslogava e mandava
+        // pro /login (que o middleware rebate pra "/"), causando o "hard-load de /v2 cai na home".
+        // Tentamos recuperar a sessão de novo SEM deslogar antes da hora.
         if (!isMounted) return;
-        const alreadyCleaned = sessionStorage.getItem('auth_cleaned');
-        if (!alreadyCleaned) {
-          sessionStorage.setItem('auth_cleaned', '1');
-          try {
-            Object.keys(localStorage).forEach(key => {
-              if (key.startsWith('sb-') || key.includes('supabase')) {
-                localStorage.removeItem(key);
-              }
-            });
-          } catch {}
-          window.location.href = '/login';
-          return;
+        try {
+          const retry: any = await Promise.race([
+            supabase.auth.getSession(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000)),
+          ]);
+          if (!isMounted) return;
+          if (retry?.data?.session?.user) {
+            aplicarSessao(retry.data.session); // sessão recuperada — NÃO redireciona
+          } else {
+            nukeELogin(); // getSession respondeu e realmente não há sessão
+          }
+        } catch {
+          // Nem o retry respondeu (rede muito ruim). NÃO desloga: o middleware já protege a rota no
+          // servidor e a sessão entra pelo onAuthStateChange quando a rede voltar. Só encerra o loading.
         }
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 

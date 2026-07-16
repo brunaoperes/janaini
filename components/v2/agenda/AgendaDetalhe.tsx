@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import Icon from '@/components/v2/ui/Icon';
+import Portal from '@/components/v2/ui/Portal';
 import { brl } from '@/lib/v2/formatters';
 import { Bloco } from './timeline-utils';
 import { StatusBadge, Avatar, hhmm } from './_ui';
@@ -30,6 +31,7 @@ export default function AgendaDetalhe({
   );
 
   return (
+    <Portal>
     <div
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(33,28,25,.42)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', padding: 16 }}
@@ -84,5 +86,6 @@ export default function AgendaDetalhe({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

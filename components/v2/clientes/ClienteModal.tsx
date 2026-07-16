@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 
 /**
  * ClienteModal — cadastro premium de cliente (V2).
@@ -83,6 +84,7 @@ export default function ClienteModal({
   }
 
   return (
+    <Portal>
     <div
       role="dialog"
       aria-modal="true"
@@ -161,6 +163,7 @@ export default function ClienteModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
