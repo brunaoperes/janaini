@@ -83,7 +83,11 @@ export async function GET(request: Request) {
     supabase.from('config_financeiro').select('valor').eq('chave', 'aliquota_imposto').maybeSingle(),
   ]);
   if (lancRes.error) return errorResponse(lancRes.error.message, 500);
+  if (fiadoRes.error) return errorResponse(`Falha ao carregar pagamentos de fiado: ${fiadoRes.error.message}`, 500);
   if (despCompRes.error) return errorResponse(despCompRes.error.message, 500);
+  for (const [nome, res] of Object.entries({ despPagRes, catRes, cfgRes })) {
+    if ((res as { error?: { message: string } })?.error) console.error(`[financeiro] query ${nome} falhou:`, (res as { error: { message: string } }).error.message);
+  }
 
   const lancAll = (lancRes.data || []) as (LancamentoRaw & { data?: string })[];
   const fiadoAll = (fiadoRes.data || []) as (PagFiadoRaw & { data_pagamento?: string })[];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import PageShell from '@/components/v2/layout/PageShell';
 import { Card, CardHead } from '@/components/v2/ui/Card';
 import Icon from '@/components/v2/ui/Icon';
@@ -17,16 +17,25 @@ export default function RelatoriosV2() {
   const [mes, setMes] = useState(mesAtual());
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(false);
+  const reqId = useRef(0);
 
   const carregar = useCallback(async (m: string) => {
-    const url = `/api/v2/dashboard?periodo=custom&de=${m}-01&ate=${m}-31`;
+    const id = ++reqId.current;
+    // Último dia REAL do mês (evita 'YYYY-02-31' etc., que quebra a query no back).
+    const [y, mm] = m.split('-').map(Number);
+    const ultimo = new Date(y, mm, 0).getDate();
+    const url = `/api/v2/dashboard?periodo=custom&de=${m}-01&ate=${m}-${String(ultimo).padStart(2, '0')}`;
     const cached = getCache<any>(url);
     if (cached !== undefined) { setData(cached); setLoading(false); } else setLoading(true);
     try {
       const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (r.ok) { setData(j); setCache(url, j); }
-    } catch { /* mantém cache */ } finally { setLoading(false); }
+      if (id !== reqId.current) return; // resposta obsoleta — descarta
+      if (r.ok) { setData(j); setCache(url, j); setErro(false); }
+      else if (cached === undefined) setErro(true);
+    } catch { if (id === reqId.current && cached === undefined) setErro(true); }
+    finally { if (id === reqId.current) setLoading(false); }
   }, []);
   useEffect(() => { carregar(mes); }, [mes, carregar]);
 
@@ -41,6 +50,13 @@ export default function RelatoriosV2() {
 
   return (
     <PageShell title="Relatórios" subtitle={`Visão gerencial — ${mesExtenso(mes)}`} actions={actions}>
+      {erro && !data && (
+        <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, borderColor: 'var(--nb-bad)' }}>
+          <Icon name="TriangleAlert" size={18} className="nb-bad" />
+          <span style={{ flex: 1, fontSize: 14, color: 'var(--nb-ink)' }}>Não foi possível carregar os relatórios deste mês.</span>
+          <button className="nb-btn nb-btn-ghost" onClick={() => carregar(mes)}>Tentar de novo</button>
+        </div>
+      )}
       <div className="v2-kpis" style={{ marginBottom: 16 }}>
         <Kpi label="Faturamento" value={brl(v(K?.faturamentoRealizado))} icon="Wallet" href="/v2/lancamentos" />
         <Kpi label="Comissões" value={brl(v(K?.comissaoRealizada))} icon="HandCoins" href="/v2/comissoes" />

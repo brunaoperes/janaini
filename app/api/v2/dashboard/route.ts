@@ -197,6 +197,18 @@ export async function GET(request: Request) {
     supabase.from('despesas').select('id, valor, vencimento, status').neq('status', 'pago').lte('vencimento', addDays(hoje, 7)),
   ]);
 
+  // Falha RUIDOSA: sem isto, uma query quebrada (data inválida, coluna renomeada, RLS, timeout)
+  // viraria zeros silenciosos no dashboard inteiro — o vício catch(()=>[]). As duas queries-base
+  // derrubam a resposta; as demais são degradáveis, mas ficam logadas em vez de sumir.
+  if (lancRes.error) return errorResponse(`Falha ao carregar lançamentos: ${lancRes.error.message}`, 500);
+  if (fiadoRes.error) return errorResponse(`Falha ao carregar pagamentos de fiado: ${fiadoRes.error.message}`, 500);
+  for (const [nome, res] of Object.entries({
+    fiadoAbertoRes, agPeriodoRes, agUpcomingRes, agFuturosRes, colabRes, servicosRes, clientesRes,
+    configRes, produtosRes, caixaHojeRes, despCompRes, despPagRes, despVencerRes,
+  })) {
+    if ((res as { error?: { message: string } })?.error) console.error(`[dashboard] query ${nome} falhou:`, (res as { error: { message: string } }).error.message);
+  }
+
   // ---- coleções base ----
   const lancAll = (lancRes.data || []) as (LancamentoRaw & { servicos_ids?: number[] | null; servicos_nomes?: string | null; data?: string; hora_inicio?: string | null; cliente_id?: number | null; id?: number })[];
   const fiadoAll = (fiadoRes.data || []) as (PagFiadoRaw & { data_pagamento?: string; forma_pagamento?: string | null })[];

@@ -43,6 +43,8 @@ export default function AgendaV2() {
   const [servicosDisp, setServicosDisp] = useState<string[]>([]);
   const [servicosCat, setServicosCat] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState(false);
+  const reqAgenda = useRef(0);
   const [filtros, setFiltros] = useState<FiltrosAgenda>(FILTROS_VAZIOS);
   const [sel, setSel] = useState<Bloco | null>(null);
   // Modal de criar/editar agendamento (null = fechado).
@@ -56,6 +58,7 @@ export default function AgendaV2() {
   }, []);
 
   const carregar = useCallback(async (dia: string) => {
+    const id = ++reqAgenda.current;
     const aplicar = (j: any) => {
       setAgs(j.agendamentos || []);
       setColabs(j.colaboradores || []);
@@ -70,8 +73,11 @@ export default function AgendaV2() {
     try {
       const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
-      if (r.ok) { aplicar(j); setCache(url, j); }
-    } catch { /* silencioso — mantém o cache se houver */ } finally { setLoading(false); }
+      if (id !== reqAgenda.current) return; // resposta de um dia anterior — descarta (não sobrescreve o dia atual)
+      if (r.ok) { aplicar(j); setCache(url, j); setErro(false); }
+      else if (cached === undefined) setErro(true);
+    } catch { if (id === reqAgenda.current && cached === undefined) setErro(true); }
+    finally { if (id === reqAgenda.current) setLoading(false); }
   }, []);
   useEffect(() => { carregar(data); }, [data, carregar]);
 
@@ -257,6 +263,13 @@ export default function AgendaV2() {
 
   return (
     <PageShell title="Agenda" subtitle={rotuloData(data)} actions={actions}>
+      {erro && ags.length === 0 && (
+        <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, borderColor: 'var(--nb-bad)' }}>
+          <Icon name="TriangleAlert" size={18} className="nb-bad" />
+          <span style={{ flex: 1, fontSize: 14, color: 'var(--nb-ink)' }}>Não foi possível carregar a agenda deste dia.</span>
+          <button className="nb-btn nb-btn-ghost" onClick={() => carregar(data)}>Tentar de novo</button>
+        </div>
+      )}
       {/* Filtros */}
       <AgendaFilters filtros={filtros} setFiltros={setFiltros} colabs={colabs} servicos={servicosDisp} resultados={totalAg} />
 

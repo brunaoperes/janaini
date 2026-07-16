@@ -18,7 +18,8 @@ export async function GET(request: Request) {
   const p = new URL(request.url).searchParams;
   const page = Math.max(1, Number(p.get('page') || 1));
   const limit = Math.min(100, Math.max(5, Number(p.get('limit') || 30)));
-  const search = (p.get('search') || '').trim();
+  // sanitiza a busca antes de montar o filtro .or() do PostgREST (evita injeção de filtro via , . ( ) % *)
+  const search = (p.get('search') || '').replace(/[,()%*]/g, ' ').trim().slice(0, 60);
   const from = (page - 1) * limit;
 
   // página de clientes (com contagem total)

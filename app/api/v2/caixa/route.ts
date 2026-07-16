@@ -29,6 +29,9 @@ async function previstoDoDia(dia: string) {
     supabase.from('lancamentos').select('valor_total, forma_pagamento, status, is_fiado, is_troca_gratis').gte('data', `${dia}T00:00:00`).lte('data', `${dia}T23:59:59`),
     supabase.from('pagamentos_fiado').select('valor_pago, forma_pagamento').gte('data_pagamento', `${dia}T00:00:00`).lte('data_pagamento', `${dia}T23:59:59`),
   ]);
+  // Falha RUIDOSA: zerar o previsto em silêncio faria a conferência/fechamento mostrar uma diferença falsa gigante.
+  if (lancRes.error) throw new Error(`previstoDoDia/lancamentos: ${lancRes.error.message}`);
+  if (fiadoRes.error) throw new Error(`previstoDoDia/fiado: ${fiadoRes.error.message}`);
   const prev: Record<string, number> = Object.fromEntries(FORMAS.map((f) => [f, 0]));
   for (const l of lancRes.data || []) {
     if (l.status === 'concluido' && !l.is_fiado && !l.is_troca_gratis) prev[normaliza(l.forma_pagamento)] += n(l.valor_total);

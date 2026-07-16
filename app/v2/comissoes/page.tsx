@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import { Card, CardHead } from '@/components/v2/ui/Card';
@@ -29,6 +29,11 @@ export default function ComissoesV2() {
   const [drawerId, setDrawerId] = useState<number | null>(null);
   const [pickerPagar, setPickerPagar] = useState(false); // seleção de profissional p/ pagar (via barra)
 
+  // Busca com debounce: o input atualiza filtros.busca na hora (controlado), mas a query só
+  // dispara 350ms depois — evita 1 fetch por tecla e a corrida entre respostas de prefixos.
+  const [buscaDeb, setBuscaDeb] = useState(filtros.busca);
+  useEffect(() => { const t = setTimeout(() => setBuscaDeb(filtros.busca), 350); return () => clearTimeout(t); }, [filtros.busca]);
+
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     p.set('periodo', filtros.periodo);
@@ -36,11 +41,13 @@ export default function ComissoesV2() {
     if (filtros.profissional !== 'todos') p.set('profissional', filtros.profissional);
     if (filtros.situacao !== 'todas') p.set('situacao', filtros.situacao);
     if (filtros.forma !== 'todas') p.set('forma', filtros.forma);
-    if (filtros.busca.trim()) p.set('busca', filtros.busca.trim());
+    if (buscaDeb.trim()) p.set('busca', buscaDeb.trim());
     return p.toString();
-  }, [filtros]);
+  }, [filtros.periodo, filtros.de, filtros.ate, filtros.profissional, filtros.situacao, filtros.forma, buscaDeb]);
 
+  const reqId = useRef(0);
   const carregar = useCallback(async () => {
+    const id = ++reqId.current;
     const url = `/api/v2/comissoes?${qs}`;
     const cached = getCache<PainelResp>(url);
     if (cached !== undefined) { setData(cached); setLoading(false); } // mostra na hora, sem skeleton
@@ -48,9 +55,11 @@ export default function ComissoesV2() {
     try {
       const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
+      if (id !== reqId.current) return; // resposta obsoleta — descarta
       if (r.ok) { setData(j); setCache(url, j); }
       else if (cached === undefined) toast.error(j.error || 'Erro ao carregar comissões.');
-    } catch { if (cached === undefined) toast.error('Erro de conexão.'); } finally { setLoading(false); }
+    } catch { if (id === reqId.current && cached === undefined) toast.error('Erro de conexão.'); }
+    finally { if (id === reqId.current) setLoading(false); }
   }, [qs]);
   useEffect(() => { carregar(); }, [carregar]);
 

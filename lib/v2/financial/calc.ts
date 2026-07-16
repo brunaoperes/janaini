@@ -83,7 +83,7 @@ export function calcularFinanceiro({ lancamentos, pagamentosFiado, fiadosEmAbert
 
   const pendentes = soma(pendentesArr, 'valor_total');
   const cancelados = soma(lancamentos.filter((l) => l.status === 'cancelado'), 'valor_total');
-  const trocaGratis = soma(lancamentos.filter((l) => !!l.is_troca_gratis), 'valor_referencia');
+  const trocaGratis = soma(lancamentos.filter((l) => !!l.is_troca_gratis && l.status !== 'cancelado'), 'valor_referencia');
   const fiadoEmAberto = soma(fiadosEmAberto, 'valor_total');
 
   // por forma de pagamento (dos atendimentos válidos)

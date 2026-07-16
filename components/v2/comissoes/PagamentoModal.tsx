@@ -52,6 +52,7 @@ export default function PagamentoModal({ prof, periodo, onClose, onDone }: {
   const toggle = (id: number) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   async function registrar() {
+    if (salvando) return; // guarda de reentrância: evita duplo-clique/registro concorrente duplicar o pagamento
     if (sel.size === 0) { toast.error('Selecione ao menos um atendimento.'); return; }
     setSalvando(true);
     try {

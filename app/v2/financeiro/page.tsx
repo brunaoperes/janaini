@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import PageShell from '@/components/v2/layout/PageShell';
 import Icon from '@/components/v2/ui/Icon';
@@ -43,7 +43,9 @@ export default function FinanceiroV2() {
   const [confirmarPago, setConfirmarPago] = useState<ContaPagar | null>(null); // linha a marcar como paga
   const [marcandoId, setMarcandoId] = useState<number | null>(null);
 
+  const reqId = useRef(0);
   const carregar = useCallback(async (m: string, primeira: boolean) => {
+    const id = ++reqId.current;
     const url = `/api/v2/financeiro?mes=${m}`;
     const cached = getCache<FinanceiroResp>(url);
     if (cached !== undefined) { setData(cached); setLoading(false); setBusy(true); } // mostra na hora, sem skeleton
@@ -52,11 +54,12 @@ export default function FinanceiroV2() {
     try {
       const r = await fetch(url, { cache: 'no-store' });
       const j = await r.json();
+      if (id !== reqId.current) return; // resposta de um mês anterior — descarta
       if (!r.ok) { if (cached === undefined) setErro(j?.error || 'Não foi possível carregar o financeiro.'); }
       else { setData(j as FinanceiroResp); setCache(url, j); }
     } catch {
-      if (cached === undefined) setErro('Falha de conexão ao carregar o financeiro.');
-    } finally { setLoading(false); setBusy(false); }
+      if (id === reqId.current && cached === undefined) setErro('Falha de conexão ao carregar o financeiro.');
+    } finally { if (id === reqId.current) { setLoading(false); setBusy(false); } }
   }, []);
 
   useEffect(() => { carregar(mes, data === null); /* eslint-disable-next-line */ }, [mes]);

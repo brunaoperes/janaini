@@ -134,7 +134,7 @@ function Kpi({ label, value, icon, tone }: { label: string; value: string; icon:
 function Overlay({ title, subtitle, onClose, children, footer }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
   return (
     <div role="dialog" aria-modal="true" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(33,28,25,.42)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(33,28,25,.42)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} className="nb-card"
         style={{ width: 'min(480px,100%)', maxHeight: '90dvh', overflowY: 'auto', boxShadow: 'var(--nb-shadow-md)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '18px 20px', borderBottom: '1px solid var(--nb-rule-soft)' }}>

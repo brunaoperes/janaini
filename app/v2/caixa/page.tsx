@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import PageShell from '@/components/v2/layout/PageShell';
 import { Card, CardHead } from '@/components/v2/ui/Card';
 import Badge from '@/components/v2/ui/Badge';
@@ -25,20 +25,26 @@ export default function CaixaV2() {
   const [obs, setObs] = useState('');
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(false);
+  const reqId = useRef(0);
 
   const carregar = useCallback(async (dia: string) => {
+    const id = ++reqId.current;
     setLoading(true);
     try {
       const r = await fetch(`/api/v2/caixa?data=${dia}`, { cache: 'no-store' });
       const j = await r.json();
+      if (id !== reqId.current) return; // resposta obsoleta (troca rápida de data) — descarta
       if (r.ok) {
         setDados(j);
         const inf: Record<string, number> = {};
         FORMAS.forEach((f) => { inf[f.id] = j.caixa?.informado?.[f.id] ?? 0; });
         setInformado(inf);
         setObs(j.caixa?.observacoes || '');
-      }
-    } catch { /* */ } finally { setLoading(false); }
+        setErro(false);
+      } else setErro(true);
+    } catch { if (id === reqId.current) setErro(true); }
+    finally { if (id === reqId.current) setLoading(false); }
   }, []);
   useEffect(() => { carregar(data); }, [data, carregar]);
 
@@ -90,6 +96,13 @@ export default function CaixaV2() {
           .cx-kpis { grid-template-columns: 1fr !important; }
         }
       ` }} />
+      {erro && !dados && (
+        <div className="nb-card nb-card-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, borderColor: 'var(--nb-bad)' }}>
+          <Icon name="TriangleAlert" size={18} className="nb-bad" />
+          <span style={{ flex: 1, fontSize: 14, color: 'var(--nb-ink)' }}>Não foi possível carregar o caixa deste dia. Não feche o caixa sem os valores previstos.</span>
+          <button className="nb-btn nb-btn-ghost" onClick={() => carregar(data)}>Tentar de novo</button>
+        </div>
+      )}
       <div className="v2-kpis cx-kpis" style={{ marginBottom: 16 }}>
         <Mini label="Previsto (sistema)" value={brl(totalPrev)} icon="Landmark" />
         <Mini label="Informado (contado)" value={brl(totalInf)} icon="Calculator" />
