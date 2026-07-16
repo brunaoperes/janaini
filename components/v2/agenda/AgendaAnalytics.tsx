@@ -82,7 +82,7 @@ export default function AgendaAnalytics({
   if (dados.conflitos > 0) alertas.push({ icon: 'TriangleAlert', tone: 'bad', titulo: `${dados.conflitos} conflito${dados.conflitos > 1 ? 's' : ''} de horário`, sub: 'Agendamentos sobrepostos na mesma profissional' });
   if (dados.pendentes > 0) alertas.push({ icon: 'Clock', tone: 'warn', titulo: `${dados.pendentes} pendente${dados.pendentes > 1 ? 's' : ''} de confirmação`, sub: 'Aguardando confirmação do cliente' });
   if (dados.ocupacao != null && dados.ocupacao < 40 && totalAtivos > 0) alertas.push({ icon: 'Gauge', tone: 'info', titulo: 'Baixa ocupação', sub: `Carga horária em ${dados.ocupacao.toFixed(0)}% — há espaço na agenda` });
-  if (dados.semAgenda.length > 0) alertas.push({ icon: 'CalendarOff', tone: 'info', titulo: `${dados.semAgenda.length} sem agenda hoje`, sub: dados.semAgenda.slice(0, 3).map((c) => c.nome).join(', ') + (dados.semAgenda.length > 3 ? '…' : '') });
+  if (dados.semAgenda.length > 0) alertas.push({ icon: 'CalendarOff', tone: 'info', titulo: `${dados.semAgenda.length} sem agenda no dia`, sub: dados.semAgenda.slice(0, 3).map((c) => c.nome).join(', ') + (dados.semAgenda.length > 3 ? '…' : '') });
 
   const toneColor = (t: string) => t === 'bad' ? 'var(--nb-bad)' : t === 'warn' ? 'var(--nb-warn)' : 'var(--nb-info)';
   const toneBg = (t: string) => t === 'bad' ? 'var(--nb-bad-bg)' : t === 'warn' ? 'var(--nb-warn-bg)' : 'var(--nb-info-bg)';
