@@ -39,6 +39,7 @@ export default function FinanceiroV2() {
   const [catFiltro, setCatFiltro] = useState('todas');
   const [sitFiltro, setSitFiltro] = useState('todas');
   const [modalDespesa, setModalDespesa] = useState(false);   // modal Nova despesa / conta fixa
+  const [filtrosOpen, setFiltrosOpen] = useState(false);     // drawer de filtros no mobile (<=900px)
   const [confirmarPago, setConfirmarPago] = useState<ContaPagar | null>(null); // linha a marcar como paga
   const [marcandoId, setMarcandoId] = useState<number | null>(null);
 
@@ -179,11 +180,27 @@ export default function FinanceiroV2() {
   }
 
   const filtroAtivo = catFiltro !== 'todas' || sitFiltro !== 'todas' || mes !== mesAtual();
+  const filtrosNaBarra = (catFiltro !== 'todas' ? 1 : 0) + (sitFiltro !== 'todas' ? 1 : 0);
+  const resumoFiltro = filtrosNaBarra === 0 ? 'Sem filtros' : `${filtrosNaBarra} filtro${filtrosNaBarra > 1 ? 's' : ''} ativo${filtrosNaBarra > 1 ? 's' : ''}`;
 
   return (
     <PageShell title="Financeiro" subtitle="Resultado e DRE do salão" actions={actions}>
+      {/* topo mobile: resumo + botão Filtros (o .v2-filterbar vira drawer inferior <=900px) */}
+      <div className="v2-filter-mob">
+        <div style={{ minWidth: 0 }}>
+          <div className="nb-eyebrow" style={{ fontSize: 9.5 }}>Filtros</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--nb-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resumoFiltro}</div>
+        </div>
+        <button className="nb-btn nb-btn-ghost" onClick={() => setFiltrosOpen(true)}>
+          <Icon name="Filter" size={16} /> Filtros
+          {filtrosNaBarra > 0 && <span aria-hidden style={{ minWidth: 18, height: 18, borderRadius: 20, background: 'var(--nb-accent)', color: '#fff', fontSize: 10.5, fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 5px' }}>{filtrosNaBarra}</span>}
+        </button>
+      </div>
+
+      <div className={`v2-filter-backdrop ${filtrosOpen ? 'is-open' : ''}`} onClick={() => setFiltrosOpen(false)} />
+
       {/* Filtros (sem reload) */}
-      <div className="v2-filterbar" style={{ marginBottom: 18 }}>
+      <div className={`v2-filterbar ${filtrosOpen ? 'is-open' : ''}`}>
         <div className="v2-field">
           <label>Categoria de despesa</label>
           <select className="v2-select" value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)}>
@@ -204,6 +221,9 @@ export default function FinanceiroV2() {
             </button>
           )}
         </div>
+        <button className="nb-btn nb-btn-primary v2-filter-apply" onClick={() => setFiltrosOpen(false)} style={{ display: 'none' }}>
+          Ver resultados
+        </button>
       </div>
 
       <div className={busy ? 'v2-busy' : ''}>

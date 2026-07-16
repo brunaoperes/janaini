@@ -143,6 +143,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
   return (
     <div role="dialog" aria-modal="true" aria-label="Lançar despesa" onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <style dangerouslySetInnerHTML={{ __html: '@media(max-width:430px){.v2-fin-modal-2col{grid-template-columns:1fr!important}}' }} />
       <div onClick={(e) => e.stopPropagation()} className="nb-card"
         style={{ width: '100%', maxWidth: 540, maxHeight: '92dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
@@ -180,7 +181,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
           </Campo>
 
           {/* categoria + valor */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="v2-fin-modal-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Campo label="Categoria">
               <select className="v2-select" value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} style={{ width: '100%' }}>
                 <option value="">Sem categoria</option>
@@ -201,7 +202,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
           {ehDespesa ? (
             <>
               {/* vencimento + competência */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="v2-fin-modal-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Campo label="Vencimento" erro={erros.vencimento}>
                   <input type="date" className="v2-select" value={vencimento} onChange={(e) => setVencimento(e.target.value)} style={{ width: '100%', paddingRight: 12 }} />
                 </Campo>
@@ -221,7 +222,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
               </Campo>
 
               {/* forma + (data pgto se pago) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="v2-fin-modal-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Campo label="Forma de pagamento">
                   <select className="v2-select" value={forma} onChange={(e) => setForma(e.target.value)} style={{ width: '100%' }}>
                     {FORMAS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

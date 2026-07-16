@@ -44,7 +44,14 @@ export default function EstoqueV2() {
 
   return (
     <PageShell title="Estoque" subtitle="Produtos, reposição e movimentações" actions={actions}>
-      <div className="v2-kpis" style={{ marginBottom: 16, gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .est-kpis { display: grid; gap: 12px; grid-template-columns: repeat(3,minmax(0,1fr)); }
+        @media (max-width: 640px) {
+          .est-kpis { grid-template-columns: 1fr !important; }
+          .est-table-wrap { -webkit-overflow-scrolling: touch; }
+        }
+      ` }} />
+      <div className="est-kpis" style={{ marginBottom: 16 }}>
         <Kpi label="Total de produtos" value={num(total)} icon="Package" />
         <Kpi label="Precisam repor" value={num(emReposicao)} icon="CircleAlert" tone={emReposicao > 0 ? 'bad' : undefined} />
         <Kpi label="Valor em estoque" value={brl(valorEstoque)} icon="Wallet" />
@@ -54,7 +61,7 @@ export default function EstoqueV2() {
         <div style={{ padding: '18px 20px 0' }}>
           <CardHead title="Produtos" right={<span className="nb-eyebrow">{produtos.length} item{produtos.length !== 1 ? 's' : ''}</span>} />
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div className="est-table-wrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table className="nb-table" style={{ minWidth: 780 }}>
             <thead>
               <tr>
@@ -138,7 +145,7 @@ function Overlay({ title, subtitle, onClose, children, footer }: { title: string
           <button className="nb-btn nb-btn-quiet" onClick={onClose} style={{ padding: 7 }} aria-label="Fechar"><Icon name="X" size={16} /></button>
         </div>
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '0 20px 20px' }}>{footer}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, padding: '0 20px 20px' }}>{footer}</div>
       </div>
     </div>
   );

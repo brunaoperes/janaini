@@ -100,7 +100,7 @@ export default function ProfDrawer({ colaboradorId, periodo, onClose, onPagar }:
               </div>
 
               {R.saldo > 0.005 && (
-                <Button icon="HandCoins" onClick={pagarDaqui} style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }}>
+                <Button icon="HandCoins" onClick={pagarDaqui} className="v2-com-cta" style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }}>
                   Registrar pagamento · {brl(R.saldo)}
                 </Button>
               )}

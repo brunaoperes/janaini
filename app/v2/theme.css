@@ -54,6 +54,38 @@
 
 .v2-root ::selection{background:var(--nb-accent);color:#fff}
 
+/* ============================================================
+   Shell: sidebar (desktop fixa / mobile drawer) + hambúrguer
+   ============================================================ */
+.v2-root .v2-sidebar{
+  background:var(--nb-sidebar);color:var(--nb-on-dark);
+  display:flex;flex-direction:column;height:100dvh;position:sticky;top:0;
+  width:236px;flex:0 0 236px;padding:22px 14px;z-index:70;
+}
+.v2-root .v2-sidebar-backdrop{display:none}
+.v2-root .v2-nav-hamburger{display:none!important}
+
+@media(max-width:900px){
+  .v2-root .v2-sidebar{
+    position:fixed;left:0;top:0;bottom:0;height:100dvh;flex-basis:auto;width:264px;max-width:82vw;
+    transform:translateX(-100%);
+    transition:transform .28s cubic-bezier(.22,1,.36,1);
+    box-shadow:0 0 48px rgba(0,0,0,.35);
+  }
+  .v2-root .v2-sidebar.is-open{transform:none}
+  .v2-root .v2-sidebar-backdrop.is-open{
+    display:block;position:fixed;inset:0;z-index:65;
+    background:rgba(33,28,25,.44);backdrop-filter:blur(2px);
+  }
+  .v2-root .v2-nav-hamburger{display:inline-flex!important}
+}
+@media(max-width:480px){
+  .v2-root .v2-topbar-user{display:none!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .v2-root .v2-sidebar{transition:none}
+}
+
 /* ---- tipografia utilitária ---- */
 .v2-root .nb-display{font-family:var(--nb-serif);font-weight:400;letter-spacing:-.01em}
 .v2-root .nb-eyebrow{font-family:var(--nb-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--nb-ink-faint)}

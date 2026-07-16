@@ -101,6 +101,13 @@ export default function ComissoesV2() {
         @media (max-width:640px){
           .v2-com-tablewrap{display:none}
           .v2-com-cards{display:flex !important}
+          /* alvos de toque >=42px nos botões dos cards mobile */
+          .v2-com-cards .nb-btn{min-height:42px}
+          /* linhas de ação (footer de modal): botões encolhem, quebram texto e não clipam */
+          .v2-com-actions{gap:8px}
+          .v2-com-actions .nb-btn{min-width:0;flex:1;white-space:normal;padding-left:12px;padding-right:12px;min-height:46px;justify-content:center;text-align:center;line-height:1.15}
+          /* CTA de largura total (drawer) com altura de toque confortável */
+          .v2-com-cta{min-height:46px}
         }
       `}</style>
       <FilterBar

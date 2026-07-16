@@ -70,7 +70,7 @@ function FormasCard({ formas, loading, onSaved }: { formas: Forma[]; loading: bo
       <div style={{ padding: '18px 20px 0' }}>
         <CardHead title="Formas de pagamento" right={<span className="nb-eyebrow">{formas.length} forma{formas.length !== 1 ? 's' : ''}</span>} />
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <table className="nb-table" style={{ minWidth: 520 }}>
           <thead><tr><th>Forma</th><th style={{ textAlign: 'right' }}>Taxa %</th><th style={{ textAlign: 'center' }}>Ativo</th><th></th></tr></thead>
           <tbody>

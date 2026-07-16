@@ -290,7 +290,7 @@ export default function LancamentosV2() {
           </Card>
 
           {/* legenda financeira */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+          <div className="lv2-legenda" style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
             <p style={{ margin: 0, fontSize: 11.5, color: 'var(--nb-ink-faint)', lineHeight: 1.6 }}>
               <strong style={{ color: 'var(--nb-ink-soft)' }}>Valor</strong> = bruto do atendimento • <strong style={{ color: 'var(--nb-ink-soft)' }}>Comissão</strong> = da profissional (já sem a taxa) • <strong style={{ color: 'var(--nb-ink-soft)' }}>Taxa</strong> = da maquininha • <strong style={{ color: 'var(--nb-ink-soft)' }}>Salão</strong> = o que ficou pro salão.
             </p>
@@ -437,5 +437,14 @@ const CSS = `
   .v2-root .lv2-cards{display:flex;flex-direction:column;gap:10px;padding:12px}
   .v2-root .lv2-card{border:1px solid var(--nb-rule);border-radius:14px;background:var(--nb-surface);padding:14px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
   .v2-root .lv2-card:hover{border-color:var(--nb-accent);box-shadow:var(--nb-shadow-md)}
+}
+@media(max-width:640px){
+  /* rodapé: empilha e garante alvos de toque >=40px */
+  .v2-root .lv2-foot{padding:12px 14px;gap:10px}
+  .v2-root .lv2-foot>div{width:100%;justify-content:space-between}
+  .v2-root .lv2-foot .nb-btn{min-height:40px}
+  .v2-root .lv2-foot .v2-select{min-height:40px}
+  /* legenda: uma coluna, sem apertar */
+  .v2-root .lv2-legenda{flex-direction:column;gap:6px}
 }
 `;

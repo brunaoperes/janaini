@@ -95,6 +95,13 @@ export default function ColaboradorasV2() {
 
   return (
     <PageShell title="Colaboradoras" subtitle="Equipe, agenda e performance" actions={actions}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .v2-root .cbz-kpi4{grid-template-columns:repeat(4,minmax(0,1fr))}
+        @media(max-width:820px){.v2-root .cbz-kpi4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(max-width:560px){.v2-root .cbz-kpi4{grid-template-columns:1fr}}
+        .v2-root .cbz-cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:16px}
+        @media(max-width:640px){.v2-root .cbz-cardbtns .nb-btn{min-height:40px}}
+      `}} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 14px', flexWrap: 'wrap' }}>
         <span className="nb-eyebrow">Performance de</span>
         <span style={{ fontFamily: 'var(--nb-serif)', fontSize: 18, color: 'var(--nb-ink)' }}>{mesExtenso(mes)}</span>
@@ -115,7 +122,7 @@ export default function ColaboradorasV2() {
       ) : data && (
         <div className={busy ? 'v2-busy' : undefined}>
           {/* KPIs */}
-          <div className="v2-kpi-grid" style={{ gridTemplateColumns: 'repeat(4,minmax(0,1fr))' }}>
+          <div className="v2-kpi-grid cbz-kpi4">
             <Kpi label="Colaboradoras ativas" icon="Users" value={num(data.kpis.ativas.value)} k={data.kpis.ativas} fmt={num} anteriorLabel="mês anterior" />
             <Kpi label="Faturamento do mês" icon="Wallet" value={brl(data.kpis.faturamento.value)} k={data.kpis.faturamento} fmt={brl} anteriorLabel="mês anterior" href="/v2/relatorios" />
             <Kpi label="Comissão total" icon="HandCoins" value={brl(data.kpis.comissao.value)} k={data.kpis.comissao} fmt={brl} anteriorLabel="mês anterior" tone="accent" href="/v2/comissoes" />
@@ -132,7 +139,7 @@ export default function ColaboradorasV2() {
               {filtradas.length === 0 ? (
                 <Card><EmptyState icon="Search" titulo="Nenhuma colaboradora encontrada." texto="Ajuste os filtros ou limpe a busca para ver a equipe." acao={{ label: 'Limpar filtros', onClick: () => setFiltros(FILTROS_PADRAO) }} /></Card>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 16 }}>
+                <div className="cbz-cardgrid">
                   {filtradas.map((c) => (
                     <ColabCard key={c.id} c={c} destaque={c.id === destaqueId}
                       onEditar={() => setForm({ aberto: true, editando: c })}
@@ -246,7 +253,7 @@ function Insight({ icon, label, titulo, valor, href, hrefLabel }: { icon: string
 function Skeleton() {
   return (
     <>
-      <div className="v2-kpi-grid" style={{ gridTemplateColumns: 'repeat(4,minmax(0,1fr))' }}>
+      <div className="v2-kpi-grid cbz-kpi4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="nb-card nb-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><Skel h={11} w={90} /><Skel h={34} w={34} r={10} /></div>
@@ -255,7 +262,7 @@ function Skeleton() {
         ))}
       </div>
       <div className="v2-2col" style={{ marginTop: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 16 }}>
+        <div className="cbz-cardgrid">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="nb-card nb-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', gap: 12 }}><Skel h={46} w={46} r={23} /><div style={{ flex: 1 }}><Skel h={15} w="70%" /><Skel h={11} w="45%" style={{ marginTop: 8 }} /></div></div>
@@ -295,7 +302,7 @@ function ColabForm({ editando, onFechar, onSalvo }: { editando: Colab | null; on
   return (
     <div role="dialog" aria-modal="true" onClick={onFechar}
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'color-mix(in srgb, var(--nb-ink) 32%, transparent)', display: 'grid', placeItems: 'center', padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} className="nb-card nb-card-pad" style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} className="nb-card nb-card-pad" style={{ width: '100%', maxWidth: 420, maxHeight: '90dvh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 640, color: 'var(--nb-ink)' }}>{editando ? 'Editar colaboradora' : 'Nova colaboradora'}</h3>
           <button type="button" aria-label="Fechar" onClick={onFechar} className="nb-btn nb-btn-ghost" style={{ padding: 7 }}><Icon name="X" size={16} /></button>

@@ -37,10 +37,10 @@ export default function AgendaDetalhe({
       <div
         onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true"
-        style={{ width: '100%', maxWidth: 420, background: 'var(--nb-surface)', border: '1px solid var(--nb-rule)', borderRadius: 'var(--nb-r-lg)', boxShadow: 'var(--nb-shadow-md)', overflow: 'hidden' }}
+        style={{ width: '100%', maxWidth: 420, maxHeight: '92dvh', display: 'flex', flexDirection: 'column', background: 'var(--nb-surface)', border: '1px solid var(--nb-rule)', borderRadius: 'var(--nb-r-lg)', boxShadow: 'var(--nb-shadow-md)', overflow: 'hidden' }}
       >
         {/* Cabeçalho com faixa da cor da profissional */}
-        <div style={{ borderTop: `3px solid ${cor}`, padding: '18px 20px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ borderTop: `3px solid ${cor}`, padding: '18px 20px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flex: '0 0 auto' }}>
           <div style={{ minWidth: 0 }}>
             <div className="nb-num" style={{ fontFamily: 'var(--nb-mono)', fontSize: 13, color: 'var(--nb-accent-deep)', fontWeight: 600 }}>
               {hhmm(bloco.inicioMin)}–{hhmm(bloco.fimMin)}
@@ -50,7 +50,7 @@ export default function AgendaDetalhe({
           <button className="nb-btn nb-btn-quiet" onClick={onClose} aria-label="Fechar" style={{ padding: 7, flex: '0 0 auto' }}><Icon name="X" size={18} /></button>
         </div>
 
-        <div style={{ padding: '4px 20px 8px' }}>
+        <div style={{ padding: '4px 20px 8px', flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
           {bloco.conflito && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--nb-bad-bg)', color: 'var(--nb-bad)', border: '1px solid #E7CFC9', borderRadius: 10, padding: '9px 12px', fontSize: 12.5, fontWeight: 560, margin: '8px 0 4px' }}>
               <Icon name="TriangleAlert" size={16} /> Conflito de horário com outro agendamento
@@ -76,7 +76,7 @@ export default function AgendaDetalhe({
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, padding: '12px 20px 18px' }}>
+        <div style={{ display: 'flex', gap: 10, padding: '12px 20px 18px', flex: '0 0 auto' }}>
           <button className="nb-btn nb-btn-ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Fechar</button>
           {onEdit && bloco.status !== 'cancelado' && (
             <button className="nb-btn nb-btn-primary" onClick={onEdit} style={{ flex: 1, justifyContent: 'center' }}><Icon name="SlidersHorizontal" size={16} /> Editar</button>

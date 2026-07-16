@@ -87,7 +87,7 @@ export default function ClientesV2() {
 
       {/* tabela */}
       <Card pad={false}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table className="nb-table" style={{ minWidth: 780 }}>
             <thead>
               <tr>
@@ -127,9 +127,9 @@ export default function ClientesV2() {
 
         {/* paginação (servidor) */}
         {pg && pg.total > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid var(--nb-rule)', fontSize: 13, color: 'var(--nb-ink-soft)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--nb-rule)', fontSize: 13, color: 'var(--nb-ink-soft)' }}>
             <span>{num(pg.total)} cliente{pg.total !== 1 ? 's' : ''} · página {pg.page} de {pg.paginas || 1}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
               <button className="nb-btn nb-btn-ghost" disabled={pg.page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: '7px 12px' }}><Icon name="ChevronLeft" size={15} /> Anterior</button>
               <button className="nb-btn nb-btn-ghost" disabled={pg.page >= (pg.paginas || 1)} onClick={() => setPage((p) => p + 1)} style={{ padding: '7px 12px' }}>Próxima <Icon name="ChevronRight" size={15} /></button>
             </div>

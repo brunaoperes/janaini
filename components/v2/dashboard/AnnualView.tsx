@@ -60,8 +60,8 @@ export default function AnnualView({ anual }: { anual: NonNullable<DashResp['anu
             </ResponsiveContainer>
           </div>
 
-          <div style={{ overflowX: 'auto', marginTop: 16 }}>
-            <table className="nb-table">
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 16 }}>
+            <table className="nb-table" style={{ minWidth: 560 }}>
               <thead>
                 <tr>
                   <th>Mês</th><th style={{ textAlign: 'right' }}>Faturamento</th><th style={{ textAlign: 'right' }}>Comissão</th>

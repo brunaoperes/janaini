@@ -174,7 +174,7 @@ export default function PagamentoModal({ prof, periodo, onClose, onDone }: {
         </div>
 
         {/* footer */}
-        <div style={{ display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--nb-rule)' }}>
+        <div className="v2-com-actions" style={{ display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--nb-rule)' }}>
           {!confirmar ? (
             <>
               <Button variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Cancelar</Button>

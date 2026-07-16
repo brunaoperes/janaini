@@ -65,12 +65,12 @@ export default function RelatoriosV2() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {topColab.map((c, i) => (
               <div key={c.id ?? c.nome}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                    <span aria-hidden style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>{iniciais(c.nome)}</span>
-                    <span style={{ fontSize: 13.5, fontWeight: 560 }}>{c.nome}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 5 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                    <span aria-hidden style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{iniciais(c.nome)}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 560, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nome}</span>
                   </span>
-                  <span className="nb-num" style={{ fontSize: 13.5, fontWeight: 640 }}>{brl(c.faturamento)}</span>
+                  <span className="nb-num" style={{ fontSize: 13.5, fontWeight: 640, flexShrink: 0 }}>{brl(c.faturamento)}</span>
                 </div>
                 <div style={{ height: 8, background: 'var(--nb-rule-soft)', borderRadius: 20, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${Math.max(4, (c.faturamento / maxColab) * 100)}%`, background: i === 0 ? 'var(--nb-accent)' : 'var(--nb-gold)', borderRadius: 20 }} />

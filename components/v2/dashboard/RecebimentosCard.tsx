@@ -32,7 +32,7 @@ export default function RecebimentosCard({ recebimentos }: { recebimentos: DashR
                   <span className="nb-num" style={{ fontSize: 13.5, fontWeight: 640, color: 'var(--nb-ink)', flex: '0 0 auto' }}>{brl(r.valor)}</span>
                 </div>
                 <div className="v2-track"><span style={{ width: `${Math.max(3, (r.valor / max) * 100)}%`, background: TONS[i % TONS.length] }} /></div>
-                <div style={{ display: 'flex', gap: 12, marginTop: 5, fontSize: 11, color: 'var(--nb-ink-faint)' }} className="nb-num">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 5, fontSize: 11, color: 'var(--nb-ink-faint)' }} className="nb-num">
                   <span>{pct(r.pct, { casas: 1 })}</span>
                   <span>{num(r.transacoes)} {r.transacoes === 1 ? 'transação' : 'transações'}</span>
                   {r.taxa > 0 && <span>taxa {brl(r.taxa)}</span>}

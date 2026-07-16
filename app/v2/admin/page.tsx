@@ -9,7 +9,7 @@ import { ADMIN_AREAS } from '@/lib/v2/constants/nav';
 export default function AdminV2() {
   return (
     <PageShell title="Painel de Gestão" subtitle="Tudo organizado por área — o que se usa todo dia em primeiro plano">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,300px),1fr))', gap: 16 }}>
         {ADMIN_AREAS.map((area) => (
           <Card key={area.area}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>

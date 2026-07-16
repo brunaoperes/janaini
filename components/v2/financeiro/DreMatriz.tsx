@@ -48,7 +48,7 @@ export default function DreMatriz({ matriz }: { matriz: DreMatrizMes[] }) {
           <EmptyState icon="ChartNoAxesColumn" h={180} titulo="Ainda não há meses com movimento." texto="A comparação mês a mês aparece conforme o faturamento for sendo registrado no ano." />
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
           <table className="nb-table" style={{ minWidth: 120 + matriz.length * 92 }}>
             <thead>
               <tr>

@@ -46,7 +46,7 @@ export default function ContasPagar({ contas, qtdPendente, loading, onNovaDespes
           <EmptyState icon="Check" h={160} titulo="Nenhuma conta neste mês." texto="Quando houver despesas ou contas fixas lançadas para o período, elas aparecem aqui." acao={onNovaDespesa ? { label: 'Lançar despesa', onClick: onNovaDespesa } : undefined} />
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table className="nb-table" style={{ minWidth: podeAgir ? 720 : 640 }}>
             <thead>
               <tr>

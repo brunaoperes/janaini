@@ -1024,8 +1024,13 @@ const CSS = `
 @media(max-width:560px){
   .nlm-overlay{padding:0}
   .nlm-card{max-width:100%;max-height:100dvh;height:100dvh;border-radius:0}
+  .nlm-body{padding:16px 14px;gap:14px}
+  .nlm-footer{padding:12px 14px}
   .nlm-grid3{grid-template-columns:1fr 1fr}
   .nlm-grid3>label:first-child{grid-column:1/-1}
   .nlm-serv-grid{grid-template-columns:1fr}
+  /* linha de pagamento: input de valor encolhe pra não espremer o select */
+  .nlm-pag-row>div{width:96px!important}
+  .nlm-serv-grid{max-height:44dvh}
 }
 `;

@@ -198,7 +198,7 @@ export default function ServicosV2() {
                 <Vazio temFiltro={temFiltro} onNovo={abrirNovo} onLimpar={limpar} />
               ) : (
                 <>
-                  <div className="sv-table-wrap" style={{ overflowX: 'auto' }}>
+                  <div className="sv-table-wrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <table className="nb-table sv-table" style={{ minWidth: 920 }}>
                       <thead>
                         <tr>
@@ -263,9 +263,9 @@ export default function ServicosV2() {
                           <Mini label="Duração" v={`${num(s.duracao_minutos)} min`} />
                           <Mini label="Categoria" v={LABEL_CAT[s.categoria]} />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--nb-rule-soft)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', rowGap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--nb-rule-soft)' }}>
                           {s.dono_colaborador_id == null ? <span className="nb-badge nb-info">Geral</span> : <ExclBadge nome={s.dona_nome} />}
-                          <span style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                          <span style={{ display: 'flex', gap: 4, marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
                             <button className="nb-btn nb-btn-quiet sv-act" aria-label="Editar" onClick={() => abrirEdicao(s)}><Icon name="SlidersHorizontal" size={16} /></button>
                             <button className="nb-btn nb-btn-quiet sv-act" aria-label="Duplicar" onClick={() => duplicar(s)}><Icon name="Package" size={16} /></button>
                             <button className="nb-btn nb-btn-quiet sv-act" aria-label={s.ativo ? 'Inativar' : 'Ativar'} onClick={() => alternarAtivo(s)} style={{ color: s.ativo ? 'var(--nb-bad)' : 'var(--nb-ok)' }}><Power size={16} strokeWidth={1.75} aria-hidden /></button>
@@ -353,7 +353,7 @@ function Paginacao({ page, paginas, onGo }: { page: number; paginas: number; onG
   }, [page, paginas]);
 
   return (
-    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
       <button className="nb-btn nb-btn-ghost" disabled={page <= 1} onClick={() => onGo(page - 1)} style={{ padding: '7px 10px' }} aria-label="Página anterior"><Icon name="ChevronLeft" size={16} /></button>
       {nums.map((x, i) => x === '…'
         ? <span key={`e${i}`} style={{ color: 'var(--nb-ink-faint)', padding: '0 4px' }}>…</span>
@@ -439,6 +439,11 @@ const CSS = `
   .v2-root .sv-cards{display:flex;flex-direction:column;gap:10px;padding:12px}
   .v2-root .sv-card{border:1px solid var(--nb-rule);border-radius:14px;background:var(--nb-surface);padding:14px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
   .v2-root .sv-card:hover{border-color:var(--nb-accent);box-shadow:var(--nb-shadow-md)}
+  .v2-root .sv-card .sv-act{min-width:40px;min-height:40px;padding:8px;justify-content:center}
+}
+@media(max-width:640px){
+  .v2-root .sv-foot{padding:12px}
+  .v2-root .sv-foot>div{width:100%;justify-content:space-between}
 }
 @media(max-width:520px){.v2-root .sv-kpis{grid-template-columns:1fr}}
 `;

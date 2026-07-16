@@ -9,9 +9,9 @@ import type { FluxoCaixa as Fluxo } from './types';
 
 function Stat({ label, value, cor }: { label: string; value: string; cor: string }) {
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
       <div className="nb-eyebrow" style={{ fontSize: 10 }}>{label}</div>
-      <div className="nb-num" style={{ fontSize: 19, fontWeight: 680, color: cor, lineHeight: 1.15 }}>{value}</div>
+      <div className="nb-num" style={{ fontSize: 'clamp(13px, 3.6vw, 19px)', fontWeight: 680, color: cor, lineHeight: 1.15 }}>{value}</div>
     </div>
   );
 }

@@ -56,7 +56,7 @@ export default function ColabCard({ c, destaque, onEditar, onDesempenho, onAgend
         <Metrica label="Atend." value={num(c.atendimentos)} />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingTop: 12, borderTop: '1px solid var(--nb-rule-soft)', flexWrap: 'wrap' }}>
+      <div className="cbz-cardbtns" style={{ display: 'flex', alignItems: 'center', gap: 4, paddingTop: 12, borderTop: '1px solid var(--nb-rule-soft)', flexWrap: 'wrap' }}>
         <button type="button" onClick={onAgenda} className="nb-btn nb-btn-quiet" style={{ fontSize: 12.5, padding: '6px 8px' }}>
           <Icon name="CalendarDays" size={14} /> Ver agenda
         </button>

@@ -124,8 +124,15 @@ export default function FilterBar({
 
   return (
     <>
+      <style>{`
+        @media(max-width:640px){
+          .v2-root .lv2-abas{gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none}
+          .v2-root .lv2-abas::-webkit-scrollbar{display:none}
+          .v2-root .lv2-abas>.nb-btn{min-height:40px;flex:0 0 auto;white-space:nowrap}
+        }
+      `}</style>
       {/* abas rápidas (sempre visíveis) */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div className="lv2-abas" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {ABAS.map((a) => (
           <button key={a.id} onClick={() => onAba(a.patch)}
             className={`nb-btn ${abaAtiva === a.id ? 'nb-btn-primary' : 'nb-btn-ghost'}`}

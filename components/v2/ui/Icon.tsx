@@ -10,7 +10,7 @@ import {
   Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
   Info, ChartNoAxesColumn, Coins, Receipt,
   CircleCheck, Ban, Phone, TriangleAlert, CalendarOff, Hourglass, User, Timer,
-  ChevronsRight, type LucideIcon,
+  ChevronsRight, Menu, type LucideIcon,
 } from 'lucide-react';
 
 const REGISTRY: Record<string, LucideIcon> = {
@@ -23,7 +23,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   Sparkles, Check, X, Download, RotateCcw, ArrowUpDown, Cake, PiggyBank, CalendarClock,
   Info, ChartNoAxesColumn, Coins, Receipt,
   CircleCheck, Ban, Phone, TriangleAlert, CalendarOff, Hourglass, User, Timer,
-  ChevronsRight,
+  ChevronsRight, Menu,
 };
 
 export default function Icon({ name, size = 18, className, strokeWidth = 1.75 }: { name: string; size?: number; className?: string; strokeWidth?: number }) {

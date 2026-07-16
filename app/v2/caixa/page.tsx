@@ -66,17 +66,31 @@ export default function CaixaV2() {
   };
 
   const actions = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="cx-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       <button className="nb-btn nb-btn-ghost" onClick={() => setData(addDias(data, -1))} style={{ padding: 9 }}><Icon name="ChevronLeft" size={17} /></button>
       <button className="nb-btn nb-btn-ghost" onClick={() => setData(hojeBRT())} disabled={data === hojeBRT()}>Hoje</button>
       <button className="nb-btn nb-btn-ghost" onClick={() => setData(addDias(data, 1))} style={{ padding: 9 }}><Icon name="ChevronRight" size={17} /></button>
-      <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="nb-input" style={{ width: 150 }} />
+      <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="nb-input cx-date" style={{ width: 150, maxWidth: '100%' }} />
     </div>
   );
 
   return (
     <PageShell title="Fechamento de caixa" subtitle={rotulo(data)} actions={actions}>
-      <div className="v2-kpis" style={{ marginBottom: 16 }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .cx-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        @media (max-width: 640px) {
+          .cx-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .cx-date { flex: 1 1 130px; width: auto !important; }
+          .cx-actions { width: 100%; }
+          .cx-foot { flex-wrap: wrap; justify-content: stretch !important; }
+          .cx-foot > button, .cx-foot .nb-btn { flex: 1 1 auto; }
+          .cx-foot-note { flex: 1 1 100%; text-align: center; }
+        }
+        @media (max-width: 420px) {
+          .cx-kpis { grid-template-columns: 1fr !important; }
+        }
+      ` }} />
+      <div className="v2-kpis cx-kpis" style={{ marginBottom: 16 }}>
         <Mini label="Previsto (sistema)" value={brl(totalPrev)} icon="Landmark" />
         <Mini label="Informado (contado)" value={brl(totalInf)} icon="Calculator" />
         <Mini label="Diferença" value={brl(dif)} icon={dif === 0 ? 'Check' : 'CircleAlert'} tone={Math.abs(dif) < 0.01 ? 'ok' : 'bad'} />
@@ -87,7 +101,7 @@ export default function CaixaV2() {
 
       <Card>
         <CardHead title="Conferência por forma de pagamento" right={!fechado ? <button className="nb-btn nb-btn-ghost" style={{ padding: '6px 10px', fontSize: 12.5 }} onClick={preencherComPrevisto}>Copiar previsto</button> : undefined} />
-        <div style={{ overflowX: 'auto' }}>
+        <div className="cx-table-wrap">
           <table className="nb-table" style={{ minWidth: 520 }}>
             <thead><tr><th>Forma</th><th style={{ textAlign: 'right' }}>Previsto</th><th style={{ textAlign: 'right' }}>Informado</th><th style={{ textAlign: 'right' }}>Diferença</th></tr></thead>
             <tbody>
@@ -113,10 +127,10 @@ export default function CaixaV2() {
           <label className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Observações</label>
           <textarea value={obs} onChange={(e) => setObs(e.target.value)} disabled={fechado} rows={2} className="nb-input" placeholder="Ex.: sangria de R$100, troco inicial…" />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+        <div className="cx-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           {fechado ? (
             <>
-              <span style={{ alignSelf: 'center', fontSize: 12.5, color: 'var(--nb-ink-faint)' }}>Fechado em {caixa?.fechado_em ? new Date(caixa.fechado_em).toLocaleString('pt-BR') : '—'} por {caixa?.responsavel_nome}</span>
+              <span className="cx-foot-note" style={{ alignSelf: 'center', fontSize: 12.5, color: 'var(--nb-ink-faint)' }}>Fechado em {caixa?.fechado_em ? new Date(caixa.fechado_em).toLocaleString('pt-BR') : '—'} por {caixa?.responsavel_nome}</span>
               <Button variant="ghost" icon="Clock" onClick={reabrir}>Reabrir caixa</Button>
             </>
           ) : (
@@ -134,7 +148,7 @@ export default function CaixaV2() {
       {dados?.historico?.length > 0 && (
         <Card style={{ marginTop: 16 }}>
           <CardHead title="Últimos fechamentos" />
-          <div style={{ overflowX: 'auto' }}>
+          <div className="cx-table-wrap">
             <table className="nb-table" style={{ minWidth: 520 }}>
               <thead><tr><th>Data</th><th style={{ textAlign: 'right' }}>Previsto</th><th style={{ textAlign: 'right' }}>Informado</th><th style={{ textAlign: 'right' }}>Diferença</th><th>Situação</th></tr></thead>
               <tbody>

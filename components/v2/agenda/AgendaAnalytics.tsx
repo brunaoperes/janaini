@@ -89,12 +89,16 @@ export default function AgendaAnalytics({
 
   return (
     <div className="v2-agenda-analytics" style={{ display: 'grid', gap: 16, marginTop: 20 }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .v2-ag-resumo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+        @media(max-width:560px){.v2-ag-resumo{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
+      ` }} />
       {/* Linha 1: Resumo (largo) + Top colaboradoras */}
       <div className="v2-2col">
         {/* (1) Resumo do dia */}
         <Card>
           <CardHead title="Resumo do dia" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 14 }}>
+          <div className="v2-ag-resumo">
             <Stat label="Confirmados" value={<span className="nb-num">{num(dados.confirmados)}</span>} tone="ok" />
             <Stat label="Concluídos" value={<span className="nb-num">{num(dados.concluidos)}</span>} />
             <Stat label="Agendados" value={<span className="nb-num">{num(dados.pendentes)}</span>} />

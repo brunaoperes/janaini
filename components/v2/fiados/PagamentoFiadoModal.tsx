@@ -129,10 +129,24 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Registrar pagamento de fiado" onClick={onClose}
+      className="fiadomodal-overlay"
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} className="nb-card" style={{ width: '100%', maxWidth: 500, maxHeight: '92dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 640px) {
+          .fiadomodal-overlay { padding: 10px !important; }
+          .fiadomodal-card { max-height: 94dvh !important; }
+          .fiadomodal-header { padding: 13px 14px !important; }
+          .fiadomodal-body { padding: 14px !important; gap: 13px !important; }
+          .fiadomodal-footer { padding: 12px 14px !important; }
+          .fiadomodal-resumo { gap: 8px !important; padding: 11px !important; }
+          .fiadomodal-resumo .nb-num { font-size: 13.5px !important; }
+          .fiadomodal-grid2 { grid-template-columns: 1fr !important; }
+          .fiadomodal-chip { padding: 9px 12px !important; }
+        }
+      ` }} />
+      <div onClick={(e) => e.stopPropagation()} className="nb-card fiadomodal-card" style={{ width: '100%', maxWidth: 500, maxHeight: '92dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--nb-rule)' }}>
+        <div className="fiadomodal-header" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--nb-rule)' }}>
           <span aria-hidden style={{ flex: '0 0 auto', width: 40, height: 40, borderRadius: 12, background: 'var(--nb-accent-wash)', color: 'var(--nb-accent-deep)', display: 'grid', placeItems: 'center' }}>
             <Icon name="HandCoins" size={20} />
           </span>
@@ -143,9 +157,9 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
           <button className="nb-btn nb-btn-quiet" onClick={onClose} aria-label="Fechar"><Icon name="X" size={18} /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="fiadomodal-body" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* resumo do lançamento */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, background: 'var(--nb-surface-2)', border: '1px solid var(--nb-rule)', borderRadius: 12, padding: 12 }}>
+          <div className="fiadomodal-resumo" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, background: 'var(--nb-surface-2)', border: '1px solid var(--nb-rule)', borderRadius: 12, padding: 12 }}>
             <Resumo label="Valor total" v={brl(fiado.valorTotal)} />
             <Resumo label="Já pago" v={brl(fiado.jaPago)} tone={fiado.jaPago > 0 ? 'ok' : undefined} />
             <Resumo label="Em aberto" v={brl(fiado.saldo)} tone="warn" />
@@ -171,11 +185,11 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                  <button type="button" className="nb-btn nb-btn-quiet" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setValor(fiado.saldo.toFixed(2)); setPermitirExcedente(false); }}>
+                  <button type="button" className="nb-btn nb-btn-quiet fiadomodal-chip" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setValor(fiado.saldo.toFixed(2)); setPermitirExcedente(false); }}>
                     Saldo total · {brl(fiado.saldo)}
                   </button>
                   {fiado.saldo > 0 && (
-                    <button type="button" className="nb-btn nb-btn-quiet" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setValor((fiado.saldo / 2).toFixed(2)); setPermitirExcedente(false); }}>
+                    <button type="button" className="nb-btn nb-btn-quiet fiadomodal-chip" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setValor((fiado.saldo / 2).toFixed(2)); setPermitirExcedente(false); }}>
                       Metade
                     </button>
                   )}
@@ -195,7 +209,7 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
               )}
 
               {/* forma + data */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="fiadomodal-grid2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Campo label="Forma de pagamento">
                   <select className="v2-select" value={forma} onChange={(e) => setForma(e.target.value)} style={{ width: '100%' }}>
                     {formas.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -237,7 +251,7 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
         </div>
 
         {/* footer */}
-        <div style={{ display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--nb-rule)' }}>
+        <div className="fiadomodal-footer" style={{ display: 'flex', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--nb-rule)' }}>
           {!confirmar ? (
             <>
               <Button variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Cancelar</Button>

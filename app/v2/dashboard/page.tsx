@@ -126,8 +126,11 @@ export default function DashboardV2() {
         exporting={exporting}
       />
 
-      {/* período selecionado (desktop) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 16px', flexWrap: 'wrap' }}>
+      {/* período selecionado (desktop) — no mobile o FilterBar já mostra o período */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media(max-width:900px){.v2-root .v2-dash-period{display:none!important}}
+      ` }} />
+      <div className="v2-dash-period" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 16px', flexWrap: 'wrap' }}>
         <span className="nb-eyebrow">Período</span>
         <span style={{ fontFamily: 'var(--nb-serif)', fontSize: 18, color: 'var(--nb-ink)' }}>{data?.periodo.label || '—'}</span>
         {data?.anterior.label && <span style={{ fontSize: 12, color: 'var(--nb-ink-faint)' }}>comparado {data.anterior.label}</span>}

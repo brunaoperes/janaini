@@ -109,6 +109,15 @@ export default function WhatsappV2() {
         </Button>
       }
     >
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 640px){
+          .v2-root .wa-detalhes{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media (max-width: 430px){
+          .v2-root .wa-detalhes{grid-template-columns:minmax(0,1fr)}
+        }
+      ` }} />
+
       {/* ERRO / INTEGRAÇÃO INDISPONÍVEL */}
       {erro && !loading && (
         <Card style={{ marginBottom: 16 }}>
@@ -172,7 +181,7 @@ export default function WhatsappV2() {
               </div>
 
               {/* detalhes da sessão */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: 'var(--nb-rule-soft)', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--nb-rule)' }}>
+              <div className="wa-detalhes" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: 'var(--nb-rule-soft)', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--nb-rule)' }}>
                 <Detalhe rotulo="Sessão WAHA" valor={config?.waha_session || '—'} sub={config?.waha_status ? `status: ${config.waha_status}` : undefined} />
                 <Detalhe rotulo="Servidor" valor={configurado ? 'Configurado' : 'Não configurado'} tone={configurado ? 'ok' : 'bad'} />
                 <Detalhe rotulo="Envio automático" valor={config?.envio_ativo ? 'Ativo' : 'Pausado'} tone={config?.envio_ativo ? 'ok' : 'warn'} />
@@ -232,7 +241,7 @@ export default function WhatsappV2() {
               <label className="nb-eyebrow" style={{ fontSize: 10, display: 'block', marginBottom: 6 }}>Mensagem</label>
               <textarea className="nb-input" rows={3} placeholder="Escreva a mensagem de teste…" value={msg} onChange={(e) => setMsg(e.target.value)} style={{ resize: 'vertical' }} />
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <Button variant="primary" icon="MessageCircle" onClick={enviarTeste} disabled={enviando || !conectado}>
                 {enviando ? 'Enviando…' : 'Enviar teste'}
               </Button>

@@ -150,7 +150,7 @@ export default function ServicoModal({
           </p>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--nb-rule)', padding: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div style={{ borderTop: '1px solid var(--nb-rule)', padding: 16, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button className="nb-btn nb-btn-ghost" onClick={onClose} disabled={salvando}>Cancelar</button>
           <button className="nb-btn nb-btn-primary" onClick={salvar} disabled={salvando}>
             <Icon name="Check" size={16} /> {salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Criar serviço'}

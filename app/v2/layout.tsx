@@ -3,6 +3,7 @@
 import './theme.css';
 import { useAuth } from '@/contexts/AuthContext';
 import Sidebar from '@/components/v2/layout/Sidebar';
+import { V2NavProvider } from '@/components/v2/layout/nav-context';
 
 /**
  * Shell da V2. Isolado da produção:
@@ -36,10 +37,12 @@ export default function V2Layout({ children }: { children: React.ReactNode }) {
           </div>
         </Center>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'stretch', minHeight: '100dvh' }}>
-          <Sidebar />
-          <main style={{ flex: 1, minWidth: 0 }}>{children}</main>
-        </div>
+        <V2NavProvider>
+          <div style={{ display: 'flex', alignItems: 'stretch', minHeight: '100dvh' }}>
+            <Sidebar />
+            <main style={{ flex: 1, minWidth: 0 }}>{children}</main>
+          </div>
+        </V2NavProvider>
       )}
     </div>
   );
