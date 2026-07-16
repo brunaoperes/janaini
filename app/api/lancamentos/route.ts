@@ -289,6 +289,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { pagamentos, ...lancamentoBody } = body;
 
+    // Fuso: se o cliente não mandar `data`, gravar HOJE em BRT (não deixar cair no default
+    // CURRENT_DATE do banco, que roda em UTC e viraria o dia seguinte após 21h BRT).
+    if (!lancamentoBody.data) lancamentoBody.data = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
     // Blindagem: término não pode ser <= início (evita duração negativa, ex.: 16:30 -> 10:00)
     if (horarioInvalido(lancamentoBody.hora_inicio, lancamentoBody.hora_fim)) {
       return NextResponse.json({ error: 'Horário inválido: o término deve ser depois do início.' }, { status: 400 });

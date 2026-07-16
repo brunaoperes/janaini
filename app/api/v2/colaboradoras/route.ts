@@ -40,16 +40,22 @@ type Agregado = { faturamento: number; comissao: number; atendimentos: number; p
 const somaValidos = (lancs: any[]) => {
   const acc: Record<string, Agregado> = {};
   for (const l of lancs) {
-    if (l.status !== 'concluido' || l.is_fiado || l.is_troca_gratis) continue;
+    if (l.is_troca_gratis || l.status === 'cancelado') continue;
     const id = l.colaborador_id;
     if (id == null) continue;
+    // Atendimento prestado = concluído à vista OU fiado gerado (mesma definição do dashboard).
+    const prestado = l.status === 'concluido' || l.is_fiado;
+    if (!prestado) continue;
     const key = String(id);
     (acc[key] ||= { faturamento: 0, comissao: 0, atendimentos: 0, porDia: {} });
-    acc[key].faturamento += n(l.valor_total);
-    acc[key].comissao += n(l.comissao_colaborador);
     acc[key].atendimentos += 1;
-    const dia = String(l.data || '').slice(0, 10);
-    if (dia) acc[key].porDia[dia] = (acc[key].porDia[dia] || 0) + n(l.valor_total);
+    // faturamento/comissão à vista: só concluído não-fiado (mantém a base de "válidos" da tela).
+    if (l.status === 'concluido' && !l.is_fiado) {
+      acc[key].faturamento += n(l.valor_total);
+      acc[key].comissao += n(l.comissao_colaborador);
+      const dia = String(l.data || '').slice(0, 10);
+      if (dia) acc[key].porDia[dia] = (acc[key].porDia[dia] || 0) + n(l.valor_total);
+    }
   }
   return acc;
 };

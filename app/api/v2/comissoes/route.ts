@@ -95,12 +95,21 @@ function agregar(lancs: LancRow[], fiados: FiadoRow[], de: string, ate: string, 
   const m = new Map<number, Agg>();
   const get = (id: number) => { let a = m.get(id); if (!a) { a = novoAgg(); m.set(id, a); } return a; };
   for (const l of lancs) {
-    if (l.status !== 'concluido' || l.is_fiado || l.is_troca_gratis) continue;
+    if (l.is_troca_gratis || l.status === 'cancelado') continue;
     if (!inRange(l.data, de, ate)) continue;
     const id = l.colaborador_id; if (!id) continue;
-    const a = get(id); const com = n(l.comissao_colaborador);
-    a.atendimentos += 1; a.faturamento += n(l.valor_total); a.comissaoTotal += com; a.taxa += n(l.taxa_pagamento);
-    if (paidSet.has(l.id)) a.jaPago += com; else { a.saldo += com; a.pendIds.push(l.id); }
+    // Atendimento prestado = concluído à vista OU fiado gerado (mesma definição do dashboard —
+    // "geral, até fiados"). O faturamento/comissão à vista soma só concluído não-fiado; a comissão
+    // do fiado entra pela via de recebimento (loop abaixo).
+    const prestado = l.status === 'concluido' || l.is_fiado;
+    if (!prestado) continue;
+    const a = get(id);
+    a.atendimentos += 1;
+    if (l.status === 'concluido' && !l.is_fiado) {
+      const com = n(l.comissao_colaborador);
+      a.faturamento += n(l.valor_total); a.comissaoTotal += com; a.taxa += n(l.taxa_pagamento);
+      if (paidSet.has(l.id)) a.jaPago += com; else { a.saldo += com; a.pendIds.push(l.id); }
+    }
   }
   for (const p of fiados) {
     if (!inRange(p.data_pagamento, de, ate)) continue;

@@ -148,6 +148,15 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError) {
+      // 23P01 = exclusion_violation, 23505 = unique_violation → a constraint do banco barrou um
+      // pagamento concorrente do MESMO lançamento (proteção atômica contra duplo-pagamento por
+      // corrida, que a checagem application-level acima não cobre sozinha).
+      if (insertError.code === '23P01' || insertError.code === '23505') {
+        return NextResponse.json(
+          { error: 'Estes lançamentos acabaram de ser pagos em outro registro. Atualize a tela e confira.' },
+          { status: 409 }
+        );
+      }
       console.error('Erro ao inserir pagamento:', insertError);
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }

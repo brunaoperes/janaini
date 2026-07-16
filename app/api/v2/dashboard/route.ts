@@ -255,8 +255,11 @@ export async function GET(request: Request) {
   const agStatus = (arr: typeof agAll, st: string) => arr.filter((a) => a.status === st).length;
 
   // ---- KPIs ----
-  const ticketA = finA.atendimentos > 0 ? finA.faturamentoRealizado / finA.atendimentos : 0;
-  const ticketB = finB.atendimentos > 0 ? finB.faturamentoRealizado / finB.atendimentos : 0;
+  // Ticket médio GERAL (inclui fiados): base de competência — faturamento bruto (concluídos +
+  // fiados gerados) ÷ atendimentos prestados (que também inclui fiados). Numerador e denominador
+  // na MESMA base, então não subestima em mês com muito fiado.
+  const ticketA = finA.atendimentos > 0 ? finA.faturamentoBruto / finA.atendimentos : 0;
+  const ticketB = finB.atendimentos > 0 ? finB.faturamentoBruto / finB.atendimentos : 0;
 
   // ocupação (estimativa honesta)
   const minutosOcup = (arr: typeof agAll) => soma(arr.filter((a) => a.status === 'concluido' || a.status === 'pendente'), 'duracao_minutos');
@@ -315,14 +318,21 @@ export async function GET(request: Request) {
 
   if (gran === 'hora') {
     const hourOf = (h?: string | null) => { const v = Number((h || '').slice(0, 2)); return Number.isNaN(v) ? -1 : v; };
-    const fiadoHour = (p: any) => { const dp = p.data_pagamento || ''; return dp.includes('T') || dp.includes(' ') ? agHour(dp) : -1; };
+    // Fiado recebido não tem hora (data_pagamento é DATE). Pra série do dia bater com o KPI (que
+    // inclui fiado), alocamos o fiado do dia no horário de FECHAMENTO — a última hora com movimento
+    // (à vista ou agendamento) no dia, ou 18h como padrão.
+    const horasMovA = [...lancA.map((l) => hourOf(l.hora_inicio)), ...agA.map((a) => agHour(a.data_hora))].filter((h) => h >= 0);
+    const horasMovB = [...lancB.map((l) => hourOf(l.hora_inicio)), ...agB.map((a) => agHour(a.data_hora))].filter((h) => h >= 0);
+    const fechaA = horasMovA.length ? Math.max(...horasMovA) : 18;
+    const fechaB = horasMovB.length ? Math.max(...horasMovB) : 18;
+    const fiadoHour = (p: any, fecha: number) => { const dp = p.data_pagamento || ''; return dp.includes('T') || dp.includes(' ') ? agHour(dp) : fecha; };
     for (let h = 0; h < 24; h++) {
       const lA = lancA.filter((l) => hourOf(l.hora_inicio) === h);
-      const fA = fiadoA.filter((p) => fiadoHour(p) === h);
+      const fA = fiadoA.filter((p) => fiadoHour(p, fechaA) === h);
       const aA = agA.filter((a) => agHour(a.data_hora) === h).length;
       bucketsA.push({ k: `${String(h).padStart(2, '0')}h`, ...bucketVals(lA, fA, aA) });
       const lBx = lancB.filter((l) => hourOf(l.hora_inicio) === h);
-      const fBx = fiadoB.filter((p) => fiadoHour(p) === h);
+      const fBx = fiadoB.filter((p) => fiadoHour(p, fechaB) === h);
       const aBx = agB.filter((a) => agHour(a.data_hora) === h).length;
       bucketsB.push({ k: `${String(h).padStart(2, '0')}h`, ...bucketVals(lBx, fBx, aBx) });
     }

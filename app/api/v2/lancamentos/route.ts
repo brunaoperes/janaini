@@ -238,7 +238,7 @@ export async function GET(request: Request) {
   const strip = {
     recebido: { valor: round2(fin.faturamentoRealizado), count: realizadosCount },
     pendente: { valor: round2(fin.pendentes), count: pendentesArr.length },
-    ticket: { valor: fin.atendimentos > 0 ? round2(fin.faturamentoRealizado / fin.atendimentos) : 0, count: fin.atendimentos },
+    ticket: { valor: fin.atendimentos > 0 ? round2(fin.faturamentoBruto / fin.atendimentos) : 0, count: fin.atendimentos }, // geral, base competência (inclui fiados)
   };
 
   // opções de filtro

@@ -6,6 +6,7 @@ import { Card, CardHead } from '@/components/v2/ui/Card';
 import Badge from '@/components/v2/ui/Badge';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl, num } from '@/lib/v2/formatters';
 import toast from 'react-hot-toast';
 
@@ -133,6 +134,7 @@ function Kpi({ label, value, icon, tone }: { label: string; value: string; icon:
 /* ---------------- Modal base ---------------- */
 function Overlay({ title, subtitle, onClose, children, footer }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(33,28,25,.42)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} className="nb-card"
@@ -148,6 +150,7 @@ function Overlay({ title, subtitle, onClose, children, footer }: { title: string
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, padding: '0 20px 20px' }}>{footer}</div>
       </div>
     </div>
+    </Portal>
   );
 }
 

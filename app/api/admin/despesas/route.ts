@@ -13,6 +13,9 @@ export const dynamic = 'force-dynamic';
 // (1º dia do mês a que se refere) além do `vencimento` (quando vence de fato).
 
 function primeiroDiaMes(mes: string) { return `${mes}-01`; } // mes = 'YYYY-MM'
+// Data/mês no fuso do negócio (BRT). Usar toISOString() (UTC) gravava no dia/mês errado após 21h.
+const hojeBRT = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+const mesBRT = () => hojeBRT().slice(0, 7);
 function audUser(p: { id: string; nome?: string; username?: string }) {
   return { userId: p.id, userName: p.nome || p.username || 'Admin', modulo: 'Lancamentos' as const };
 }
@@ -23,7 +26,7 @@ export async function GET(request: Request) {
   if (isAuthError(auth)) return auth;
 
   const url = new URL(request.url);
-  const mes = url.searchParams.get('mes') || new Date().toISOString().slice(0, 7);
+  const mes = url.searchParams.get('mes') || mesBRT();
   const ini = primeiroDiaMes(mes);
 
   const [despRes, catRes, fixasRes] = await Promise.all([
@@ -34,7 +37,7 @@ export async function GET(request: Request) {
   if (despRes.error) return errorResponse(despRes.error.message, 500);
 
   const despesas = despRes.data || [];
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeBRT();
   const totais = despesas.reduce(
     (acc, d) => {
       const v = Number(d.valor);
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
   const body = await request.json();
 
   if (body.acao === 'gerar_mes') {
-    const mes: string = body.mes || new Date().toISOString().slice(0, 7);
+    const mes: string = body.mes || mesBRT();
     const competencia = primeiroDiaMes(mes);
     const { data: fixas } = await supabase.from('contas_fixas').select('*').eq('ativo', true);
     if (!fixas || fixas.length === 0) return jsonResponse({ geradas: 0, message: 'Nenhuma conta fixa cadastrada.' });
@@ -95,7 +98,7 @@ export async function POST(request: Request) {
   const dados = {
     descricao, categoria_id: categoria_id || null, valor: Number(valor), vencimento,
     status: status === 'pago' ? 'pago' : 'pendente',
-    data_pagamento: status === 'pago' ? (data_pagamento || new Date().toISOString().slice(0, 10)) : null,
+    data_pagamento: status === 'pago' ? (data_pagamento || hojeBRT()) : null,
     forma_pagamento: forma_pagamento || null, fornecedor: fornecedor || null, observacoes: observacoes || null, competencia: comp,
   };
   const { data, error } = await supabase.from('despesas').insert(dados).select().single();
@@ -121,7 +124,7 @@ export async function PUT(request: Request) {
   }
   if (body.status !== undefined) {
     patch.status = body.status === 'pago' ? 'pago' : 'pendente';
-    patch.data_pagamento = patch.status === 'pago' ? (body.data_pagamento || atual.data_pagamento || new Date().toISOString().slice(0, 10)) : null;
+    patch.data_pagamento = patch.status === 'pago' ? (body.data_pagamento || atual.data_pagamento || hojeBRT()) : null;
   }
   const { data, error } = await supabase.from('despesas').update(patch).eq('id', id).select().single();
   if (error) return errorResponse(error.message, 500);
