@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Power } from 'lucide-react';
 import Icon from '@/components/v2/ui/Icon';
+import Portal from '@/components/v2/ui/Portal';
 import { brl, num } from '@/lib/v2/formatters';
 import { LABEL_CAT } from './categoria';
 import { CategoriaIcon, CatBadge, StatusBadge, ExclBadge, dataBR, type DetalheResp, type ServicoItem } from './_shared';
@@ -61,7 +62,7 @@ export default function ServicoDrawer({
   const TABS: [Aba, string][] = [['geral', 'Geral'], ['profissionais', 'Profissionais'], ['historico', 'Histórico']];
 
   return (
-    <>
+    <Portal>
       <div onClick={onClose} style={{
         position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(33,28,25,.36)', backdropFilter: 'blur(2px)',
         opacity: aberto ? 1 : 0, pointerEvents: aberto ? 'auto' : 'none', transition: 'opacity .22s',
@@ -216,6 +217,6 @@ export default function ServicoDrawer({
           </div>
         )}
       </aside>
-    </>
+    </Portal>
   );
 }

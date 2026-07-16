@@ -12,5 +12,8 @@ export default function Portal({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); return () => setMounted(false); }, []);
   if (!mounted) return null;
-  return createPortal(children, document.body);
+  // Embrulha em .v2-root: portado pro body, o conteúdo sai de dentro do container .v2-root e
+  // perderia os tokens do tema (cores/fontes). Reaplicamos aqui. O wrapper não afeta o layout
+  // porque os overlays filhos são position:fixed (fora do fluxo).
+  return createPortal(<div className="v2-root">{children}</div>, document.body);
 }

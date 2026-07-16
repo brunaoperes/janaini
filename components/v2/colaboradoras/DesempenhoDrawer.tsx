@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import Icon from '@/components/v2/ui/Icon';
+import Portal from '@/components/v2/ui/Portal';
 import { brl, num, pct, iniciais } from '@/lib/v2/formatters';
 import Sparkline from './Sparkline';
 import type { Colab } from './types';
@@ -26,6 +27,7 @@ export default function DesempenhoDrawer({ colab, mesLabel, rankPos, totalFat, t
   const shareAtend = totalAtend > 0 ? (colab.atendimentos / totalAtend) * 100 : 0;
 
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" aria-label={`Desempenho de ${colab.nome}`} onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'color-mix(in srgb, var(--nb-ink) 32%, transparent)', display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={(e) => e.stopPropagation()} className="v2-drawer-panel"
@@ -98,6 +100,7 @@ export default function DesempenhoDrawer({ colab, mesLabel, rankPos, totalFat, t
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

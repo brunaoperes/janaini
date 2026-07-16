@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl, num } from '@/lib/v2/formatters';
 import { Avatar, SitBadge, LocalIcon } from './_shared';
 import { formaLabel } from './types';
@@ -59,7 +60,7 @@ export default function ProfDrawer({ colaboradorId, periodo, onClose, onPagar }:
   };
 
   return (
-    <>
+    <Portal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(33,28,25,.36)', backdropFilter: 'blur(2px)', opacity: aberto ? 1 : 0, pointerEvents: aberto ? 'auto' : 'none', transition: 'opacity .22s' }} />
       <aside role="dialog" aria-modal="true" aria-label="Detalhe da comissão" style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 71, width: 'min(480px, 96vw)',
@@ -161,7 +162,7 @@ export default function ProfDrawer({ colaboradorId, periodo, onClose, onPagar }:
           )}
         </div>
       </aside>
-    </>
+    </Portal>
   );
 }
 

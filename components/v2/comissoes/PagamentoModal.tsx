@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl } from '@/lib/v2/formatters';
 import { Avatar } from './_shared';
 import type { Profissional, Range, DetalheResp, DetalheLinha } from './types';
@@ -81,6 +82,7 @@ export default function PagamentoModal({ prof, periodo, onClose, onDone }: {
   }
 
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} className="nb-card" style={{ width: '100%', maxWidth: 520, maxHeight: '92dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -194,6 +196,7 @@ export default function PagamentoModal({ prof, periodo, onClose, onDone }: {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

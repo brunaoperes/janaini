@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl } from '@/lib/v2/formatters';
 import { Avatar } from './_ui';
 
@@ -238,6 +239,7 @@ export default function AgendamentoModal({
   }
 
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'color-mix(in srgb, var(--nb-ink) 40%, transparent)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} className="nb-card"
@@ -406,6 +408,7 @@ export default function AgendamentoModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

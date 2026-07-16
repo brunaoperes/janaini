@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl } from '@/lib/v2/formatters';
 import { Avatar } from '@/components/v2/lancamentos/_shared';
 import PayIcon, { labelForma } from '@/components/v2/lancamentos/PayIcon';
@@ -128,6 +129,7 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
   const formaNome = (c: string) => formas.find(([v]) => v === c)?.[1] || labelForma(c);
 
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" aria-label="Registrar pagamento de fiado" onClick={onClose}
       className="fiadomodal-overlay"
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', padding: 16 }}>
@@ -270,6 +272,7 @@ export default function PagamentoFiadoModal({ fiado, onClose, onDone }: {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

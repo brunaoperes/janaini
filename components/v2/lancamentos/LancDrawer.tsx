@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Icon from '@/components/v2/ui/Icon';
+import Portal from '@/components/v2/ui/Portal';
 import { brl, num } from '@/lib/v2/formatters';
 import { Avatar, SitBadge, partesData, type Situacao } from './_shared';
 import PayIcon, { labelForma } from './PayIcon';
@@ -75,7 +76,7 @@ export default function LancDrawer({ id, onClose, onEdit, onChanged }: { id: num
   const dt = partesData(L?.data, L?.hora_inicio);
 
   return (
-    <>
+    <Portal>
       <div onClick={onClose} style={{
         position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(33,28,25,.36)', backdropFilter: 'blur(2px)',
         opacity: aberto ? 1 : 0, pointerEvents: aberto ? 'auto' : 'none', transition: 'opacity .22s',
@@ -222,6 +223,6 @@ export default function LancDrawer({ id, onClose, onEdit, onChanged }: { id: num
           onDone={() => { setPagar(false); carregarDetalhe(L.id, false); onChanged?.(); }}
         />
       )}
-    </>
+    </Portal>
   );
 }

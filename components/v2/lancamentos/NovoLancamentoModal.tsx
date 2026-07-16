@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import PayIcon from './PayIcon';
 import { Avatar } from './_shared';
 import { brl } from '@/lib/v2/formatters';
@@ -539,6 +540,7 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
   const carregando = carregandoRef || carregandoEdicao || !ref;
 
   return (
+    <Portal>
     <div
       role="dialog"
       aria-modal="true"
@@ -767,6 +769,7 @@ export default function NovoLancamentoModal({ open, editId, onClose, onSaved }: 
         )}
       </div>
     </div>
+    </Portal>
   );
 }
 

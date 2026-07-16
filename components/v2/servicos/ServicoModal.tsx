@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
+import Portal from '@/components/v2/ui/Portal';
 import { derivarCategoria, LABEL_CAT } from './categoria';
 import { CategoriaIcon, type ServicoItem, type Colaboradora } from './_shared';
 
@@ -83,7 +84,7 @@ export default function ServicoModal({
   if (!aberto) return null;
 
   return (
-    <>
+    <Portal>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(33,28,25,.4)', backdropFilter: 'blur(2px)' }} />
       <div role="dialog" aria-modal="true" aria-label={editando ? 'Editar serviço' : 'Novo serviço'} style={{
         position: 'fixed', zIndex: 81, top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
@@ -157,6 +158,6 @@ export default function ServicoModal({
           </button>
         </div>
       </div>
-    </>
+    </Portal>
   );
 }

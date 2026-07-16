@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Icon from '@/components/v2/ui/Icon';
 import Button from '@/components/v2/ui/Button';
+import Portal from '@/components/v2/ui/Portal';
 import { brl } from '@/lib/v2/formatters';
 
 // Modal premium V2 para lançar despesa avulsa ou nova conta fixa (recorrente).
@@ -141,6 +142,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
   const ehDespesa = modo === 'despesa';
 
   return (
+    <Portal>
     <div role="dialog" aria-modal="true" aria-label="Lançar despesa" onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'color-mix(in srgb, var(--nb-ink) 34%, transparent)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <style dangerouslySetInnerHTML={{ __html: '@media(max-width:430px){.v2-fin-modal-2col{grid-template-columns:1fr!important}}' }} />
@@ -265,6 +267,7 @@ export default function DespesaModal({ mes, onClose, onDone }: {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
